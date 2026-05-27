@@ -3,317 +3,374 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>BAC BRU — Motor Neural</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<title>BAC BRU — MONSTRO v5.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
 :root{
   --bg:#060a12;--bg2:#0c1220;--bg3:#111827;
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
   --txt:#e2e8f0;--txt2:#64748b;--txt3:#334155;
-  --blue:#3b82f6;--blue2:#60a5fa;--blue3:rgba(59,130,246,0.15);
-  --red:#ef4444;--red2:#f87171;--red3:rgba(239,68,68,0.15);
-  --gold:#f59e0b;--gold2:#fcd34d;--gold3:rgba(245,158,11,0.15);
-  --green:#22c55e;--green2:#4ade80;--green3:rgba(34,197,94,0.15);
-  --purple:#a855f7;--purple2:#c084fc;--purple3:rgba(168,85,247,0.15);
-  --r:14px;--r2:10px;--r3:8px;
-  --font:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+  --blue:#3b82f6;--blue2:#60a5fa;
+  --red:#ef4444;--red2:#f87171;
+  --gold:#f59e0b;--gold2:#fcd34d;
+  --green:#22c55e;--green2:#4ade80;
+  --purple:#a855f7;--purple2:#c084fc;
+  --orange:#f97316;
+  --font:'Space Grotesk',sans-serif;
+  --mono:'JetBrains Mono',monospace;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;overflow-x:hidden;
-  background-image:
-    radial-gradient(ellipse 100% 50% at 50% -10%,rgba(59,130,246,0.06),transparent 60%),
-    radial-gradient(ellipse 60% 40% at 100% 100%,rgba(168,85,247,0.04),transparent 60%);
-}
-
-/* ANIMATIONS */
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes glow{0%,100%{box-shadow:0 0 20px currentColor}50%{box-shadow:0 0 40px currentColor,0 0 60px currentColor}}
-@keyframes spin{to{transform:rotate(360deg)}}
+  background-image:radial-gradient(ellipse 100% 50% at 50% -10%,rgba(59,130,246,0.05),transparent 60%),
+  radial-gradient(ellipse 60% 40% at 100% 100%,rgba(168,85,247,0.03),transparent 60%);}
 @keyframes shimmer{0%{background-position:200% center}100%{background-position:-200% center}}
-@keyframes barFill{from{width:0}to{width:var(--w)}}
-@keyframes countUp{from{opacity:0;transform:scale(0.8)}to{opacity:1;transform:scale(1)}}
-
-.fade-in{animation:slideUp .3s ease forwards}
-.pulse{animation:pulse 1.4s ease-in-out infinite}
-.count-anim{animation:countUp .25s ease forwards}
-
-/* LAYOUT */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{opacity:.7}50%{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes standby{0%,100%{border-color:rgba(239,68,68,0.4)}50%{border-color:rgba(239,68,68,0.9)}}
 .wrap{max-width:440px;margin:0 auto;padding:0 0 60px}
+.fade{animation:slideUp .25s ease forwards}
 
 /* HEADER */
-.header{
-  padding:20px 16px 16px;
-  border-bottom:1px solid var(--border);
-  background:linear-gradient(180deg,rgba(6,10,18,0.95),transparent);
-  position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);
-}
-.header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.logo{
-  font-family:var(--font);font-size:22px;font-weight:700;letter-spacing:-0.5px;
+.hdr{padding:18px 16px 14px;border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(6,10,18,.97),transparent);
+  position:sticky;top:0;z-index:100;backdrop-filter:blur(14px);}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.logo{font-size:21px;font-weight:700;letter-spacing:-.5px;
   background:linear-gradient(135deg,var(--gold2),var(--blue2),var(--purple2));
-  background-size:200%;
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  animation:shimmer 4s linear infinite;
-}
-.sync-badge{
-  display:flex;align-items:center;gap:5px;
-  padding:4px 10px;border-radius:20px;
-  background:var(--green3);border:1px solid rgba(34,197,94,0.3);
-  font-size:11px;color:var(--green2);font-family:var(--mono);letter-spacing:0.5px;
-}
-.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s ease-in-out infinite}
+  background-size:300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;animation:shimmer 4s linear infinite}
+.sync-pill{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+  font-size:10px;font-family:var(--mono);letter-spacing:.5px;border:1px solid;transition:all .3s}
+.sync-dot{width:6px;height:6px;border-radius:50%}
+.stats{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
+.chip{padding:3px 9px;border-radius:20px;font-size:11px;font-family:var(--mono);
+  border:1px solid var(--border2);background:var(--bg2)}
 
-.stats-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
-.stat-chip{
-  padding:3px 10px;border-radius:20px;font-size:11px;font-family:var(--mono);
-  border:1px solid var(--border2);background:var(--bg2);
+/* STANDBY MODE */
+.standby-banner{
+  margin:10px 16px 0;padding:16px;border-radius:14px;
+  border:2px solid var(--red);animation:standby 2s ease-in-out infinite;
+  background:rgba(239,68,68,0.08);text-align:center;
 }
+.standby-title{font-size:15px;font-weight:700;color:var(--red2);margin-bottom:4px}
+.standby-sub{font-size:11px;color:var(--red2);opacity:.8;font-family:var(--mono);line-height:1.5}
+.standby-idx{display:flex;gap:10px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.standby-metric{padding:4px 10px;border-radius:8px;background:rgba(239,68,68,0.1);
+  border:1px solid rgba(239,68,68,0.2);font-size:10px;color:var(--red2);font-family:var(--mono)}
 
-/* MESA DETECTOR */
-.mesa-card{
-  margin:12px 16px 0;padding:10px 14px;border-radius:var(--r);
-  border:1px solid;transition:all .3s;
-}
-.mesa-label{font-size:13px;font-weight:600;margin-bottom:2px}
-.mesa-sub{font-size:10px;opacity:0.7;font-family:var(--mono)}
+/* MESA */
+.mesa-card{margin:10px 16px 0;padding:10px 14px;border-radius:12px;border:1px solid;transition:all .3s}
+.mesa-lbl{font-size:13px;font-weight:600;margin-bottom:2px}
+.mesa-sub{font-size:10px;opacity:.75;font-family:var(--mono)}
+.mesa-idx{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.idx-pill{padding:2px 8px;border-radius:6px;font-size:9px;font-family:var(--mono);border:1px solid}
 
-/* FLASH BANNER */
-.flash-banner{
-  margin:10px 16px 0;padding:14px 16px;border-radius:var(--r);
-  font-size:16px;font-weight:700;text-align:center;
-  border:1px solid;animation:slideUp .2s ease forwards;
-}
+/* LEARNING INDICATOR */
+.learn-bar{margin:8px 16px 0;padding:8px 12px;border-radius:10px;
+  background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.2)}
+.learn-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.learn-lbl{font-size:10px;color:var(--purple2);font-family:var(--mono)}
+.learn-val{font-size:10px;color:var(--purple2);font-family:var(--mono);font-weight:600}
+.learn-bg{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.learn-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--purple),var(--purple2));transition:width .6s ease}
 
-/* SIGNAL CARD */
-.signal-card{
-  margin:10px 16px 0;padding:16px;border-radius:var(--r);
-  border:1px solid var(--border2);background:var(--bg2);
-  transition:all .3s;
-}
-.signal-label{font-size:15px;font-weight:700;margin-bottom:3px}
-.signal-reason{font-size:11px;color:var(--txt2);font-family:var(--mono)}
-.signal-conf{
-  display:flex;align-items:center;gap:6px;margin-top:10px;
-}
-.conf-bar-bg{flex:1;height:4px;border-radius:2px;background:var(--bg3);overflow:hidden}
-.conf-bar{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1)}
-.conf-val{font-size:11px;font-family:var(--mono);font-weight:600;min-width:32px;text-align:right}
+/* AVISO */
+.aviso{margin:10px 16px 0;padding:13px 15px;border-radius:12px;border:1px solid;
+  font-size:15px;font-weight:700;text-align:center;animation:slideUp .2s ease forwards}
 
-/* ACTION BUTTON */
-.action-btn{
-  display:block;width:calc(100% - 32px);margin:10px 16px 0;
-  padding:14px;border-radius:var(--r);border:2px solid;
-  font-family:var(--font);font-size:14px;font-weight:700;letter-spacing:0.5px;
-  cursor:pointer;transition:all .15s;text-align:center;
-  position:relative;overflow:hidden;
-}
-.action-btn::after{
-  content:'';position:absolute;inset:0;
-  background:rgba(255,255,255,0);
-  transition:background .15s;
-}
-.action-btn:active::after{background:rgba(255,255,255,0.1)}
-.action-btn:active{transform:scale(0.98)}
+/* SIGNAL */
+.sig-card{margin:10px 16px 0;padding:14px;border-radius:14px;border:1px solid;transition:all .3s}
+.sig-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px}
+.sig-title{font-size:15px;font-weight:700}
+.sig-badge{padding:3px 8px;border-radius:6px;font-size:10px;font-family:var(--mono);font-weight:600;border:1px solid}
+.sig-reason{font-size:11px;color:var(--txt2);font-family:var(--mono);margin-bottom:8px;line-height:1.4}
+.sig-why{padding:7px 10px;border-radius:8px;font-size:10px;font-family:var(--mono);
+  line-height:1.5;margin-bottom:8px}
+.conf-row{display:flex;align-items:center;gap:7px}
+.conf-bg{flex:1;height:5px;border-radius:3px;background:var(--bg3);overflow:hidden}
+.conf-fill{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.conf-val{font-size:12px;font-family:var(--mono);font-weight:600;min-width:34px;text-align:right}
 
-/* INSTRUCTION BAR */
-.instr{
-  margin:8px 16px 0;padding:9px 12px;border-radius:var(--r2);
-  background:var(--purple3);border:1px solid rgba(168,85,247,0.25);
-  font-size:12px;color:var(--purple2);font-weight:600;text-align:center;
-}
+/* ACTION BTN */
+.act-btn{display:block;width:calc(100% - 32px);margin:9px 16px 0;
+  padding:13px;border-radius:12px;border:2px solid;font-family:var(--font);
+  font-size:14px;font-weight:700;letter-spacing:.4px;cursor:pointer;
+  transition:all .15s;text-align:center}
+.act-btn:active{transform:scale(.98);opacity:.9}
 
-/* RESULT PANEL */
-.result-panel{
-  margin:10px 16px 0;padding:14px;border-radius:var(--r);
-  background:var(--bg2);border:1px solid var(--border);
-}
-.panel-label{font-size:10px;letter-spacing:3px;color:var(--txt3);margin-bottom:10px;text-transform:uppercase;font-family:var(--mono)}
-.result-row{display:flex;gap:8px;align-items:center}
-.soma-wrap{display:flex;flex-direction:column;align-items:center;gap:3px}
-.soma-label{font-size:9px;color:var(--txt3);letter-spacing:2px;text-transform:uppercase;font-family:var(--mono)}
-.soma-inp{
-  width:52px;height:58px;background:var(--bg3);
-  border:1px solid var(--border2);border-radius:var(--r2);
-  color:var(--txt);font-size:22px;text-align:center;
-  font-family:var(--mono);font-weight:600;outline:none;
-  transition:border-color .2s;
-}
+/* INSTR */
+.instr{margin:8px 16px 0;padding:9px 12px;border-radius:10px;
+  background:rgba(168,85,247,.07);border:1px solid rgba(168,85,247,.2);
+  font-size:12px;color:var(--purple2);font-weight:600;text-align:center}
+
+/* RESULT */
+.res-panel{margin:10px 16px 0;padding:13px;border-radius:14px;
+  background:var(--bg2);border:1px solid var(--border)}
+.panel-lbl{font-size:10px;letter-spacing:3px;color:var(--txt3);margin-bottom:9px;
+  font-family:var(--mono);text-transform:uppercase}
+.res-row{display:flex;gap:7px;align-items:center;margin-bottom:8px}
+.soma-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
+.soma-lbl{font-size:9px;color:var(--txt3);letter-spacing:2px;font-family:var(--mono)}
+.soma-inp{width:50px;height:56px;background:var(--bg3);border:1px solid var(--border2);
+  border-radius:9px;color:var(--txt);font-size:21px;text-align:center;
+  font-family:var(--mono);font-weight:600;outline:none;transition:border-color .2s}
 .soma-inp:focus{border-color:var(--blue)}
-.result-btns{display:flex;flex:1;gap:7px}
-.res-btn{
-  flex:1;height:58px;border-radius:var(--r2);border:2px solid;
-  font-family:var(--font);font-size:14px;font-weight:700;
-  cursor:pointer;transition:all .15s;letter-spacing:0.5px;
-  position:relative;overflow:hidden;
-}
-.res-btn:active{transform:scale(0.96)}
-.res-btn.azul{background:linear-gradient(135deg,#1e3a8a,#2563eb);border-color:var(--blue);color:#fff}
-.res-btn.verm{background:linear-gradient(135deg,#7f1d1d,#dc2626);border-color:var(--red);color:#fff}
-.res-btn.emp{background:linear-gradient(135deg,#451a03,#b45309);border-color:var(--gold);color:#fff}
-.res-btn.flash-hit{animation:glow .4s ease}
-
-.fin-btn{
-  margin-top:8px;width:100%;padding:10px;
-  background:linear-gradient(135deg,#14532d,#16a34a);
-  border:1px solid var(--green);border-radius:var(--r2);
-  color:#fff;font-family:var(--font);font-size:12px;font-weight:600;
-  cursor:pointer;letter-spacing:0.5px;transition:all .15s;
-}
-.fin-btn:active{transform:scale(0.98)}
+.rbtns{display:flex;flex:1;gap:6px}
+.rb{flex:1;height:56px;border-radius:9px;border:2px solid;font-family:var(--font);
+  font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.4px}
+.rb:active{transform:scale(.95)}
+.rb.p{background:linear-gradient(135deg,#1e3a8a,#2563eb);border-color:var(--blue);color:#fff}
+.rb.b{background:linear-gradient(135deg,#7f1d1d,#dc2626);border-color:var(--red);color:#fff}
+.rb.t{background:linear-gradient(135deg,#451a03,#b45309);border-color:var(--gold);color:#fff}
+.fin-btn{width:100%;padding:10px;background:linear-gradient(135deg,#14532d,#16a34a);
+  border:1px solid var(--green);border-radius:9px;color:#fff;font-family:var(--font);
+  font-size:12px;font-weight:600;cursor:pointer;letter-spacing:.4px;transition:all .15s}
+.fin-btn:active{transform:scale(.98)}
 
 /* SCOREBOARD */
-.scoreboard{
-  display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;
-  margin:10px 16px 0;
-}
-.score-card{
-  padding:12px 8px;border-radius:var(--r);text-align:center;
-  border:1px solid;background:var(--bg2);
-}
-.score-lbl{font-size:9px;letter-spacing:3px;color:var(--txt3);margin-bottom:6px;font-family:var(--mono);text-transform:uppercase}
-.score-val{font-size:32px;font-weight:700;line-height:1;font-family:var(--font)}
-.score-bar{height:3px;border-radius:2px;margin-top:8px;overflow:hidden;background:var(--bg3)}
-.score-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.scores{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin:10px 16px 0}
+.sc{padding:11px 8px;border-radius:12px;text-align:center;border:1px solid;background:var(--bg2)}
+.sc-lbl{font-size:9px;letter-spacing:3px;color:var(--txt3);margin-bottom:5px;
+  font-family:var(--mono);text-transform:uppercase}
+.sc-val{font-size:30px;font-weight:700;line-height:1;font-family:var(--font)}
+.sc-bar{height:3px;border-radius:2px;margin-top:7px;overflow:hidden;background:var(--bg3)}
+.sc-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
 
-/* BEAD ROAD */
-.section{margin:10px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px}
-.section-title{font-size:10px;letter-spacing:3px;color:var(--txt3);margin-bottom:8px;font-family:var(--mono);text-transform:uppercase}
-.bead-grid{display:grid;grid-template-columns:repeat(20,18px);gap:2px;overflow-x:auto;padding-bottom:2px}
-.bead{
-  width:18px;height:18px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:7px;color:#fff;font-weight:700;font-family:var(--mono);
-  flex-shrink:0;transition:all .2s;
-}
-
-/* LAST ROUNDS */
+/* SECTION */
+.sec{margin:10px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:11px}
+.sec-title{font-size:10px;letter-spacing:3px;color:var(--txt3);margin-bottom:7px;
+  font-family:var(--mono);text-transform:uppercase}
+.bead-grid{display:grid;grid-template-columns:repeat(20,17px);gap:2px;overflow-x:auto}
+.bead{width:17px;height:17px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:6px;color:#fff;font-weight:700;font-family:var(--mono);flex-shrink:0}
 .last-row{display:flex;gap:4px;flex-wrap:wrap}
-.last-pill{
-  padding:4px 9px;border-radius:6px;font-size:12px;
-  font-family:var(--mono);font-weight:600;border:1px solid;
-  transition:all .2s;
-}
+.lpill{padding:4px 9px;border-radius:6px;font-size:11px;font-family:var(--mono);font-weight:600;border:1px solid}
 
-/* TIE ANALYSIS */
-.tie-section{margin:10px 16px 0}
-.tie-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px}
-.tie-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.tie-label{font-size:11px;color:var(--txt2);font-family:var(--mono)}
-.tie-pct{font-size:11px;font-weight:600;font-family:var(--mono)}
-.tie-bar-bg{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:8px}
-.tie-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+/* TIE */
+.tie-card{margin:10px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:11px}
+.tie-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.tie-lbl{font-size:10px;color:var(--txt2);font-family:var(--mono)}
+.tie-pct{font-size:10px;font-weight:600;font-family:var(--mono)}
+.tie-bg{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-bottom:7px}
+.tie-fill{height:100%;border-radius:2px;transition:width .6s ease}
 
-/* JSON PANEL */
-.json-panel{margin:10px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
-.json-header{
-  padding:11px 14px;display:flex;justify-content:space-between;align-items:center;
-  cursor:pointer;transition:background .15s;
-}
-.json-header:hover{background:rgba(255,255,255,0.03)}
-.json-header-left{display:flex;align-items:center;gap:10px}
-.json-icon{
-  width:28px;height:28px;border-radius:7px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:14px;font-weight:700;
-}
-.json-title{font-size:12px;font-weight:600;margin-bottom:1px}
-.json-sub{font-size:10px;color:var(--txt3);font-family:var(--mono)}
-.json-arrow{font-size:12px;color:var(--txt3);transition:transform .2s}
-.json-body{padding:0 14px 14px}
-.json-ta{
-  width:100%;height:80px;background:var(--bg3);
-  border:1px solid var(--border2);border-radius:var(--r2);
-  color:var(--txt2);font-size:10px;font-family:var(--mono);
-  padding:8px;resize:none;outline:none;margin-bottom:7px;
-  margin-top:8px;line-height:1.5;
-  transition:border-color .2s;
-}
+/* JSON */
+.json-panel{margin:10px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.json-hdr{padding:11px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background .15s}
+.json-hdr:hover{background:rgba(255,255,255,.02)}
+.json-hl{display:flex;align-items:center;gap:9px}
+.json-ico{width:27px;height:27px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.json-ttl{font-size:12px;font-weight:600;margin-bottom:1px}
+.json-sub{font-size:9px;color:var(--txt3);font-family:var(--mono)}
+.json-body{padding:0 13px 13px}
+.json-ta{width:100%;height:78px;background:var(--bg3);border:1px solid var(--border2);
+  border-radius:8px;color:var(--txt2);font-size:10px;font-family:var(--mono);
+  padding:8px;resize:none;outline:none;margin-bottom:6px;margin-top:8px;line-height:1.5}
 .json-ta:focus{border-color:var(--blue)}
-.apply-btn{
-  width:100%;padding:9px 0;background:var(--blue3);
-  border:1px solid rgba(59,130,246,0.3);border-radius:var(--r2);
-  color:var(--blue2);font-size:12px;letter-spacing:2px;
-  cursor:pointer;font-family:var(--mono);font-weight:600;
-  transition:all .15s;
-}
-.apply-btn:hover{background:rgba(59,130,246,0.25)}
-.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border2),transparent)}
-.export-row{display:flex;align-items:center}
-.export-btn{
-  flex:1;padding:11px 14px;display:flex;align-items:center;gap:9px;
-  background:transparent;border:none;cursor:pointer;text-align:left;
-  transition:background .15s;
-}
-.export-btn:hover{background:rgba(255,255,255,0.02)}
-.export-icon{
-  width:28px;height:28px;border-radius:7px;
-  display:flex;align-items:center;justify-content:center;font-size:14px;
-  background:var(--green3);border:1px solid rgba(34,197,94,0.2);color:var(--green2);
-}
-.view-btn{
-  padding:0 13px;background:transparent;border:none;
-  cursor:pointer;font-size:11px;color:var(--txt3);
-  transition:color .15s;
-}
-.view-btn:hover{color:var(--txt2)}
-.view-ta{
-  width:100%;height:150px;background:var(--bg3);
-  border:1px solid var(--border2);border-radius:var(--r2);
-  color:#3a9060;font-size:9px;font-family:var(--mono);
-  padding:8px;resize:none;outline:none;line-height:1.4;cursor:text;
-}
+.apply-btn{width:100%;padding:9px 0;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);
+  border-radius:8px;color:var(--blue2);font-size:12px;letter-spacing:2px;cursor:pointer;
+  font-family:var(--mono);font-weight:600;transition:all .15s}
+.div{height:1px;background:linear-gradient(90deg,transparent,var(--border2),transparent)}
+.exp-row{display:flex}
+.exp-btn{flex:1;padding:11px 14px;display:flex;align-items:center;gap:9px;
+  background:transparent;border:none;cursor:pointer;text-align:left;transition:background .15s}
+.exp-btn:hover{background:rgba(255,255,255,.02)}
+.exp-ico{width:27px;height:27px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.view-btn{padding:0 12px;background:transparent;border:none;cursor:pointer;font-size:11px;color:var(--txt3)}
+.view-ta{width:100%;height:140px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;
+  color:#3a9060;font-size:9px;font-family:var(--mono);padding:8px;resize:none;outline:none;line-height:1.4;cursor:text}
 .view-hint{font-size:9px;color:var(--txt3);margin-top:3px;font-family:var(--mono)}
 
-/* FOOTER BTNS */
-.footer-btns{display:flex;gap:8px;margin:10px 16px 0}
-.util-btn{
-  flex:1;padding:10px 0;background:var(--bg2);
-  border:1px solid var(--border);border-radius:var(--r2);
-  color:var(--txt3);font-size:11px;letter-spacing:2px;
-  cursor:pointer;font-family:var(--mono);transition:all .15s;
-}
+/* FOOTER */
+.fbtns{display:flex;gap:7px;margin:10px 16px 0}
+.util-btn{flex:1;padding:10px 0;background:var(--bg2);border:1px solid var(--border);
+  border-radius:9px;color:var(--txt3);font-size:11px;letter-spacing:2px;cursor:pointer;
+  font-family:var(--mono);transition:all .15s}
 .util-btn:hover{border-color:var(--border2);color:var(--txt2)}
-
-.credit{text-align:center;font-size:9px;color:var(--txt3);letter-spacing:3px;margin:16px 0 0;font-family:var(--mono)}
+.credit{text-align:center;font-size:9px;color:var(--txt3);letter-spacing:3px;margin:14px 0 0;font-family:var(--mono)}
 </style>
 </head>
 <body>
 <div class="wrap" id="root"></div>
-
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
-// BAC BRU — MOTOR NEURAL v5.0
+// BAC BRU MONSTRO v5.0 — MOTOR NEURAL ADAPTATIVO
+// Firebase Sync + Aprendizado Incremental + Standby Mode
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── FIREBASE ───────────────────────────────────────────────────────────────
+firebase.initializeApp({
+  apiKey:"AIzaSyBiyeiTk8Kt1ndNOcNxI4b6mcpenZ3KL6A",
+  authDomain:"bac-bru.firebaseapp.com",
+  databaseURL:"https://bac-bru-default-rtdb.firebaseio.com",
+  projectId:"bac-bru",
+  storageBucket:"bac-bru.firebasestorage.app",
+  messagingSenderId:"469841612189",
+  appId:"1:469841612189:web:0b2ba85cde45a7d17c3374"
+});
+const db=firebase.database();
+const ROOM="bacbru-v50";
+const LS="bacbru-v50-local";
 const TP={2:88,3:25,4:10,5:6,6:4,7:4,8:4,9:6,10:10,11:25,12:88};
-const LS="bacbru-v50";
 
-// ── ANÁLISE DE MESA ────────────────────────────────────────────────────────
-function mesaStatus(H){
-  const ult=H.slice(-20),C=ult.filter(h=>h.r!=="T");
-  if(C.length<8)return{cor:"#64748b",label:"⚪ ANALISANDO",sub:"Coletando dados...",cautela:false,tipo:"neutro"};
+// ── PESOS ADAPTATIVOS PADRÃO ───────────────────────────────────────────────
+// Calibrados com 400+ rodadas de histórico real
+const W_DEFAULT={
+  PP5:0.87,  PP4:0.79,
+  B22T:0.81, B22C:0.76, B31:0.75,
+  SK4Q:0.81, SK4C:0.73, SK3Q:0.80, SK3C:0.71,
+  RE8:0.87,  RE7:0.82,  RE6:0.78,
+  DOM12:0.85,
+  ZZ3:0.75,
+  TIE:0.70,
+  // Multiplicadores contextuais
+  boost_est:0.07,   // mesa estável
+  boost_hi:0.05,    // somas altas
+  boost_mp:0.06,    // mesa pagadora
+  boost_dom:0.04,   // dominância recente
+  // Thresholds
+  min_conf:0.65,    // confiança mínima
+  min_conf_cautela:0.80, // em mesa instável
+  // Bias aprendido
+  bias_P:0.00, bias_B:0.00,
+  // Índice de estabilidade (calculado)
+  stability:1.0,
+};
+
+// ── ESTADO ─────────────────────────────────────────────────────────────────
+let ST={
+  H:[],verde:0,verm:0,
+  ciclo:"idle",  // idle|entrada|gale|gale_wait
+  sig:null,galeInfo:null,tgAtivo:false,
+  W:{...W_DEFAULT},
+  // Aprendizado incremental
+  deltaAcum:{PP5:0,PP4:0,B22T:0,B22C:0,B31:0,SK4Q:0,SK4C:0,SK3Q:0,SK3C:0,RE8:0,RE7:0,RE6:0,DOM12:0,ZZ3:0,TIE:0},
+  countAcum:{PP5:0,PP4:0,B22T:0,B22C:0,B31:0,SK4Q:0,SK4C:0,SK3Q:0,SK3C:0,RE8:0,RE7:0,RE6:0,DOM12:0,ZZ3:0,TIE:0},
+  lastPattern:null,
+  sessoes:0,
+  aviso:"",
+  syncOk:false,
+};
+let AT=null,somaV="",injOpen=false,injTxt="",jsnVis=false,lastPush=0;
+
+// ── FIREBASE SYNC ──────────────────────────────────────────────────────────
+function push(s){
+  const now=Date.now();
+  if(now-lastPush<200)return; // debounce 200ms
+  lastPush=now;
+  const payload={
+    H:s.H,verde:s.verde,verm:s.verm,
+    ciclo:s.ciclo,sig:s.sig||null,
+    galeInfo:s.galeInfo||null,tgAtivo:s.tgAtivo||false,
+    W:s.W,deltaAcum:s.deltaAcum,countAcum:s.countAcum,
+    lastPattern:s.lastPattern||null,sessoes:s.sessoes||0,
+    _ts:now
+  };
+  db.ref(ROOM).set(payload).catch(e=>console.warn("sync:",e));
+  try{localStorage.setItem(LS,JSON.stringify(payload));}catch(e){}
+}
+
+// Firebase listener — sync em tempo real
+db.ref(ROOM).on("value",snap=>{
+  const val=snap.val();
+  if(val&&val._ts){
+    ST.H=val.H||[];
+    ST.verde=typeof val.verde==="number"?val.verde:0;
+    ST.verm=typeof val.verm==="number"?val.verm:0;
+    ST.ciclo=val.ciclo||"idle";
+    ST.sig=val.sig||null;
+    ST.galeInfo=val.galeInfo||null;
+    ST.tgAtivo=val.tgAtivo||false;
+    ST.W={...W_DEFAULT,...(val.W||{})};
+    ST.deltaAcum=val.deltaAcum||{...ST.deltaAcum};
+    ST.countAcum=val.countAcum||{...ST.countAcum};
+    ST.lastPattern=val.lastPattern||null;
+    ST.sessoes=val.sessoes||0;
+    ST.syncOk=true;
+  } else {
+    // Firebase vazio — carrega localStorage
+    try{
+      const d=localStorage.getItem(LS);
+      if(d){const p=JSON.parse(d);ST.H=p.H||[];ST.verde=p.verde||0;ST.verm=p.verm||0;
+        ST.ciclo=p.ciclo||"idle";ST.sig=p.sig||null;ST.galeInfo=p.galeInfo||null;
+        ST.tgAtivo=p.tgAtivo||false;ST.W={...W_DEFAULT,...(p.W||{})};
+        ST.deltaAcum=p.deltaAcum||{...ST.deltaAcum};ST.countAcum=p.countAcum||{...ST.countAcum};}
+    }catch(e){}
+    ST.syncOk=false;
+  }
+  render();
+});
+
+// ── APRENDIZADO INCREMENTAL ─────────────────────────────────────────────────
+// Após cada entrada com resultado conhecido, ajusta o peso do padrão usado
+function aprenderCom(padrao, acertou){
+  if(!padrao||!ST.deltaAcum.hasOwnProperty(padrao))return;
+  const delta=acertou?+0.005:-0.008; // penalidade maior que recompensa (conservador)
+  ST.deltaAcum[padrao]=(ST.deltaAcum[padrao]||0)+delta;
+  ST.countAcum[padrao]=(ST.countAcum[padrao]||0)+1;
+  // Aplica média móvel exponencial no peso
+  const alpha=0.12; // taxa de aprendizado
+  if(ST.W.hasOwnProperty(padrao)){
+    ST.W[padrao]=Math.max(0.50,Math.min(0.97,
+      ST.W[padrao]+alpha*delta
+    ));
+  }
+  // Bias adaptativo P/B
+  if(ST.lastPattern){
+    const tot=ST.verde+ST.verm;
+    if(tot>10){
+      const pp=ST.H.filter(h=>h.r==="P").length/Math.max(ST.H.length,1);
+      const bp=ST.H.filter(h=>h.r==="B").length/Math.max(ST.H.length,1);
+      ST.W.bias_P=+(pp>0.55?(pp-0.55)*0.1:pp<0.42?-(0.42-pp)*0.1:0).toFixed(4);
+      ST.W.bias_B=+(bp>0.55?(bp-0.55)*0.1:bp<0.42?-(0.42-bp)*0.1:0).toFixed(4);
+    }
+  }
+}
+
+// ── ÍNDICE DE ESTABILIDADE (0-100, quanto maior melhor) ────────────────────
+function calcStability(H){
+  const ult=H.slice(-15),C=ult.filter(h=>h.r!=="T");
+  if(C.length<8)return{idx:50,standby:false,detalhes:{}};
   let trocas=0,stAtual=1,stMax=1;
   for(let i=1;i<C.length;i++){if(C[i].r!==C[i-1].r){trocas++;stAtual=1;}else{stAtual++;stMax=Math.max(stMax,stAtual);}}
-  const txTroca=trocas/(C.length-1);
+  const txT=trocas/(C.length-1);
   const somas=ult.map(h=>h.s).filter(Boolean);
-  const avgS=somas.reduce((a,b)=>a+b,0)/somas.length;
-  const vol=somas.reduce((a,s)=>a+Math.abs(s-avgS),0)/somas.length;
+  const avgS=somas.reduce((a,b)=>a+b,0)/Math.max(somas.length,1);
+  const vol=somas.reduce((a,s)=>a+Math.abs(s-avgS),0)/Math.max(somas.length,1);
   const tPct=ult.filter(h=>h.r==="T").length/ult.length;
-  // Sinais negativos
-  const s1=txTroca>0.80&&vol>2.2; // alternância extrema caótica
-  const s2=stMax>=5&&tPct>0.15;   // streak longo + muitos ties = manipulação
-  const s3=tPct>0.30;              // muitos ties = coleta
-  const s4=vol>2.5&&txTroca>0.60; // alta volatilidade
-  const negativos=[s1,s2,s3,s4].filter(Boolean).length;
-  if(negativos>=2)return{cor:"#ef4444",label:"🔴 MESA EM COLETA",sub:`T=${Math.round(tPct*100)}% vol=${vol.toFixed(1)} alt=${Math.round(txTroca*100)}% — cautela máxima`,cautela:true,tipo:"coleta"};
-  if(negativos===1)return{cor:"#f59e0b",label:"🟡 MESA INSTÁVEL",sub:`vol=${vol.toFixed(1)} alt=${Math.round(txTroca*100)}% — entrar só em padrões fortes`,cautela:true,tipo:"instavel"};
-  if(txTroca>=0.55&&txTroca<=0.70&&vol<1.8)return{cor:"#22c55e",label:"🟢 MESA PAGANTE",sub:`Ping-pong alt=${Math.round(txTroca*100)}% vol=${vol.toFixed(1)} — padrão limpo`,cautela:false,tipo:"pagante_pp"};
-  if(stMax>=3&&txTroca<0.5&&vol<2.0)return{cor:"#22c55e",label:"🟢 MESA PAGANTE",sub:`Streaks max=${stMax} — seguir tendência`,cautela:false,tipo:"pagante_streak"};
-  if(txTroca>=0.4&&txTroca<=0.75&&vol<2.2)return{cor:"#22c55e",label:"🟢 MESA PAGANTE",sub:`alt=${Math.round(txTroca*100)}% vol=${vol.toFixed(1)} — boa janela`,cautela:false,tipo:"pagante"};
-  return{cor:"#64748b",label:"⚪ MESA NEUTRA",sub:`alt=${Math.round(txTroca*100)}% vol=${vol.toFixed(1)} — aguardando`,cautela:false,tipo:"neutro"};
+  // Componentes do índice (cada um 0-25)
+  const cAlt=txT>=0.4&&txT<=0.72?25:Math.max(0,25-Math.abs(txT-0.56)*60);
+  const cVol=vol<1.5?25:Math.max(0,25-(vol-1.5)*12);
+  const cTie=tPct<0.15?25:Math.max(0,25-(tPct-0.15)*80);
+  const cStr=stMax<=3?25:Math.max(0,25-(stMax-3)*8);
+  const idx=Math.round(cAlt+cVol+cTie+cStr);
+  const standby=idx<35; // abaixo de 35 = standby
+  return{
+    idx,standby,
+    detalhes:{
+      alternancia:Math.round(cAlt),
+      volatilidade:Math.round(cVol),
+      empates:Math.round(cTie),
+      streaks:Math.round(cStr),
+      txTrocas:Math.round(txT*100),
+      volSomas:vol.toFixed(1),
+      tPct:Math.round(tPct*100),
+      stMax
+    }
+  };
+}
+
+// ── ANÁLISE DE MESA ────────────────────────────────────────────────────────
+function mesaStatus(H,stab){
+  const {idx,standby,detalhes}=stab;
+  if(standby)return{cor:"#ef4444",label:"🔴 MESA EM COLETA",sub:`Índice de estabilidade: ${idx}/100`,cautela:true,tipo:"coleta"};
+  if(idx<55)return{cor:"#f59e0b",label:"🟡 MESA INSTÁVEL",sub:`Estabilidade ${idx}/100 — entrada apenas em padrões fortes`,cautela:true,tipo:"instavel"};
+  if(idx>=75)return{cor:"#22c55e",label:"🟢 MESA PAGANTE",sub:`Estabilidade ${idx}/100 — padrão limpo, boa janela`,cautela:false,tipo:"pagante"};
+  return{cor:"#22c55e",label:"🟢 MESA FAVORÁVEL",sub:`Estabilidade ${idx}/100`,cautela:false,tipo:"ok"};
 }
 
 // ── ANÁLISE DE TIE ─────────────────────────────────────────────────────────
@@ -321,170 +378,136 @@ function tieAnalise(H){
   const ri=[...H].reverse().findIndex(h=>h.r==="T");
   const dt=ri===-1?99:ri;
   const tc12=H.slice(-12).filter(h=>h.r==="T").length;
-  const td=tc12/12;
-  const mp=td>=0.12;
+  const td=tc12/12,mp=td>=0.12;
   const ls=H[H.length-1]?.s;
   const tg=(td>=0.12&&dt>=4)||dt>=7||(!!ls&&(ls<=4||ls>=10)&&dt>=3);
-  // Calcular probabilidades por bucket baseado em somas recentes
+  const tp_raw=ls?TP[ls]||4:4;
   const somas=H.slice(-30).map(h=>h.s).filter(Boolean);
-  const total=somas.length||1;
+  const total=Math.max(somas.length,1);
   const bk={4:0,6:0,10:0,25:0,88:0};
   somas.forEach(s=>{const p=TP[s]||4;bk[p]++;});
   const probs=[
     {label:"4x  (6·7·8)",p:4,v:Math.round(bk[4]/total*100),cor:"#64748b"},
-    {label:"6x  (5·9)",  p:6,v:Math.round(bk[6]/total*100),cor:"#3b82f6"},
-    {label:"10x (4·10)", p:10,v:Math.round(bk[10]/total*100),cor:"#22c55e"},
-    {label:"25x (3·11)", p:25,v:Math.round(bk[25]/total*100),cor:"#f59e0b"},
-    {label:"88x (2·12)", p:88,v:Math.round(bk[88]/total*100),cor:"#a855f7"},
+    {label:"6x  (5·9)",p:6,v:Math.round(bk[6]/total*100),cor:"#3b82f6"},
+    {label:"10x (4·10)",p:10,v:Math.round(bk[10]/total*100),cor:"#22c55e"},
+    {label:"25x (3·11)",p:25,v:Math.round(bk[25]/total*100),cor:"#f59e0b"},
+    {label:"88x (2·12)",p:88,v:Math.round(bk[88]/total*100),cor:"#a855f7"},
   ];
-  const dominante=probs.slice().sort((a,b)=>b.v-a.v)[0];
-  return{dt,td,mp,tg,tp:dominante.p,probs,dominante};
+  const dom=probs.slice().sort((a,b)=>b.v-a.v)[0];
+  return{dt,td,mp,tg,tp:dom.p,probs,dom};
 }
 
-// ── MOTOR PRINCIPAL v5.0 ───────────────────────────────────────────────────
-function motor(H,cautela,weights){
-  const W=weights||{};
+// ── MOTOR NEURAL v5.0 ──────────────────────────────────────────────────────
+function motor(H,cautela,W){
   const C=H.filter(h=>h.r!=="T");
-  if(C.length<5)return{sinal:null,conf:0,razao:"Histórico insuficiente",tg:false,tp:4,dt:99};
-
+  if(C.length<5)return{sinal:null,conf:0,razao:"Histórico insuficiente",why:"",padrao:null,tg:false,tp:4,dt:99};
   const r5=C.slice(-5).map(h=>h.r);
   const r8=C.slice(-8).map(h=>h.r);
   const r12=C.slice(-12).map(h=>h.r);
   const r3=C.slice(-3).map(h=>h.r);
   const s6=H.slice(-6).map(h=>h.s).filter(Boolean);
-  const s12=H.slice(-12).map(h=>h.s).filter(Boolean);
   const avg6=s6.length?s6.reduce((a,b)=>a+b,0)/s6.length:8.5;
   const est=s6.length>=4&&s6.reduce((a,s)=>a+Math.abs(s-avg6),0)/s6.length<1.5;
   const hi=avg6>=9.5;
-
   const tieA=tieAnalise(H);
   const {dt,td,mp,tg,tp}=tieA;
-  const mn=cautela?0.78:0.65;
-
-  function score(base,side){
-    let v=base;
-    if(est)v+=0.07;
-    if(hi)v+=0.05;
-    if(mp)v+=0.06;
-    const pC12=r12.filter(r=>r==="P").length;
-    const bC12=r12.filter(r=>r==="B").length;
-    if(side==="P"&&pC12>bC12)v+=0.04;
-    if(side==="B"&&bC12>pC12)v+=0.04;
-    // Aplicar pesos customizados
-    const key=side==="P"?"bias_P":"bias_B";
-    if(typeof W[key]==="number")v+=W[key];
+  const mn=cautela?(W.min_conf_cautela||0.80):(W.min_conf||0.65);
+  function sc(base,key,side){
+    let v=(W[key]||base);
+    if(est)v+=(W.boost_est||0.07);
+    if(hi)v+=(W.boost_hi||0.05);
+    if(mp)v+=(W.boost_mp||0.06);
+    const p12=r12.filter(r=>r==="P").length,b12=r12.filter(r=>r==="B").length;
+    if(side==="P"&&p12>b12)v+=(W.boost_dom||0.04)+(W.bias_P||0);
+    if(side==="B"&&b12>p12)v+=(W.boost_dom||0.04)+(W.bias_B||0);
     return Math.min(v,0.97);
   }
+  const pC8=r8.filter(r=>r==="P").length,bC8=r8.filter(r=>r==="B").length;
+  const pC12=r12.filter(r=>r==="P").length,bC12=r12.filter(r=>r==="B").length;
 
-  const pC8=r8.filter(r=>r==="P").length;
-  const bC8=r8.filter(r=>r==="B").length;
-  const pC12=r12.filter(r=>r==="P").length;
-  const bC12=r12.filter(r=>r==="B").length;
-
-  // ① PING-PONG 5 ─────────────────────────────────────────────────────────
+  // ① PING-PONG 5
   if(r5.length===5&&r5.every((r,i)=>i===0||r!==r5[i-1])){
-    const nx=r5[4]==="P"?"B":"P";
-    const c=score(0.87,nx);
-    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 5 ciclos",tg,tp,dt,prioridade:9};
-  }
+    const nx=r5[4]==="P"?"B":"P";const c=sc(0.87,"PP5",nx);
+    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 5 ciclos",
+      why:`Últimas 5 (${r5.join("-")}) alternam perfeitamente → espera ${nx}`,padrao:"PP5",tg,tp,dt};}
 
-  // ② PING-PONG 4 ─────────────────────────────────────────────────────────
-  if(r5.length>=4){
-    const pp4=r5.slice(-4);
+  // ② PING-PONG 4
+  if(r5.length>=4){const pp4=r5.slice(-4);
     if(pp4.every((r,i)=>i===0||r!==pp4[i-1])){
-      const nx=pp4[3]==="P"?"B":"P";
-      const c=score(0.79,nx);
-      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 4 ciclos",tg,tp,dt,prioridade:8};
-    }
-  }
+      const nx=pp4[3]==="P"?"B":"P";const c=sc(0.79,"PP4",nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 4 ciclos",
+        why:`Padrão ${pp4.join("-")} → alternância estável → espera ${nx}`,padrao:"PP4",tg,tp,dt};}}
 
-  // ③ BLOCO 2×2 TROCA ─────────────────────────────────────────────────────
-  if(r5.length>=4){
-    const a=r5.slice(-4);
+  // ③④⑤ BLOCOS
+  if(r5.length>=4){const a=r5.slice(-4);
     if(a[0]===a[1]&&a[2]===a[3]&&a[0]!==a[2]){
-      const nx=a[3]==="P"?"B":"P";
-      const c=score(0.81,nx);
-      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — troca",tg,tp,dt,prioridade:8};
-    }
-    // ④ BLOCO 2×2 CONTINUAR ──────────────────────────────────────────────
+      const nx=a[3]==="P"?"B":"P";const c=sc(0.81,"B22T",nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — troca",
+        why:`${a.join("-")}: dois blocos distintos → próximo bloco inverte para ${nx}`,padrao:"B22T",tg,tp,dt};}
     if(a[2]===a[3]&&a[0]!==a[1]&&a[1]!==a[2]){
-      const c=score(0.76,a[3]);
-      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — continuar",tg,tp,dt,prioridade:7};
-    }
-    // ⑤ BLOCO 3-1 ────────────────────────────────────────────────────────
+      const c=sc(0.76,"B22C",a[3]);
+      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — continuar",
+        why:`${a.join("-")}: formação de bloco iniciada → continua ${a[3]}`,padrao:"B22C",tg,tp,dt};}
     if(a[0]===a[1]&&a[1]===a[2]&&a[2]!==a[3]){
-      const c=score(0.75,a[3]);
-      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪▪▪ Bloco 3-1 — continuar",tg,tp,dt,prioridade:6};
-    }
-  }
+      const c=sc(0.75,"B31",a[3]);
+      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪▪ Bloco 3-1 — continuar",
+        why:`Após bloco 3×${a[0]}, o singular ${a[3]} tende a continuar`,padrao:"B31",tg,tp,dt};}}
 
-  // ⑥ STREAK ──────────────────────────────────────────────────────────────
+  // ⑥ STREAKS
   let stk=1;const ss=C[C.length-1]?.r;
   for(let i=C.length-2;i>=0;i--){if(C[i].r===ss)stk++;else break;}
-
-  if(stk>=7)return{sinal:null,conf:0,razao:`⚠️ Streak ${stk}×${ss} — exaustão total`,tg,tp,dt,prioridade:0};
-
+  if(stk>=7)return{sinal:null,conf:0,razao:`⚠️ Streak ${stk}×${ss} — exaustão`,why:"Streak muito longo, aguardar quebra natural",padrao:null,tg,tp,dt};
   if(stk>=4){
     const sv=H.slice(-stk).map(h=>h.s).filter(Boolean);
     const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
-    if(vl>=4){
-      const nx=ss==="P"?"B":"P";
-      const c=score(0.81,nx);
-      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — quebra vol${vl}`,tg,tp,dt,prioridade:7};
-    } else {
-      const c=score(0.73,ss);
-      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — continuar`,tg,tp,dt,prioridade:6};
-    }
-  }
-
+    if(vl>=4){const nx=ss==="P"?"B":"P";const c=sc(0.81,"SK4Q",nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — quebra iminente`,
+        why:`Volatilidade das somas: ${vl} (≥4). Streaks com vol. alta tendem a quebrar`,padrao:"SK4Q",tg,tp,dt};}
+    else{const c=sc(0.73,"SK4C",ss);
+      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — continuar`,
+        why:`Vol. baixa (${vl}). Padrão estável, tendência de continuação`,padrao:"SK4C",tg,tp,dt};}}
   if(stk===3){
     const sv=H.slice(-3).map(h=>h.s).filter(Boolean);
     const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
-    if(vl>=3){
-      const nx=ss==="P"?"B":"P";
-      const c=score(0.80,nx);
-      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — quebra`,tg,tp,dt,prioridade:7};
-    } else {
-      const c=score(0.71,ss);
-      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — continuar`,tg,tp,dt,prioridade:5};
-    }
-  }
+    if(vl>=3){const nx=ss==="P"?"B":"P";const c=sc(0.80,"SK3Q",nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — quebra`,
+        why:`3 consecutivos com vol.${vl}. Alta prob. de inversão`,padrao:"SK3Q",tg,tp,dt};}
+    else{const c=sc(0.71,"SK3C",ss);
+      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — continuar`,
+        why:`3 consecutivos estáveis → tendência de mais um`,padrao:"SK3C",tg,tp,dt};}}
 
-  // ⑦ REEQUILÍBRIO FORTE ─────────────────────────────────────────────────
-  if(pC8>=7){const c=score(0.87,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequil. B forte (P${pC8}/8)`,tg,tp,dt,prioridade:8};}
-  if(bC8>=7){const c=score(0.87,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequil. P forte (B${bC8}/8)`,tg,tp,dt,prioridade:8};}
-  if(pC8>=6){const c=score(0.82,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequil. B (P${pC8}/8)`,tg,tp,dt,prioridade:7};}
-  if(bC8>=6){const c=score(0.82,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequil. P (B${bC8}/8)`,tg,tp,dt,prioridade:7};}
+  // ⑦ REEQUILÍBRIO
+  if(pC8>=7){const c=sc(0.87,"RE8","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (P${pC8}/8)`,why:`P dominou ${pC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt};}
+  if(bC8>=7){const c=sc(0.87,"RE8","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (B${bC8}/8)`,why:`B dominou ${bC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt};}
+  if(pC8>=6){const c=sc(0.82,"RE7","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (P${pC8}/8)`,why:`P dominou ${pC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt};}
+  if(bC8>=6){const c=sc(0.82,"RE7","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (B${bC8}/8)`,why:`B dominou ${bC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt};}
 
-  // ⑧ DOMINÂNCIA 12 ──────────────────────────────────────────────────────
-  if(pC12>=10){const c=score(0.85,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Dominância P${pC12}/12 — reequil.`,tg,tp,dt,prioridade:8};}
-  if(bC12>=10){const c=score(0.85,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Dominância B${bC12}/12 — reequil.`,tg,tp,dt,prioridade:8};}
+  // ⑧ DOMINÂNCIA 12
+  if(pC12>=10){const c=sc(0.85,"DOM12","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Dominância P${pC12}/12`,why:`P extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt};}
+  if(bC12>=10){const c=sc(0.85,"DOM12","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Dominância B${bC12}/12`,why:`B extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt};}
 
-  // ⑨ PADRÃO ZIG-ZAG 3 ──────────────────────────────────────────────────
+  // ⑨ ZIG-ZAG
   if(r3.length===3&&r3[0]!==r3[1]&&r3[1]!==r3[2]&&r3[0]===r3[2]){
-    const nx=r3[2]==="P"?"B":"P";
-    const c=score(0.75,nx);
-    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"〰️ Zig-zag 3 — continua",tg,tp,dt,prioridade:6};
-  }
+    const nx=r3[2]==="P"?"B":"P";const c=sc(0.75,"ZZ3",nx);
+    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"〰️ Zig-zag 3",
+      why:`${r3.join("-")}: padrão zig-zag confirma → continua alternância para ${nx}`,padrao:"ZZ3",tg,tp,dt};}
 
-  // ⑩ GATILHO EMPATE ─────────────────────────────────────────────────────
-  if(tg){
-    const c=Math.min(0.70+(mp?0.08:0)+(dt>=7?0.08:0),0.88);
-    if(c>=0.62)return{sinal:"T",conf:Math.round(c*100),razao:`🔥 Gatilho ${dt} rod. s/ Tie · ${tp}x`,tg:true,tp,dt,prioridade:7};
-  }
+  // ⑩ GATILHO EMPATE
+  if(tg){const c=Math.min(0.70+(mp?0.08:0)+(dt>=7?0.08:0),0.88);
+    if(c>=0.62)return{sinal:"T",conf:Math.round(c*100),razao:`🔥 Gatilho Empate · ${dt} rod. · ${tp}x`,
+      why:`${dt} rodadas sem Tie. Densidade: ${Math.round(td*100)}%. Payout esperado: ${tp}x`,padrao:"TIE",tg:true,tp,dt};}
 
-  return{sinal:null,conf:0,razao:"Aguardando padrão...",tg,tp,dt,prioridade:0};
+  return{sinal:null,conf:0,razao:"Aguardando padrão convergente...",why:"Nenhum padrão atingiu o threshold de confiança",padrao:null,tg,tp,dt};
 }
 
 // ── DECISÃO DE GALE ────────────────────────────────────────────────────────
-// AGUARDAR = registra rodadas sem pontuar até ter padrão
-// REPETIR/INVERTER = tem sinal claro
-function galeDecide(H,sigOrig,cautela,weights){
+function galeDecide(H,sigOrig,cautela,W){
   const C=H.filter(h=>h.r!=="T");
   const l2=C.slice(-2).map(h=>h.r);
-  const an=motor(H,cautela,weights);
-  if(an.razao.includes("exaustão"))return{modo:"AGUARDAR",lado:sigOrig,razao:"Streak exausto"};
-  if(!an.sinal||an.conf<(cautela?78:60))return{modo:"AGUARDAR",lado:sigOrig,razao:"Confiança baixa"};
+  const an=motor(H,cautela,W);
+  if(an.razao.includes("exaustão"))return{modo:"AGUARDAR",lado:sigOrig,razao:"Streak exausto — aguardar"};
+  if(!an.sinal||an.conf<(cautela?(W.min_conf_cautela||80):(W.min_conf||65)*100))
+    return{modo:"AGUARDAR",lado:sigOrig,razao:"Confiança insuficiente para gale"};
   if(an.sinal==="T")return{modo:"AGUARDAR",lado:sigOrig,razao:"Gatilho empate ativo"};
   if(l2.length===2&&l2[0]!==l2[1]&&an.sinal!==sigOrig)
     return{modo:"INVERTER",lado:an.sinal,razao:an.razao};
@@ -492,66 +515,29 @@ function galeDecide(H,sigOrig,cautela,weights){
   return{modo:"AGUARDAR",lado:sigOrig,razao:"Padrão ambíguo"};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ESTADO
-// ═══════════════════════════════════════════════════════════════════════════
-let ST={
-  H:[],verde:0,verm:0,
-  ciclo:"idle",  // idle|entrada|gale|gale_wait
-  sig:null,galeInfo:null,tgAtivo:false,
-  weights:{},aviso:"",flash:"",
-};
-let AT=null; // aviso timer
-let FT=null; // flash timer
-let somaV="";
-let injOpen=false,injTxt="",jsnVis=false;
-
-// ── Persistência localStorage ──────────────────────────────────────────────
-function salvar(){
-  try{localStorage.setItem(LS,JSON.stringify({
-    H:ST.H,verde:ST.verde,verm:ST.verm,
-    ciclo:ST.ciclo,sig:ST.sig,galeInfo:ST.galeInfo,
-    tgAtivo:ST.tgAtivo,weights:ST.weights
-  }));}catch(e){}
-}
-function carregar(){
-  try{
-    const d=localStorage.getItem(LS);
-    if(!d)return;
-    const p=JSON.parse(d);
-    ST.H=p.H||[];ST.verde=p.verde||0;ST.verm=p.verm||0;
-    ST.ciclo=p.ciclo||"idle";ST.sig=p.sig||null;
-    ST.galeInfo=p.galeInfo||null;ST.tgAtivo=p.tgAtivo||false;
-    ST.weights=p.weights||{};
-  }catch(e){}
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function av(txt,dur=3000){
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function av(txt,dur=3200){
   ST.aviso=txt;render();
   if(AT)clearTimeout(AT);
   AT=setTimeout(()=>{ST.aviso="";render();},dur);
 }
-function flashBtn(r){
-  ST.flash=r;render();
-  if(FT)clearTimeout(FT);
-  FT=setTimeout(()=>{ST.flash="";render();},400);
-}
-function GREEN(txt){ST.verde++;av("✅ GREEN — "+txt);salvar();}
-function RED(){ST.verm++;av("❌ RED — entrada + gale falharam");salvar();}
-function resetCiclo(){ST.ciclo="idle";ST.sig=null;ST.galeInfo=null;ST.tgAtivo=false;}
+function GREEN(txt,padrao){aprenderCom(padrao||ST.lastPattern,true);ST.verde++;av("✅ GREEN — "+txt);}
+function RED(padrao){aprenderCom(padrao||ST.lastPattern,false);ST.verm++;av("❌ RED — entrada + gale falharam");}
+function resetCiclo(){ST.ciclo="idle";ST.sig=null;ST.galeInfo=null;ST.tgAtivo=false;ST.lastPattern=null;}
 
-// ── Ações ──────────────────────────────────────────────────────────────────
+// ── AÇÕES ──────────────────────────────────────────────────────────────────
 function confirmar(){
-  const m=mesaStatus(ST.H),an=motor(ST.H,m.cautela,ST.weights);
+  const stab=calcStability(ST.H);
+  if(stab.standby){av("🛑 STANDBY ATIVO — entrada bloqueada");return;}
+  const m=mesaStatus(ST.H,stab),an=motor(ST.H,m.cautela,ST.W);
   if(!an.sinal||an.sinal==="T")return;
-  ST.sig=an.sinal;ST.tgAtivo=an.tg;ST.ciclo="entrada";
-  salvar();av(`${an.sinal==="P"?"🔵":"🔴"} Confirmado — clique o resultado real`);
+  ST.sig=an.sinal;ST.tgAtivo=an.tg;ST.ciclo="entrada";ST.lastPattern=an.padrao;
+  push(ST);av(`${an.sinal==="P"?"🔵":"🔴"} Entrada confirmada — clique o resultado real`);
 }
 
 function confirmarGale(){
   if(!ST.galeInfo||ST.galeInfo.modo==="AGUARDAR")return;
-  ST.ciclo="gale_wait";salvar();
+  ST.ciclo="gale_wait";push(ST);
   av(`${ST.galeInfo.lado==="P"?"🔵":"🔴"} Gale confirmado — clique o resultado real`);
 }
 
@@ -559,36 +545,37 @@ function reg(r){
   const s=parseInt(somaV)||(r==="T"?7:8);
   const tp=TP[s]||4;
   ST.H=[...ST.H,{r,s}];
-  somaV="";flashBtn(r);
-  const m=mesaStatus(ST.H);
+  somaV="";
+  const stab=calcStability(ST.H);
+  const m=mesaStatus(ST.H,stab);
+  ST.W.stability=stab.idx/100;
 
-  // GALE AGUARDANDO (não pontua, só recalcula)
+  // GALE AGUARDANDO — NÃO PONTUA, só recalcula
   if(ST.ciclo==="gale"&&ST.galeInfo?.modo==="AGUARDAR"){
-    if(r==="T"&&ST.tgAtivo){GREEN(`Empate ${tp}x durante espera`);resetCiclo();salvar();return;}
-    const g=galeDecide(ST.H,ST.sig,m.cautela,ST.weights);
+    if(r==="T"&&ST.tgAtivo){GREEN(`Empate ${tp}x durante espera`,null);resetCiclo();push(ST);return;}
+    const g=galeDecide(ST.H,ST.sig,m.cautela,ST.W);
     ST.galeInfo=g;
-    if(g.modo!=="AGUARDAR"){
-      av(g.modo==="INVERTER"
-        ?`🔄 GALE PRONTO — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme!`
-        :`⚡ GALE PRONTO — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme!`);
-    } else av("⏳ Aguardando padrão...");
-    salvar();return;
+    if(g.modo!=="AGUARDAR")av(g.modo==="INVERTER"
+      ?`🔄 GALE PRONTO — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme!`
+      :`⚡ GALE PRONTO — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme!`);
+    else av("⏳ Aguardando padrão convergente...");
+    push(ST);return;
   }
 
-  // GALE WAIT (aguardando resultado do gale confirmado)
+  // GALE WAIT — resultado do gale confirmado
   if(ST.ciclo==="gale_wait"&&ST.galeInfo){
-    if(r==="T"){GREEN(`Empate ${tp}x no Gale`);resetCiclo();salvar();return;}
-    if(r===ST.galeInfo.lado){GREEN("Gale acertou!");}else{RED();}
-    resetCiclo();salvar();return;
+    if(r==="T"){GREEN(`Empate ${tp}x no Gale`,null);resetCiclo();push(ST);return;}
+    if(r===ST.galeInfo.lado){GREEN("Gale acertou!",ST.lastPattern);}else{RED(ST.lastPattern);}
+    resetCiclo();push(ST);return;
   }
 
   // ENTRADA ATIVA
   if(ST.ciclo==="entrada"&&ST.sig){
-    if(r==="T"){GREEN(`Empate ${tp}x na entrada`);resetCiclo();salvar();return;}
-    if(r===ST.sig){GREEN("Acertou de primeira!");resetCiclo();salvar();return;}
-    const g=galeDecide(ST.H,ST.sig,m.cautela,ST.weights);
-    ST.galeInfo=g;ST.ciclo="gale";salvar();
-    if(g.modo==="AGUARDAR")av(`⏳ GALE — AGUARDAR: ${g.razao} · Registre mais rodadas`);
+    if(r==="T"){GREEN(`Empate ${tp}x na entrada`,null);resetCiclo();push(ST);return;}
+    if(r===ST.sig){GREEN("Acertou de primeira!",ST.lastPattern);resetCiclo();push(ST);return;}
+    const g=galeDecide(ST.H,ST.sig,m.cautela,ST.W);
+    ST.galeInfo=g;ST.ciclo="gale";push(ST);
+    if(g.modo==="AGUARDAR")av(`⏳ GALE — AGUARDAR: ${g.razao}`);
     else av(g.modo==="INVERTER"
       ?`🔄 GALE 1 — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`
       :`⚡ GALE 1 — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`);
@@ -597,21 +584,20 @@ function reg(r){
 
   // IDLE
   if(r==="T"){
-    if(ST.tgAtivo){GREEN(`Empate ${tp}x no Gatilho`);ST.tgAtivo=false;}
-    else av("○ Empate — neutro");
+    if(ST.tgAtivo){GREEN(`Empate ${tp}x no Gatilho`,ST.lastPattern);ST.tgAtivo=false;}
+    else av("○ Empate — sem sinal ativo (neutro)");
   } else av("○ Registrado");
-  salvar();
+  push(ST);
 }
 
 function aplicarJson(){
   try{
     const d=JSON.parse(injTxt);
-    if(Array.isArray(d.history)&&d.history.length>0)
-      ST.H=d.history.map(h=>({r:h.r,s:h.s||8}));
+    if(Array.isArray(d.history)&&d.history.length>0)ST.H=d.history.map(h=>({r:h.r,s:h.s||8}));
     if(typeof d.greens==="number")ST.verde=d.greens;
     if(typeof d.reds==="number")ST.verm=d.reds;
-    if(d.weights&&typeof d.weights==="object")ST.weights={...ST.weights,...d.weights};
-    resetCiclo();injTxt="";injOpen=false;salvar();av("✅ JSON aplicado com sucesso!");
+    if(d.weights&&typeof d.weights==="object")ST.W={...W_DEFAULT,...d.weights};
+    resetCiclo();injTxt="";injOpen=false;push(ST);av("✅ JSON aplicado! Motor recalibrado.");
   }catch{av("❌ JSON inválido");}
 }
 
@@ -620,22 +606,20 @@ function copiar(){
   const d=JSON.stringify({
     history:ST.H,greens:ST.verde,reds:ST.verm,
     rate:tot?Math.round(ST.verde/tot*100):0,
-    weights:ST.weights,timestamp:new Date().toISOString()
+    weights:ST.W,sessoes:ST.sessoes,
+    deltaAcum:ST.deltaAcum,countAcum:ST.countAcum,
+    timestamp:new Date().toISOString()
   },null,2);
   if(navigator.clipboard?.writeText)
     navigator.clipboard.writeText(d).then(()=>av("📋 Copiado!")).catch(()=>{jsnVis=true;render();});
-  else{
-    try{const t=document.createElement("textarea");t.value=d;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);av("📋 Copiado!");}
-    catch{jsnVis=true;render();}
-  }
+  else{try{const t=document.createElement("textarea");t.value=d;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);av("📋 Copiado!");}catch{jsnVis=true;render();}}
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RENDER
-// ═══════════════════════════════════════════════════════════════════════════
+// ── RENDER ─────────────────────────────────────────────────────────────────
 function render(){
-  const m=mesaStatus(ST.H);
-  const an=motor(ST.H,m.cautela,ST.weights);
+  const stab=calcStability(ST.H);
+  const m=mesaStatus(ST.H,stab);
+  const an=motor(ST.H,m.cautela,ST.W);
   const tieA=tieAnalise(ST.H);
   const tot=ST.verde+ST.verm,taxa=tot?Math.round(ST.verde/tot*100):0;
   const rcor=taxa>=65?"var(--green)":taxa>=50?"var(--gold)":"var(--red)";
@@ -643,13 +627,17 @@ function render(){
   const tP=Math.round(ST.H.filter(h=>h.r==="T").length/Math.max(ST.H.length,1)*100);
   const bP=Math.round(ST.H.filter(h=>h.r==="B").length/Math.max(ST.H.length,1)*100);
 
-  // SIGNAL CARD CONFIG
-  let sCor="var(--txt3)",sBg="var(--bg2)",sBrd="var(--border)",sTit="⏳ AGUARDA",sRaz=an.razao;
-  let sConf=0,showBtn=false,showGaleBtn=false;
+  // Índice de aprendizado (progresso dos deltas)
+  const learnPct=Math.min(100,Math.round(Object.values(ST.countAcum).reduce((a,b)=>a+b,0)/2));
+
+  // Signal card
+  let sCor="var(--txt3)",sBg="var(--bg2)",sBrd="var(--border)",sTit="⏳ AGUARDA";
+  let sRaz=an.razao,sWhy=an.why,sConf=0,showBtn=false,showGaleBtn=false;
 
   if(ST.ciclo==="gale"&&ST.galeInfo?.modo==="AGUARDAR"){
     sCor="var(--gold)";sBg="rgba(245,158,11,0.06)";sBrd="rgba(245,158,11,0.3)";
-    sTit="⏳ GALE — AGUARDANDO PADRÃO";sRaz=`${ST.galeInfo.razao} · Registrando rodadas...`;
+    sTit="⏳ GALE — AGUARDANDO PADRÃO";
+    sRaz=ST.galeInfo.razao;sWhy="Registrando rodadas sem pontuar. Motor recalcula a cada nova entrada.";
   } else if(ST.ciclo==="gale"&&ST.galeInfo){
     const gc=ST.galeInfo.lado==="P"?"var(--blue2)":"var(--red2)";
     sCor=gc;sBg=ST.galeInfo.lado==="P"?"rgba(59,130,246,0.08)":"rgba(239,68,68,0.08)";
@@ -657,219 +645,204 @@ function render(){
     sTit=ST.galeInfo.modo==="INVERTER"
       ?`🔄 GALE 1 — INVERTER: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`
       :`⚡ GALE 1 — REPETIR: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`;
-    sRaz=ST.galeInfo.razao;showGaleBtn=true;
+    sRaz=ST.galeInfo.razao;sWhy="Confirme o gale acima e depois clique o resultado real.";
+    showGaleBtn=true;
   } else if(ST.ciclo==="gale_wait"&&ST.galeInfo){
     const gc=ST.galeInfo.lado==="P"?"var(--blue2)":"var(--red2)";
     sCor=gc;sBg=ST.galeInfo.lado==="P"?"rgba(59,130,246,0.08)":"rgba(239,68,68,0.08)";
     sBrd=ST.galeInfo.lado==="P"?"rgba(59,130,246,0.3)":"rgba(239,68,68,0.3)";
     sTit=`${ST.galeInfo.lado==="P"?"🔵":"🔴"} GALE ATIVO — ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`;
-    sRaz="Clique o resultado real do Gale";
+    sRaz=ST.galeInfo.razao;sWhy="Clique o resultado real do Gale para computar.";
   } else if(ST.ciclo==="entrada"&&ST.sig){
     const ac=ST.sig==="P"?"var(--blue2)":"var(--red2)";
     sCor=ac;sBg=ST.sig==="P"?"rgba(59,130,246,0.08)":"rgba(239,68,68,0.08)";
     sBrd=ST.sig==="P"?"rgba(59,130,246,0.3)":"rgba(239,68,68,0.3)";
     sTit=`${ST.sig==="P"?"🔵":"🔴"} ENTRADA ATIVA — ${ST.sig==="P"?"AZUL":"VERMELHO"}`;
     sRaz="Clique o resultado real da mesa";sConf=an.conf;
-  } else if(an.sinal==="T"){
+    sWhy="Qualquer empate durante entrada ativa = GREEN automático.";
+  } else if(!stab.standby&&an.sinal==="T"){
     sCor="var(--gold)";sBg="rgba(245,158,11,0.08)";sBrd="rgba(245,158,11,0.3)";
-    sTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod.`;sRaz=an.razao;sConf=an.conf;
-  } else if(an.sinal==="P"){
+    sTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod.`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;
+  } else if(!stab.standby&&an.sinal==="P"){
     sCor="var(--blue2)";sBg="rgba(59,130,246,0.08)";sBrd="rgba(59,130,246,0.3)";
-    sTit=`🔵 SINAL: AZUL`;sRaz=an.razao;sConf=an.conf;showBtn=true;
-  } else if(an.sinal==="B"){
+    sTit=`🔵 SINAL: AZUL · ${an.conf}%`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;showBtn=true;
+  } else if(!stab.standby&&an.sinal==="B"){
     sCor="var(--red2)";sBg="rgba(239,68,68,0.08)";sBrd="rgba(239,68,68,0.3)";
-    sTit=`🔴 SINAL: VERMELHO`;sRaz=an.razao;sConf=an.conf;showBtn=true;
+    sTit=`🔴 SINAL: VERMELHO · ${an.conf}%`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;showBtn=true;
   }
 
-  const instrucao=ST.ciclo==="entrada"?"🎯 ENTRADA ATIVA — clique o resultado real da mesa"
-    :ST.ciclo==="gale"&&ST.galeInfo?.modo!=="AGUARDAR"?"⚡ Confirme o Gale acima e clique o resultado"
-    :ST.ciclo==="gale"?"⏳ Registre rodadas — motor recalcula o melhor momento"
+  const instr=ST.ciclo==="entrada"?"🎯 ENTRADA ATIVA — clique o resultado real da mesa"
+    :ST.ciclo==="gale"&&ST.galeInfo?.modo!=="AGUARDAR"?"⚡ Confirme o Gale acima → clique o resultado"
+    :ST.ciclo==="gale"?"⏳ AGUARDANDO — registre rodadas sem pontuar"
     :ST.ciclo==="gale_wait"?"⚡ GALE ATIVO — clique o resultado real":"";
 
-  // BEADS
+  // Beads
   const COLS=20,ROWS=6,cells=Array.from({length:ROWS},()=>Array(COLS).fill(null));
-  let bc=0,br=0;
-  ST.H.forEach(h=>{if(bc>=COLS)return;cells[br][bc]=h;br++;if(br>=ROWS){br=0;bc++;}});
-  const beads=cells.flatMap((row,ri)=>row.map((c,ci)=>{
-    if(!c)return`<div class="bead" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05)"></div>`;
+  let bc=0,br=0;ST.H.forEach(h=>{if(bc>=COLS)return;cells[br][bc]=h;br++;if(br>=ROWS){br=0;bc++;}});
+  const beads=cells.flatMap((row)=>row.map(c=>{
+    if(!c)return`<div class="bead" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05)"></div>`;
     const col={P:"#3b82f6",B:"#ef4444",T:"#f59e0b"}[c.r];
-    return`<div class="bead" style="background:${col};box-shadow:0 0 6px ${col}66">${c.r}</div>`;
+    return`<div class="bead" style="background:${col};box-shadow:0 0 5px ${col}55">${c.r}</div>`;
   })).join("");
 
   const last10=ST.H.slice(-10).map((h,i,arr)=>{
-    const isL=i===arr.length-1;
-    const c={P:"var(--blue)",B:"var(--red)",T:"var(--gold)"}[h.r];
+    const isL=i===arr.length-1,c={P:"var(--blue)",B:"var(--red)",T:"var(--gold)"}[h.r];
     const c2={P:"rgba(59,130,246,",B:"rgba(239,68,68,",T:"rgba(245,158,11,"}[h.r];
-    return`<div class="last-pill" style="color:${c};border-color:${c2}${isL?"0.6)":"0.2)"};background:${c2}${isL?"0.12)":"0.05)"}">
-      ${h.r}${h.s?`<span style="opacity:.4;font-size:9px;font-family:var(--mono)">·${h.s}</span>`:""}
+    return`<div class="lpill" style="color:${c};border-color:${c2}${isL?".5)":".18)"};background:${c2}${isL?".1)":".04)"}">
+      ${h.r}${h.s?`<span style="opacity:.4;font-size:9px">·${h.s}</span>`:""}
     </div>`;
   }).join("");
 
-  const tieProbs=tieA.probs.sort((a,b)=>b.v-a.v).map(tp=>`
-    <div class="tie-row">
-      <span class="tie-label" style="color:${tp.cor}">${tp.label}</span>
-      <span class="tie-pct" style="color:${tp.cor}">${tp.v||0}%</span>
-    </div>
-    <div class="tie-bar-bg"><div class="tie-bar-fill" style="width:${Math.max(tp.v,0)}%;background:${tp.cor};opacity:.8"></div></div>
+  const tieProbs=tieA.probs.sort((a,b)=>b.v-a.v).map(t=>`
+    <div class="tie-row"><span class="tie-lbl" style="color:${t.cor}">${t.label}</span><span class="tie-pct" style="color:${t.cor}">${t.v||0}%</span></div>
+    <div class="tie-bg"><div class="tie-fill" style="width:${Math.max(t.v,0)}%;background:${t.cor};opacity:.8"></div></div>
   `).join("");
 
-  const jsonOut=JSON.stringify({
-    history:ST.H,greens:ST.verde,reds:ST.verm,
-    rate:taxa,weights:ST.weights,timestamp:new Date().toISOString()
-  },null,2);
+  const jsonOut=JSON.stringify({history:ST.H,greens:ST.verde,reds:ST.verm,rate:taxa,weights:ST.W,timestamp:new Date().toISOString()},null,2);
 
-  document.getElementById("root").innerHTML=`
-  <div class="header">
-    <div class="header-top">
-      <div class="logo">BAC BRU</div>
-      <div class="sync-badge"><div class="sync-dot"></div>LOCAL · SALVO</div>
-    </div>
-    <div class="stats-row">
-      ${[{l:"P",v:`${pP}%`,c:"var(--blue)"},{l:"T",v:`${tP}%`,c:"var(--gold)"},{l:"B",v:`${bP}%`,c:"var(--red)"},{l:"Σ",v:ST.H.length,c:"var(--txt3)"}].map(x=>
-        `<div class="stat-chip" style="color:${x.c}"><span style="color:var(--txt3)">${x.l} </span>${x.v}</div>`
-      ).join("")}
-    </div>
-  </div>
+  const {detalhes}=stab;
 
-  <div class="mesa-card fade-in" style="border-color:${m.cor}44;background:${m.cor}08">
-    <div class="mesa-label" style="color:${m.cor}">${m.label}</div>
-    <div class="mesa-sub">${m.sub}</div>
-  </div>
+  document.getElementById("root").innerHTML=`<div class="wrap fade">
 
-  ${ST.aviso?`
-  <div class="flash-banner fade-in" style="
-    color:${ST.aviso.startsWith("✅")?"var(--green2)":ST.aviso.startsWith("❌")?"var(--red2)":"var(--txt2)"};
-    border-color:${ST.aviso.startsWith("✅")?"rgba(34,197,94,0.4)":ST.aviso.startsWith("❌")?"rgba(239,68,68,0.4)":"var(--border)"};
-    background:${ST.aviso.startsWith("✅")?"rgba(34,197,94,0.1)":ST.aviso.startsWith("❌")?"rgba(239,68,68,0.1)":"var(--bg2)"};
-  ">${ST.aviso}</div>`:""}
-
-  <div class="signal-card fade-in" style="background:${sBg};border-color:${sBrd}">
-    <div class="signal-label" style="color:${sCor}">${sTit}</div>
-    <div class="signal-reason">${sRaz}</div>
-    ${sConf>0?`
-    <div class="signal-conf">
-      <div class="conf-bar-bg">
-        <div class="conf-bar" style="width:${sConf}%;background:${sCor}"></div>
+  <div class="hdr">
+    <div class="hdr-top">
+      <div class="logo">BAC BRU MONSTRO</div>
+      <div class="sync-pill" style="color:${ST.syncOk?"var(--green2)":"var(--gold2)"};border-color:${ST.syncOk?"rgba(34,197,94,.3)":"rgba(245,158,11,.3)"};background:${ST.syncOk?"rgba(34,197,94,.06)":"rgba(245,158,11,.06)"}">
+        <div class="sync-dot ${ST.syncOk?"pulse":""}" style="background:${ST.syncOk?"var(--green)":"var(--gold)"}"></div>
+        ${ST.syncOk?"SYNC LIVE":"LOCAL"}
       </div>
-      <span class="conf-val" style="color:${sCor}">${sConf}%</span>
-    </div>`:""}
-    ${an.tg&&ST.ciclo==="idle"?`
-    <div style="margin-top:10px;padding:8px 11px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25)">
-      <div style="font-size:12px;font-weight:600;color:var(--gold)">🔥 Gatilho · ${an.dt} rod. sem Tie · ${an.tp}x mais provável</div>
-      <div style="font-size:10px;color:var(--gold);opacity:.6;margin-top:2px;font-family:var(--mono)">Bater = GREEN · Não bater = neutro (sem red)</div>
-    </div>`:""}
+    </div>
+    <div class="stats">
+      ${[{l:"P",v:`${pP}%`,c:"var(--blue)"},{l:"T",v:`${tP}%`,c:"var(--gold)"},{l:"B",v:`${bP}%`,c:"var(--red)"},{l:"Σ",v:ST.H.length,c:"var(--txt3)"}]
+        .map(x=>`<div class="chip" style="color:${x.c}"><span style="color:var(--txt3)">${x.l} </span>${x.v}</div>`).join("")}
+    </div>
   </div>
 
-  ${showBtn&&ST.ciclo==="idle"?`
-  <button class="action-btn" onclick="confirmar()" style="color:${sCor};border-color:${sBrd};background:${sBg}">
+  ${stab.standby?`
+  <div class="standby-banner">
+    <div class="standby-title">🛑 UNSTABLE MARKET DETECTED</div>
+    <div class="standby-sub">Capital Preservation Active — Entries Paused<br>Aguardando estabilização da mesa</div>
+    <div class="standby-idx">
+      <div class="standby-metric">Estabilidade: ${stab.idx}/100</div>
+      <div class="standby-metric">Alternância: ${detalhes.txTrocas}%</div>
+      <div class="standby-metric">Volatilidade: ${detalhes.volSomas}</div>
+      <div class="standby-metric">Ties: ${detalhes.tPct}%</div>
+      <div class="standby-metric">Streak max: ${detalhes.stMax}</div>
+    </div>
+  </div>`:`
+  <div class="mesa-card" style="border-color:${m.cor}44;background:${m.cor}08">
+    <div class="mesa-lbl" style="color:${m.cor}">${m.label}</div>
+    <div class="mesa-sub">${m.sub}</div>
+    <div class="mesa-idx">
+      ${[
+        {l:`Alt ${detalhes.txTrocas}%`,sc:detalhes.alternancia},
+        {l:`Vol ${detalhes.volSomas}`,sc:detalhes.volatilidade},
+        {l:`T ${detalhes.tPct}%`,sc:detalhes.empates},
+        {l:`Str ${detalhes.stMax}`,sc:detalhes.streaks},
+      ].map(x=>{
+        const c=x.sc>=18?"var(--green)":x.sc>=10?"var(--gold)":"var(--red)";
+        return`<div class="idx-pill" style="color:${c};border-color:${c}33;background:${c}08">${x.l} · ${x.sc}/25</div>`;
+      }).join("")}
+    </div>
+  </div>`}
+
+  <div class="learn-bar">
+    <div class="learn-row">
+      <span class="learn-lbl">⚙️ Motor Neural · Aprendizado Incremental</span>
+      <span class="learn-val">${learnPct}% calibrado · ${tot} entradas</span>
+    </div>
+    <div class="learn-bg"><div class="learn-fill" style="width:${learnPct}%"></div></div>
+  </div>
+
+  ${ST.aviso?`<div class="aviso" style="color:${ST.aviso.startsWith("✅")?"var(--green2)":ST.aviso.startsWith("❌")?"var(--red2)":"var(--txt2)"};border-color:${ST.aviso.startsWith("✅")?"rgba(34,197,94,.4)":ST.aviso.startsWith("❌")?"rgba(239,68,68,.4)":"var(--border)"};background:${ST.aviso.startsWith("✅")?"rgba(34,197,94,.1)":ST.aviso.startsWith("❌")?"rgba(239,68,68,.1)":"var(--bg2)"};">${ST.aviso}</div>`:""}
+
+  <div class="sig-card" style="background:${sBg};border-color:${sBrd}">
+    <div class="sig-top">
+      <div class="sig-title" style="color:${sCor}">${sTit}</div>
+      ${sConf>0?`<div class="sig-badge" style="color:${sCor};border-color:${sBrd}">${sConf}%</div>`:""}
+    </div>
+    <div class="sig-reason">${sRaz}</div>
+    ${sWhy?`<div class="sig-why" style="background:${sBrd}33;border:1px solid ${sBrd};color:${sCor};opacity:.8">${sWhy}</div>`:""}
+    ${sConf>0?`<div class="conf-row"><div class="conf-bg"><div class="conf-fill" style="width:${sConf}%;background:${sCor}"></div></div><span class="conf-val" style="color:${sCor}">${sConf}%</span></div>`:""}
+    ${an.tg&&ST.ciclo==="idle"&&!stab.standby?`<div style="margin-top:9px;padding:7px 10px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25)"><div style="font-size:12px;font-weight:600;color:var(--gold)">🔥 Gatilho · ${an.dt} rod. sem Tie · ${an.tp}x mais provável</div><div style="font-size:10px;color:var(--gold);opacity:.6;margin-top:2px;font-family:var(--mono)">Bater = GREEN · Não bater = neutro</div></div>`:""}
+  </div>
+
+  ${showBtn&&ST.ciclo==="idle"&&!stab.standby?`<button class="act-btn" onclick="confirmar()" style="color:${sCor};border-color:${sBrd};background:${sBg}">
     ▶ CONFIRMAR ENTRADA — ${an.sinal==="P"?"AZUL":"VERMELHO"}
-    ${m.cautela?`<span style="font-size:10px;opacity:.6;display:block;margin-top:2px">⚠️ Mesa instável — alto risco</span>`:""}
+    ${m.cautela?`<span style="font-size:10px;opacity:.6;display:block;margin-top:2px">⚠️ Mesa instável — entrada de alto risco</span>`:""}
   </button>`:""}
 
-  ${showGaleBtn?`
-  <button class="action-btn" onclick="confirmarGale()" style="color:${sCor};border-color:${sBrd};background:${sBg}">
-    ⚡ CONFIRMAR GALE — ${ST.galeInfo?.lado==="P"?"AZUL":"VERMELHO"}
-  </button>`:""}
+  ${showGaleBtn?`<button class="act-btn" onclick="confirmarGale()" style="color:${sCor};border-color:${sBrd};background:${sBg}">⚡ CONFIRMAR GALE — ${ST.galeInfo?.lado==="P"?"AZUL":"VERMELHO"}</button>`:""}
 
-  ${instrucao?`<div class="instr">${instrucao}</div>`:""}
+  ${instr?`<div class="instr">${instr}</div>`:""}
 
-  <div class="result-panel">
-    <div class="panel-label">${ST.ciclo==="idle"?"REGISTRAR RODADA":"▼ RESULTADO REAL DA MESA"}</div>
-    <div class="result-row">
+  <div class="res-panel">
+    <div class="panel-lbl">${ST.ciclo==="idle"?"REGISTRAR RODADA":"▼ RESULTADO REAL DA MESA"}</div>
+    <div class="res-row">
       <div class="soma-wrap">
-        <span class="soma-label">SOMA</span>
+        <span class="soma-lbl">SOMA</span>
         <input id="soma" class="soma-inp" type="number" min="2" max="12" value="${somaV}" oninput="somaV=this.value" placeholder="Σ"/>
       </div>
-      <div class="result-btns">
-        <button class="res-btn azul ${ST.flash==="P"?"flash-hit":""}" onclick="reg('P')">AZUL</button>
-        <button class="res-btn verm ${ST.flash==="B"?"flash-hit":""}" onclick="reg('B')">VERM.</button>
-        <button class="res-btn emp ${ST.flash==="T"?"flash-hit":""}" onclick="reg('T')">EMPATE</button>
+      <div class="rbtns">
+        <button class="rb p" onclick="reg('P')">AZUL</button>
+        <button class="rb b" onclick="reg('B')">VERM.</button>
+        <button class="rb t" onclick="reg('T')">EMPATE</button>
       </div>
     </div>
-    <button class="fin-btn" onclick="ST.verde=0;ST.verm=0;resetCiclo();salvar();av('🏁 Sessão finalizada');render()">🏁 FINALIZAR SESSÃO — zera placar</button>
+    <button class="fin-btn" onclick="ST.verde=0;ST.verm=0;ST.sessoes=(ST.sessoes||0)+1;resetCiclo();push(ST);av('🏁 Sessão ${(ST.sessoes||0)+1} finalizada');render()">🏁 FINALIZAR SESSÃO</button>
   </div>
 
-  <div class="scoreboard">
-    ${[
-      {l:"ACERTOS",v:ST.verde,c:"var(--green)",c2:"rgba(34,197,94,"},
-      {l:"TAXA",v:taxa+"%",c:rcor,c2:taxa>=65?"rgba(34,197,94,":taxa>=50?"rgba(245,158,11,":"rgba(239,68,68,"},
-      {l:"ERROS",v:ST.verm,c:"var(--red)",c2:"rgba(239,68,68,"}
-    ].map(x=>`
-    <div class="score-card" style="border-color:${x.c2}0.3);background:${x.c2}0.05)">
-      <div class="score-lbl">${x.l}</div>
-      <div class="score-val" style="color:${x.c}">${x.v}</div>
-      <div class="score-bar"><div class="score-bar-fill" style="width:${x.l==="TAXA"?taxa:x.l==="ACERTOS"&&tot?Math.round(ST.verde/tot*100):0}%;background:${x.c}"></div></div>
-    </div>`).join("")}
+  <div class="scores">
+    ${[{l:"ACERTOS",v:ST.verde,c:"var(--green)",c2:"rgba(34,197,94,"},{l:"TAXA",v:taxa+"%",c:rcor,c2:taxa>=65?"rgba(34,197,94,":taxa>=50?"rgba(245,158,11,":"rgba(239,68,68,"},{l:"ERROS",v:ST.verm,c:"var(--red)",c2:"rgba(239,68,68,"}]
+      .map(x=>`<div class="sc" style="border-color:${x.c2}0.25);background:${x.c2}0.04)">
+        <div class="sc-lbl">${x.l}</div>
+        <div class="sc-val" style="color:${x.c}">${x.v}</div>
+        <div class="sc-bar"><div class="sc-bar-fill" style="width:${x.l==="TAXA"?taxa:x.l==="ACERTOS"&&tot?Math.round(ST.verde/tot*100):0}%;background:${x.c}"></div></div>
+      </div>`).join("")}
   </div>
 
-  <div class="section">
-    <div class="section-title">BEAD ROAD</div>
-    <div class="bead-grid">${beads}</div>
-  </div>
+  <div class="sec"><div class="sec-title">BEAD ROAD</div><div class="bead-grid">${beads}</div></div>
 
-  <div class="section">
-    <div class="section-title">ÚLTIMAS 10 RODADAS</div>
-    <div class="last-row">${last10||"<span style='color:var(--txt3);font-size:11px;font-family:var(--mono)'>Nenhuma rodada ainda</span>"}</div>
-  </div>
+  <div class="sec"><div class="sec-title">ÚLTIMAS 10</div><div class="last-row">${last10||`<span style="color:var(--txt3);font-size:11px;font-family:var(--mono)">Nenhuma rodada</span>`}</div></div>
 
-  <div class="tie-section">
-    <div class="tie-card">
-      <div class="section-title" style="margin-bottom:10px">PROBABILIDADE EMPATE · ${tieA.dt===99?"∞":tieA.dt} rod. sem Tie${tieA.mp?" · MESA PAGADORA":""}</div>
-      ${tieProbs}
-      ${tieA.tg?`<div style="margin-top:8px;padding:7px 10px;border-radius:7px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);font-size:11px;color:var(--gold);font-family:var(--mono)">🔥 Gatilho ativo · ${tieA.dominante.label} mais provável</div>`:""}
-    </div>
+  <div class="tie-card">
+    <div class="sec-title" style="margin-bottom:9px">PROBABILIDADE EMPATE · ${tieA.dt===99?"∞":tieA.dt} rod. sem Tie${tieA.mp?" · 🔥 MESA PAGADORA":""}</div>
+    ${tieProbs}
+    ${tieA.tg?`<div style="margin-top:7px;padding:7px 10px;border-radius:7px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);font-size:10px;color:var(--gold);font-family:var(--mono)">🔥 Gatilho ativo · ${tieA.dom.label} mais provável</div>`:""}
   </div>
 
   <div class="json-panel">
-    <div class="json-header" onclick="injOpen=!injOpen;render()">
-      <div class="json-header-left">
-        <div class="json-icon" style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--blue2)">↑</div>
-        <div>
-          <div class="json-title" style="color:var(--blue2)">INJETAR JSON</div>
-          <div class="json-sub">Calibragem · histórico · pesos</div>
-        </div>
+    <div class="json-hdr" onclick="injOpen=!injOpen;render()">
+      <div class="json-hl">
+        <div class="json-ico" style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--blue2)">↑</div>
+        <div><div class="json-ttl" style="color:var(--blue2)">INJETAR JSON</div><div class="json-sub">Calibragem · histórico · pesos adaptativos</div></div>
       </div>
-      <div class="json-arrow" style="${injOpen?"transform:rotate(180deg)":""}">▼</div>
+      <span style="color:var(--txt3);font-size:11px;transition:transform .2s;${injOpen?"transform:rotate(180deg)":""}">▼</span>
     </div>
-    ${injOpen?`
-    <div class="json-body">
-      <textarea id="injta" class="json-ta" oninput="injTxt=this.value" placeholder="Cole o JSON aqui...">${injTxt}</textarea>
-      <button class="apply-btn" onclick="aplicarJson()">↑ APLICAR CALIBRAGEM</button>
-    </div>`:""}
-    <div class="divider"></div>
-    <div class="export-row">
-      <button class="export-btn" onclick="copiar()">
-        <div class="export-icon">↓</div>
-        <div>
-          <div style="font-size:12px;color:var(--green2);font-weight:600">COPIAR JSON</div>
-          <div style="font-size:9px;color:var(--txt3);font-family:var(--mono)">Exportar calibragem completa</div>
-        </div>
+    ${injOpen?`<div class="json-body"><textarea id="injta" class="json-ta" oninput="injTxt=this.value" placeholder="Cole o JSON aqui...">${injTxt}</textarea><button class="apply-btn" onclick="aplicarJson()">↑ APLICAR CALIBRAGEM</button></div>`:""}
+    <div class="div"></div>
+    <div class="exp-row">
+      <button class="exp-btn" onclick="copiar()">
+        <div class="exp-ico" style="background:var(--green3);border:1px solid rgba(34,197,94,.2);color:var(--green2)">↓</div>
+        <div><div style="font-size:12px;color:var(--green2);font-weight:600">COPIAR JSON</div><div style="font-size:9px;color:var(--txt3);font-family:var(--mono)">Exportar calibragem + pesos aprendidos</div></div>
       </button>
       <button class="view-btn" onclick="jsnVis=!jsnVis;render()">👁 VER</button>
     </div>
-    ${jsnVis?`
-    <div style="padding:0 14px 14px">
-      <textarea class="view-ta" readonly onclick="this.select();try{document.execCommand('copy');av('📋 Copiado!');}catch{}">${jsonOut.replace(/</g,"&lt;")}</textarea>
-      <div class="view-hint">Clique para selecionar e copiar</div>
-    </div>`:""}
+    ${jsnVis?`<div style="padding:0 13px 13px"><textarea class="view-ta" readonly onclick="this.select();try{document.execCommand('copy');av('📋 Copiado!');}catch{}">${jsonOut.replace(/</g,"&lt;")}</textarea><div class="view-hint">Clique para selecionar · Copia automaticamente</div></div>`:""}
   </div>
 
-  <div class="footer-btns">
-    <button class="util-btn" onclick="if(ST.H.length>0)ST.H=ST.H.slice(0,-1);resetCiclo();salvar();render()">↩ DESFAZER</button>
-    <button class="util-btn" onclick="ST.H=[];ST.verde=0;ST.verm=0;resetCiclo();salvar();render()">◌ ZERAR TUDO</button>
+  <div class="fbtns">
+    <button class="util-btn" onclick="if(ST.H.length>0)ST.H=ST.H.slice(0,-1);resetCiclo();push(ST);render()">↩ DESFAZER</button>
+    <button class="util-btn" onclick="ST.H=[];ST.verde=0;ST.verm=0;resetCiclo();push(ST);render()">◌ ZERAR</button>
   </div>
-
-  <div class="credit">BAC BRU · v5.0 · MOTOR NEURAL · ${new Date().getFullYear()}</div>
-  `;
+  <div class="credit">BAC BRU · v5.0 · MOTOR NEURAL ADAPTATIVO · FIREBASE SYNC</div>
+  </div>`;
 
   document.addEventListener("input",e=>{
     if(e.target.id==="soma")somaV=e.target.value;
     if(e.target.id==="injta")injTxt=e.target.value;
   },{once:true});
 }
-
-// ── BOOT ──────────────────────────────────────────────────────────────────
-carregar();render();
 </script>
 </body>
 </html>
