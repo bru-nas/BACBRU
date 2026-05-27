@@ -397,6 +397,139 @@ function tieAnalise(H){
   return{dt,td,mp,tg,tp:dom.p,probs,dom};
 }
 
+// ── BIG ROAD ────────────────────────────────────────────────────────────────
+// Constrói o Big Road: array de colunas, cada coluna = array de {r,s,ties}
+// Empates NÃO criam nova coluna, apenas marcam a célula atual
+function buildBigRoad(H){
+  const road=[];
+  let col=[];
+  let lastR=null;
+  for(const h of H){
+    if(h.r==="T"){
+      if(col.length>0)col[col.length-1].ties=(col[col.length-1].ties||0)+1;
+      continue;
+    }
+    if(lastR===null||h.r===lastR){
+      col.push({r:h.r,s:h.s,ties:0});
+      lastR=h.r;
+    } else {
+      road.push(col);
+      col=[{r:h.r,s:h.s,ties:0}];
+      lastR=h.r;
+    }
+  }
+  if(col.length>0)road.push(col);
+  return road;
+}
+
+// ── GRÁFICOS DERIVADOS ───────────────────────────────────────────────────────
+// skip=1 → Big Eye Boy | skip=2 → Small Road | skip=3 → Cockroach Road
+// Retorna array de "R" (vermelho=repetição) ou "B" (azul=quebra)
+function buildDerivedRoad(bigRoad,skip){
+  const result=[];
+  for(let c=1+skip;c<bigRoad.length;c++){
+    for(let r=0;r<bigRoad[c].length;r++){
+      let isRed;
+      const refC=c-1-skip; // coluna de referência
+      if(r===0){
+        // Nova coluna: compara comprimento da coluna anterior com a de referência
+        if(refC<0){result.push("B");continue;}
+        isRed=bigRoad[c-1].length===bigRoad[refC].length;
+      } else {
+        // Continuação: verifica se coluna anterior tem esta profundidade
+        if(refC<0){result.push("B");continue;}
+        const prevHasRow=bigRoad[c-1].length>r;
+        const refHasRow=bigRoad[refC].length>r;
+        isRed=prevHasRow===refHasRow;
+      }
+      result.push(isRed?"R":"B");
+    }
+  }
+  return result;
+}
+
+// ── ANÁLISE DOS 4 GRÁFICOS ───────────────────────────────────────────────────
+// Retorna predição de cada gráfico e nível de convergência
+function analisarRoads(H){
+  const br=buildBigRoad(H);
+  if(br.length<3)return{pred:null,conv:0,detalhes:{},br,beb:[],sr:[],cr:[]};
+
+  const beb=buildDerivedRoad(br,1);
+  const sr =buildDerivedRoad(br,2);
+  const cr =buildDerivedRoad(br,3);
+
+  // Última coluna do Big Road e tendência
+  const lastCol=br[br.length-1];
+  const lastR=lastCol[0]?.r; // resultado da última coluna
+  const lastLen=lastCol.length;
+  const prevLen=br[br.length-2]?.length||0;
+  const prev2Len=br.length>=3?br[br.length-3]?.length||0:0;
+
+  // Predição do Big Road:
+  // "continuar" = mesma cor continua (streak)
+  // "trocar" = cor muda (nova coluna)
+  // Lógica: se colunas alternadas têm mesmo comprimento → padrão repetitivo → provável continuar
+  //         se coluna atual já passou o comprimento histórico → provável trocar
+
+  // Tendência de cada gráfico derivado (últimas 4 entradas)
+  function tendencia(road,n=4){
+    if(road.length<2)return"neutro";
+    const ult=road.slice(-n);
+    const reds=ult.filter(x=>x==="R").length;
+    const blues=ult.length-reds;
+    if(reds>=Math.ceil(n*0.75))return"repetir"; // ≥75% vermelho = padrão repetindo
+    if(blues>=Math.ceil(n*0.75))return"trocar";  // ≥75% azul = padrão quebrando
+    if(reds>blues)return"leve_repetir";
+    if(blues>reds)return"leve_trocar";
+    return"neutro";
+  }
+
+  const tBEB=tendencia(beb);
+  const tSR =tendencia(sr);
+  const tCR =tendencia(cr);
+
+  // Predição combinada
+  // "repetir" = o padrão atual do Big Road tende a continuar (mesmo resultado)
+  // "trocar"  = o padrão tende a mudar
+  const votos={repetir:0,trocar:0,neutro:0};
+  [tBEB,tSR,tCR].forEach(t=>{
+    if(t==="repetir"||t==="leve_repetir")votos.repetir+=(t==="repetir"?2:1);
+    else if(t==="trocar"||t==="leve_trocar")votos.trocar+=(t==="trocar"?2:1);
+    else votos.neutro++;
+  });
+
+  // Predição final com base nos votos
+  let pred=null,conv=0;
+  if(votos.repetir>votos.trocar){
+    pred=lastR; // continua na mesma cor
+    conv=votos.repetir; // 1-6
+  } else if(votos.trocar>votos.repetir){
+    pred=lastR==="P"?"B":"P"; // troca de cor
+    conv=votos.trocar;
+  }
+
+  // Boost de confiança (0.00 a 0.12) baseado na convergência
+  const boost=conv>=5?0.12:conv>=3?0.08:conv>=2?0.04:0;
+
+  // Últimas entradas de cada road para UI
+  const last5beb=beb.slice(-5);
+  const last5sr=sr.slice(-5);
+  const last5cr=cr.slice(-5);
+
+  return{
+    pred,conv,boost,
+    tendencias:{beb:tBEB,sr:tSR,cr:tCR},
+    votos,
+    detalhes:{
+      brCols:br.length,
+      lastR,lastLen,prevLen,prev2Len,
+      tBEB,tSR,tCR
+    },
+    br,beb,sr,cr,
+    last5beb,last5sr,last5cr
+  };
+}
+
 // ── MOTOR NEURAL v5.0 ──────────────────────────────────────────────────────
 function motor(H,cautela,W){
   const C=H.filter(h=>h.r!=="T");
@@ -412,6 +545,10 @@ function motor(H,cautela,W){
   const tieA=tieAnalise(H);
   const {dt,td,mp,tg,tp}=tieA;
   const mn=cautela?(W.min_conf_cautela||0.80):(W.min_conf||0.65);
+
+  // ── GRÁFICOS DERIVADOS ────────────────────────────────────────────────────
+  const roads=analisarRoads(H);
+
   function sc(base,key,side){
     let v=(W[key]||base);
     if(est)v+=(W.boost_est||0.07);
@@ -420,6 +557,8 @@ function motor(H,cautela,W){
     const p12=r12.filter(r=>r==="P").length,b12=r12.filter(r=>r==="B").length;
     if(side==="P"&&p12>b12)v+=(W.boost_dom||0.04)+(W.bias_P||0);
     if(side==="B"&&b12>p12)v+=(W.boost_dom||0.04)+(W.bias_B||0);
+    // CONVERGÊNCIA DOS GRÁFICOS: boost quando gráficos confirmam o sinal
+    if(roads.pred===side)v+=roads.boost;
     return Math.min(v,0.97);
   }
   const pC8=r8.filter(r=>r==="P").length,bC8=r8.filter(r=>r==="B").length;
@@ -429,75 +568,75 @@ function motor(H,cautela,W){
   if(r5.length===5&&r5.every((r,i)=>i===0||r!==r5[i-1])){
     const nx=r5[4]==="P"?"B":"P";const c=sc(0.87,"PP5",nx);
     if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 5 ciclos",
-      why:`Últimas 5 (${r5.join("-")}) alternam perfeitamente → espera ${nx}`,padrao:"PP5",tg,tp,dt};}
+      why:`Últimas 5 (${r5.join("-")}) alternam perfeitamente → espera ${nx}`,padrao:"PP5",tg,tp,dt,roads};}
 
   // ② PING-PONG 4
   if(r5.length>=4){const pp4=r5.slice(-4);
     if(pp4.every((r,i)=>i===0||r!==pp4[i-1])){
       const nx=pp4[3]==="P"?"B":"P";const c=sc(0.79,"PP4",nx);
       if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"🔁 Ping-pong 4 ciclos",
-        why:`Padrão ${pp4.join("-")} → alternância estável → espera ${nx}`,padrao:"PP4",tg,tp,dt};}}
+        why:`Padrão ${pp4.join("-")} → alternância estável → espera ${nx}`,padrao:"PP4",tg,tp,dt,roads};}}
 
   // ③④⑤ BLOCOS
   if(r5.length>=4){const a=r5.slice(-4);
     if(a[0]===a[1]&&a[2]===a[3]&&a[0]!==a[2]){
       const nx=a[3]==="P"?"B":"P";const c=sc(0.81,"B22T",nx);
       if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — troca",
-        why:`${a.join("-")}: dois blocos distintos → próximo bloco inverte para ${nx}`,padrao:"B22T",tg,tp,dt};}
+        why:`${a.join("-")}: dois blocos distintos → próximo bloco inverte para ${nx}`,padrao:"B22T",tg,tp,dt,roads};}
     if(a[2]===a[3]&&a[0]!==a[1]&&a[1]!==a[2]){
       const c=sc(0.76,"B22C",a[3]);
       if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪ Bloco 2×2 — continuar",
-        why:`${a.join("-")}: formação de bloco iniciada → continua ${a[3]}`,padrao:"B22C",tg,tp,dt};}
+        why:`${a.join("-")}: formação de bloco iniciada → continua ${a[3]}`,padrao:"B22C",tg,tp,dt,roads};}
     if(a[0]===a[1]&&a[1]===a[2]&&a[2]!==a[3]){
       const c=sc(0.75,"B31",a[3]);
       if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"▪▪▪ Bloco 3-1 — continuar",
-        why:`Após bloco 3×${a[0]}, o singular ${a[3]} tende a continuar`,padrao:"B31",tg,tp,dt};}}
+        why:`Após bloco 3×${a[0]}, o singular ${a[3]} tende a continuar`,padrao:"B31",tg,tp,dt,roads};}}
 
   // ⑥ STREAKS
   let stk=1;const ss=C[C.length-1]?.r;
   for(let i=C.length-2;i>=0;i--){if(C[i].r===ss)stk++;else break;}
-  if(stk>=7)return{sinal:null,conf:0,razao:`⚠️ Streak ${stk}×${ss} — exaustão`,why:"Streak muito longo, aguardar quebra natural",padrao:null,tg,tp,dt};
+  if(stk>=7)return{sinal:null,conf:0,razao:`⚠️ Streak ${stk}×${ss} — exaustão`,why:"Streak muito longo, aguardar quebra natural",padrao:null,tg,tp,dt,roads};
   if(stk>=4){
     const sv=H.slice(-stk).map(h=>h.s).filter(Boolean);
     const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
     if(vl>=4){const nx=ss==="P"?"B":"P";const c=sc(0.81,"SK4Q",nx);
       if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — quebra iminente`,
-        why:`Volatilidade das somas: ${vl} (≥4). Streaks com vol. alta tendem a quebrar`,padrao:"SK4Q",tg,tp,dt};}
+        why:`Volatilidade das somas: ${vl} (≥4). Streaks com vol. alta tendem a quebrar`,padrao:"SK4Q",tg,tp,dt,roads};}
     else{const c=sc(0.73,"SK4C",ss);
       if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak ${stk}×${ss} — continuar`,
-        why:`Vol. baixa (${vl}). Padrão estável, tendência de continuação`,padrao:"SK4C",tg,tp,dt};}}
+        why:`Vol. baixa (${vl}). Padrão estável, tendência de continuação`,padrao:"SK4C",tg,tp,dt,roads};}}
   if(stk===3){
     const sv=H.slice(-3).map(h=>h.s).filter(Boolean);
     const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
     if(vl>=3){const nx=ss==="P"?"B":"P";const c=sc(0.80,"SK3Q",nx);
       if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — quebra`,
-        why:`3 consecutivos com vol.${vl}. Alta prob. de inversão`,padrao:"SK3Q",tg,tp,dt};}
+        why:`3 consecutivos com vol.${vl}. Alta prob. de inversão`,padrao:"SK3Q",tg,tp,dt,roads};}
     else{const c=sc(0.71,"SK3C",ss);
       if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`📈 Streak 3×${ss} — continuar`,
-        why:`3 consecutivos estáveis → tendência de mais um`,padrao:"SK3C",tg,tp,dt};}}
+        why:`3 consecutivos estáveis → tendência de mais um`,padrao:"SK3C",tg,tp,dt,roads};}}
 
   // ⑦ REEQUILÍBRIO
-  if(pC8>=7){const c=sc(0.87,"RE8","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (P${pC8}/8)`,why:`P dominou ${pC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt};}
-  if(bC8>=7){const c=sc(0.87,"RE8","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (B${bC8}/8)`,why:`B dominou ${bC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt};}
-  if(pC8>=6){const c=sc(0.82,"RE7","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (P${pC8}/8)`,why:`P dominou ${pC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt};}
-  if(bC8>=6){const c=sc(0.82,"RE7","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (B${bC8}/8)`,why:`B dominou ${bC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt};}
+  if(pC8>=7){const c=sc(0.87,"RE8","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (P${pC8}/8)`,why:`P dominou ${pC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt,roads};}
+  if(bC8>=7){const c=sc(0.87,"RE8","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio forte (B${bC8}/8)`,why:`B dominou ${bC8}/8 rodadas → reequilíbrio quase certo`,padrao:"RE8",tg,tp,dt,roads};}
+  if(pC8>=6){const c=sc(0.82,"RE7","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (P${pC8}/8)`,why:`P dominou ${pC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt,roads};}
+  if(bC8>=6){const c=sc(0.82,"RE7","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Reequilíbrio (B${bC8}/8)`,why:`B dominou ${bC8}/8 → pressão de reequilíbrio`,padrao:"RE7",tg,tp,dt,roads};}
 
   // ⑧ DOMINÂNCIA 12
-  if(pC12>=10){const c=sc(0.85,"DOM12","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Dominância P${pC12}/12`,why:`P extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt};}
-  if(bC12>=10){const c=sc(0.85,"DOM12","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Dominância B${bC12}/12`,why:`B extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt};}
+  if(pC12>=10){const c=sc(0.85,"DOM12","B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`⚖️ Dominância P${pC12}/12`,why:`P extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt,roads};}
+  if(bC12>=10){const c=sc(0.85,"DOM12","P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`⚖️ Dominância B${bC12}/12`,why:`B extremo em 12 rodadas → reequilíbrio inevitável`,padrao:"DOM12",tg,tp,dt,roads};}
 
   // ⑨ ZIG-ZAG
   if(r3.length===3&&r3[0]!==r3[1]&&r3[1]!==r3[2]&&r3[0]===r3[2]){
     const nx=r3[2]==="P"?"B":"P";const c=sc(0.75,"ZZ3",nx);
     if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"〰️ Zig-zag 3",
-      why:`${r3.join("-")}: padrão zig-zag confirma → continua alternância para ${nx}`,padrao:"ZZ3",tg,tp,dt};}
+      why:`${r3.join("-")}: padrão zig-zag confirma → continua alternância para ${nx}`,padrao:"ZZ3",tg,tp,dt,roads};}
 
   // ⑩ GATILHO EMPATE
   if(tg){const c=Math.min(0.70+(mp?0.08:0)+(dt>=7?0.08:0),0.88);
     if(c>=0.62)return{sinal:"T",conf:Math.round(c*100),razao:`🔥 Gatilho Empate · ${dt} rod. · ${tp}x`,
-      why:`${dt} rodadas sem Tie. Densidade: ${Math.round(td*100)}%. Payout esperado: ${tp}x`,padrao:"TIE",tg:true,tp,dt};}
+      why:`${dt} rodadas sem Tie. Densidade: ${Math.round(td*100)}%. Payout esperado: ${tp}x`,padrao:"TIE",tg:true,tp,dt,roads};}
 
-  return{sinal:null,conf:0,razao:"Aguardando padrão convergente...",why:"Nenhum padrão atingiu o threshold de confiança",padrao:null,tg,tp,dt};
+  return{sinal:null,conf:0,razao:"Aguardando padrão convergente...",why:"Nenhum padrão atingiu o threshold de confiança",padrao:null,tg,tp,dt,roads};
 }
 
 // ── DECISÃO DE GALE ────────────────────────────────────────────────────────
@@ -658,17 +797,23 @@ function render(){
     sCor=ac;sBg=ST.sig==="P"?"rgba(59,130,246,0.08)":"rgba(239,68,68,0.08)";
     sBrd=ST.sig==="P"?"rgba(59,130,246,0.3)":"rgba(239,68,68,0.3)";
     sTit=`${ST.sig==="P"?"🔵":"🔴"} ENTRADA ATIVA — ${ST.sig==="P"?"AZUL":"VERMELHO"}`;
-    sRaz="Clique o resultado real da mesa";sConf=an.conf;
-    sWhy="Qualquer empate durante entrada ativa = GREEN automático.";
+    sRaz=`Clique o resultado real da mesa${tieA.tg?" · 🔥 Gatilho empate "+tieA.tp+"x ativo":""}`;sConf=an.conf;
+    sWhy=`Qualquer empate durante entrada ativa = ✅ GREEN automático.${tieA.tg?" Gatilho: "+tieA.dt+" rod. sem Tie · payout esperado "+tieA.tp+"x":""}`;
   } else if(!stab.standby&&an.sinal==="T"){
     sCor="var(--gold)";sBg="rgba(245,158,11,0.08)";sBrd="rgba(245,158,11,0.3)";
-    sTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod.`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;
+    sTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod. sem Tie`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;
   } else if(!stab.standby&&an.sinal==="P"){
     sCor="var(--blue2)";sBg="rgba(59,130,246,0.08)";sBrd="rgba(59,130,246,0.3)";
-    sTit=`🔵 SINAL: AZUL · ${an.conf}%`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;showBtn=true;
+    const convTxtP=an.roads&&an.roads.conv>0?` · ${an.roads.conv>=5?"🔥 FORTE":an.roads.conv>=3?"⬆ BOA":"· "} convergência`:"";
+    sTit=`🔵 SINAL: AZUL · ${an.conf}%${convTxtP}`;sRaz=an.razao;sConf=an.conf;
+    sWhy=an.why+(an.roads&&an.roads.conv>0?` | Gráficos: BEB=${an.roads.tendencias.beb} · SR=${an.roads.tendencias.sr} · CR=${an.roads.tendencias.cr} (${an.roads.conv} votos)`:"");
+    showBtn=true;
   } else if(!stab.standby&&an.sinal==="B"){
     sCor="var(--red2)";sBg="rgba(239,68,68,0.08)";sBrd="rgba(239,68,68,0.3)";
-    sTit=`🔴 SINAL: VERMELHO · ${an.conf}%`;sRaz=an.razao;sConf=an.conf;sWhy=an.why;showBtn=true;
+    const convTxtB=an.roads&&an.roads.conv>0?` · ${an.roads.conv>=5?"🔥 FORTE":an.roads.conv>=3?"⬆ BOA":"· "} convergência`:"";
+    sTit=`🔴 SINAL: VERMELHO · ${an.conf}%${convTxtB}`;sRaz=an.razao;sConf=an.conf;
+    sWhy=an.why+(an.roads&&an.roads.conv>0?` | Gráficos: BEB=${an.roads.tendencias.beb} · SR=${an.roads.tendencias.sr} · CR=${an.roads.tendencias.cr} (${an.roads.conv} votos)`:"");
+    showBtn=true;
   }
 
   const instr=ST.ciclo==="entrada"?"🎯 ENTRADA ATIVA — clique o resultado real da mesa"
@@ -764,7 +909,7 @@ function render(){
     <div class="sig-reason">${sRaz}</div>
     ${sWhy?`<div class="sig-why" style="background:${sBrd}33;border:1px solid ${sBrd};color:${sCor};opacity:.8">${sWhy}</div>`:""}
     ${sConf>0?`<div class="conf-row"><div class="conf-bg"><div class="conf-fill" style="width:${sConf}%;background:${sCor}"></div></div><span class="conf-val" style="color:${sCor}">${sConf}%</span></div>`:""}
-    ${an.tg&&ST.ciclo==="idle"&&!stab.standby?`<div style="margin-top:9px;padding:7px 10px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25)"><div style="font-size:12px;font-weight:600;color:var(--gold)">🔥 Gatilho · ${an.dt} rod. sem Tie · ${an.tp}x mais provável</div><div style="font-size:10px;color:var(--gold);opacity:.6;margin-top:2px;font-family:var(--mono)">Bater = GREEN · Não bater = neutro</div></div>`:""}
+    ${(an.tg||tieA.tg)&&!stab.standby&&ST.ciclo==="idle"?`<div style="margin-top:9px;padding:10px 12px;border-radius:9px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px"><div style="font-size:12px;font-weight:700;color:var(--gold)">🔥 GATILHO DE EMPATE ATIVO</div><div style="padding:2px 8px;border-radius:6px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);font-size:11px;color:var(--gold2);font-family:var(--mono);font-weight:700">${tieA.tp}x</div></div><div style="font-size:10px;color:var(--gold);opacity:.8;font-family:var(--mono);margin-bottom:5px">${tieA.dt===99?"∞":tieA.dt} rod. sem Tie · Dens. ${Math.round(tieA.td*100)}%${tieA.mp?" · MESA PAGADORA":""}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">${tieA.probs.filter(p=>p.v>0).sort((a,b)=>b.v-a.v).slice(0,3).map(p=>`<div style="padding:2px 8px;border-radius:5px;background:${p.cor}15;border:1px solid ${p.cor}30;font-size:9px;color:${p.cor};font-family:var(--mono)">${p.label} ${p.v}%</div>`).join("")}</div><div style="font-size:10px;color:var(--gold);opacity:.6;font-family:var(--mono)">${an.sinal&&an.sinal!=="T"?"Empate na entrada ou no Gale = ✅ GREEN · não bater = neutro":"Se bater empate = ✅ GREEN · não bater = neutro"}</div></div>`:""}
   </div>
 
   ${showBtn&&ST.ciclo==="idle"&&!stab.standby?`<button class="act-btn" onclick="confirmar()" style="color:${sCor};border-color:${sBrd};background:${sBg}">
@@ -802,6 +947,34 @@ function render(){
   </div>
 
   <div class="sec"><div class="sec-title">BEAD ROAD</div><div class="bead-grid">${beads}</div></div>
+
+  <div class="sec">
+    <div class="sec-title" style="margin-bottom:9px">GRÁFICOS DERIVADOS · CONVERGÊNCIA ${an.roads?an.roads.conv+"/6 votos":"—"}</div>
+    ${an.roads&&an.roads.br.length>=3?`
+    <div style="display:flex;flex-direction:column;gap:7px">
+      ${[
+        {name:"BIG EYE BOY",data:an.roads.last5beb,tend:an.roads.tendencias.beb},
+        {name:"SMALL ROAD",data:an.roads.last5sr,tend:an.roads.tendencias.sr},
+        {name:"COCKROACH",data:an.roads.last5cr,tend:an.roads.tendencias.cr}
+      ].map(road=>{
+        const tendCor=road.tend==="repetir"?"#22c55e":road.tend==="trocar"?"#ef4444":road.tend==="leve_repetir"?"#86efac":road.tend==="leve_trocar"?"#fca5a5":"#64748b";
+        const tendLabel=road.tend==="repetir"?"↑ REPETINDO":road.tend==="trocar"?"↓ TROCANDO":road.tend==="leve_repetir"?"↗ leve rep.":road.tend==="leve_trocar"?"↘ leve troca":"→ neutro";
+        return `<div style="display:flex;align-items:center;gap:7px">
+          <div style="width:70px;font-size:9px;color:var(--txt3);font-family:var(--mono);flex-shrink:0">${road.name}</div>
+          <div style="display:flex;gap:3px;flex:1">
+            ${road.data.map(x=>`<div style="width:20px;height:20px;border-radius:50%;background:${x==="R"?"#ef4444":"#3b82f6"};display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:700;flex-shrink:0">${x}</div>`).join("")}
+          </div>
+          <div style="padding:2px 7px;border-radius:5px;background:${tendCor}15;border:1px solid ${tendCor}30;font-size:9px;color:${tendCor};font-family:var(--mono);flex-shrink:0">${tendLabel}</div>
+        </div>`;
+      }).join("")}
+      <div style="margin-top:4px;padding:6px 10px;border-radius:8px;background:${an.roads.conv>=5?"rgba(34,197,94,.08)":an.roads.conv>=3?"rgba(59,130,246,.08)":"rgba(100,116,139,.08)"};border:1px solid ${an.roads.conv>=5?"rgba(34,197,94,.25)":an.roads.conv>=3?"rgba(59,130,246,.25)":"rgba(100,116,139,.15)"}">
+        <div style="font-size:11px;font-weight:700;color:${an.roads.conv>=5?"var(--green2)":an.roads.conv>=3?"var(--blue2)":"var(--txt2)"}">
+          ${an.roads.conv>=5?"🔥 CONVERGÊNCIA FORTE — gráficos confirmam o sinal":an.roads.conv>=3?"⬆ Boa convergência — gráficos apontam mesmo lado":an.roads.pred?"Convergência fraca — entrar com cautela":"Gráficos neutros ou divergentes"}
+        </div>
+        ${an.roads.pred?`<div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:2px">Predição unificada: <strong style="color:${an.roads.pred==="P"?"var(--blue2)":"var(--red2)"}">${an.roads.pred==="P"?"AZUL":"VERMELHO"}</strong> · ${an.roads.boost>0?"+"+Math.round(an.roads.boost*100)+"% conf.":""}</div>`:""}
+      </div>
+    </div>`:`<div style="font-size:10px;color:var(--txt3);font-family:var(--mono)">Aguardando histórico suficiente (mín. 3 colunas no Big Road)</div>`}
+  </div>
 
   <div class="sec"><div class="sec-title">ÚLTIMAS 10</div><div class="last-row">${last10||`<span style="color:var(--txt3);font-size:11px;font-family:var(--mono)">Nenhuma rodada</span>`}</div></div>
 
