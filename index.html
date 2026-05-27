@@ -11,52 +11,29 @@
 html,body{background:#030712;color:#e2e8f0;font-family:'Courier New',monospace;min-height:100%}
 @keyframes tP{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-@keyframes glow{0%,100%{opacity:.7}50%{opacity:1}}
 .tg{background:linear-gradient(270deg,#f59e0b,#fcd34d,#22d3ee,#818cf8,#f59e0b);background-size:400% 400%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:tP 6s ease infinite}
-.blink{animation:blink 1s ease-in-out infinite}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script>
-// ══ FIREBASE CONFIG (já configurado) ═════════════════════════════════════════
 firebase.initializeApp({
-  apiKey: "AIzaSyBiyeiTk8Kt1ndNOcNxI4b6mcpenZ3KL6A",
-  authDomain: "bac-bru.firebaseapp.com",
-  databaseURL: "https://bac-bru-default-rtdb.firebaseio.com",
-  projectId: "bac-bru",
-  storageBucket: "bac-bru.firebasestorage.app",
-  messagingSenderId: "469841612189",
-  appId: "1:469841612189:web:0b2ba85cde45a7d17c3374"
+  apiKey:"AIzaSyBiyeiTk8Kt1ndNOcNxI4b6mcpenZ3KL6A",
+  authDomain:"bac-bru.firebaseapp.com",
+  databaseURL:"https://bac-bru-default-rtdb.firebaseio.com",
+  projectId:"bac-bru",
+  storageBucket:"bac-bru.firebasestorage.app",
+  messagingSenderId:"469841612189",
+  appId:"1:469841612189:web:0b2ba85cde45a7d17c3374"
 });
-const db = firebase.database();
-const ROOM = "bac-bru-sala-1";
-
-// ══ DADOS ════════════════════════════════════════════════════════════════════
+const db=firebase.database();
+const ROOM="bac-bru-sala-1";
 const TP={2:88,3:25,4:10,5:6,6:4,7:4,8:4,9:6,10:10,11:25,12:88};
 
-const HIST0=[{r:"P",s:9},{r:"P",s:7},{r:"P",s:9},{r:"P",s:9},{r:"B",s:11},{r:"P",s:8},{r:"T",s:10},{r:"P",s:12},{r:"P",s:7},{r:"P",s:9},{r:"B",s:11},{r:"P",s:9},{r:"P",s:12},{r:"B",s:6},{r:"P",s:9},{r:"T",s:9},{r:"P",s:8},{r:"B",s:10},{r:"P",s:9},{r:"P",s:8},{r:"B",s:7},{r:"P",s:6},{r:"B",s:8},{r:"P",s:10},{r:"B",s:7},{r:"P",s:8},{r:"T",s:7},{r:"P",s:8},{r:"B",s:10},{r:"T",s:11},{r:"P",s:10},{r:"B",s:9},{r:"P",s:9},{r:"P",s:6},{r:"B",s:9},{r:"B",s:7},{r:"P",s:9},{r:"T",s:6},{r:"B",s:9},{r:"P",s:7},{r:"P",s:10},{r:"P",s:7},{r:"P",s:11},{r:"P",s:7},{r:"P",s:11},{r:"P",s:4},{r:"B",s:10},{r:"T",s:10},{r:"P",s:10},{r:"P",s:9},{r:"B",s:4},{r:"P",s:7},{r:"P",s:11},{r:"B",s:7},{r:"B",s:9},{r:"B",s:8},{r:"B",s:10},{r:"B",s:7},{r:"P",s:6},{r:"B",s:8},{r:"P",s:8},{r:"T",s:5},{r:"B",s:10},{r:"P",s:9},{r:"P",s:6},{r:"T",s:8},{r:"B",s:9},{r:"P",s:5},{r:"T",s:7},{r:"P",s:8},{r:"B",s:7},{r:"B",s:7},{r:"B",s:6},{r:"B",s:10},{r:"P",s:10},{r:"B",s:9},{r:"P",s:7},{r:"P",s:8},{r:"B",s:8},{r:"P",s:8},{r:"T",s:4},{r:"P",s:4},{r:"P",s:6},{r:"B",s:11},{r:"P",s:11},{r:"P",s:9},{r:"P",s:6},{r:"B",s:7},{r:"P",s:10},{r:"P",s:10},{r:"B",s:7},{r:"P",s:12},{r:"B",s:3},{r:"B",s:8},{r:"B",s:7},{r:"B",s:4},{r:"P",s:7},{r:"B",s:12},{r:"P",s:11},{r:"B",s:7},{r:"P",s:4},{r:"B",s:7},{r:"P",s:9},{r:"B",s:12},{r:"P",s:12},{r:"B",s:11},{r:"P",s:7},{r:"B",s:4},{r:"B",s:8},{r:"P",s:9},{r:"B",s:10},{r:"P",s:7},{r:"B",s:9},{r:"P",s:6},{r:"B",s:8},{r:"T",s:5},{r:"P",s:8},{r:"B",s:10},{r:"P",s:7},{r:"B",s:6},{r:"P",s:9},{r:"B",s:7},{r:"P",s:8},{r:"B",s:8},{r:"T",s:9},{r:"P",s:8},{r:"B",s:9},{r:"P",s:8},{r:"B",s:5},{r:"P",s:9},{r:"B",s:10},{r:"P",s:9},{r:"B",s:6},{r:"P",s:8},{r:"B",s:6},{r:"P",s:5},{r:"B",s:9},{r:"P",s:7},{r:"B",s:9},{r:"P",s:11},{r:"B",s:9},{r:"P",s:8},{r:"B",s:8},{r:"P",s:9},{r:"T",s:6},{r:"B",s:9},{r:"P",s:11},{r:"B",s:8},{r:"P",s:9},{r:"B",s:9},{r:"P",s:6},{r:"B",s:9},{r:"P",s:4},{r:"B",s:5},{r:"T",s:6},{r:"P",s:7},{r:"T",s:8},{r:"B",s:9},{r:"B",s:9},{r:"P",s:10},{r:"B",s:11},{r:"P",s:8},{r:"B",s:8},{r:"P",s:6},{r:"P",s:8},{r:"P",s:4},{r:"B",s:8},{r:"P",s:7},{r:"P",s:6},{r:"B",s:7},{r:"P",s:9},{r:"T",s:6},{r:"B",s:10},{r:"T",s:6},{r:"B",s:8},{r:"B",s:10},{r:"B",s:12},{r:"B",s:7},{r:"T",s:4},{r:"P",s:7},{r:"B",s:11},{r:"P",s:11},{r:"B",s:8},{r:"P",s:8},{r:"B",s:10},{r:"B",s:7},{r:"P",s:4},{r:"B",s:8},{r:"P",s:9},{r:"B",s:12},{r:"B",s:6},{r:"T",s:4},{r:"T",s:4},{r:"B",s:9},{r:"P",s:11},{r:"B",s:7},{r:"B",s:8},{r:"P",s:8},{r:"B",s:10},{r:"T",s:8},{r:"B",s:7},{r:"P",s:8},{r:"B",s:6},{r:"P",s:8},{r:"T",s:11},{r:"B",s:8},{r:"P",s:7},{r:"B",s:8},{r:"P",s:8},{r:"B",s:9},{r:"P",s:9},{r:"B",s:8},{r:"P",s:9},{r:"B",s:6},{r:"P",s:7},{r:"B",s:11},{r:"P",s:9},{r:"B",s:10},{r:"P",s:8}];
-
-// Estado global
-let ST = {
-  H: HIST0, verde: 0, verm: 0,
-  ciclo: "idle",   // idle | entrada | gale | recup
-  sig: null,       // "P"|"B" sinal da entrada ativa
-  galeInfo: null,  // {modo,lado}
-  recupLado: null,
-  tgAtivo: false,
-  aviso: ""
-};
-let avisoTimer = null;
-let somaInput = "";
-let injOpen = false;
-let injText = "";
-let jsnVis = false;
-
-// ══ MOTOR ════════════════════════════════════════════════════════════════════
+// ══ MOTOR NEURAL APRIMORADO ══════════════════════════════════════════════════
 function analisarMesa(H){
-  const ult=H.slice(-15),C=ult.filter(h=>h.r!=="T");
-  if(C.length<8)return{label:"⚪ MESA: ANALISANDO",cor:"#64748b",cautela:false,detalhe:""};
+  const ult=H.slice(-20),C=ult.filter(h=>h.r!=="T");
+  if(C.length<8)return{label:"⚪ ANALISANDO",cor:"#64748b",cautela:false,detalhe:"",score:0};
   let trocas=0,stMax=1,st=1;
   for(let i=1;i<C.length;i++){if(C[i].r!==C[i-1].r){trocas++;st=1;}else{st++;if(st>stMax)stMax=st;}}
   const tx=trocas/(C.length-1);
@@ -64,21 +41,31 @@ function analisarMesa(H){
   const avg=somas.reduce((a,b)=>a+b,0)/somas.length;
   const vol=somas.reduce((a,s)=>a+Math.abs(s-avg),0)/somas.length;
   const ties=ult.filter(h=>h.r==="T").length/ult.length;
-  const sc=[(tx>0.75&&vol>2),(stMax>=4&&tx>0.5),(ties>0.25),(tx>0.65&&tx<0.85&&vol>1.8)].filter(Boolean).length;
-  if(sc>=2)return{label:"🔴 MESA EM COLETA — manipulação detectada",cor:"#ef4444",cautela:true,detalhe:`Alt ${Math.round(tx*100)}% · vol ${vol.toFixed(1)} · T ${Math.round(ties*100)}% — reduzir valor ou aguardar`};
-  if(sc===1)return{label:"🟡 MESA INSTÁVEL — cautela",cor:"#f59e0b",cautela:true,detalhe:`Alt ${Math.round(tx*100)}% · vol ${vol.toFixed(1)} — entrar só com conf >80%`};
-  if(tx>=0.45&&tx<=0.65&&vol<1.8)return{label:"🟢 MESA PAGANTE — padrão limpo",cor:"#22c55e",cautela:false,detalhe:`Alt ${Math.round(tx*100)}% · vol ${vol.toFixed(1)} — boa janela`};
-  return{label:"⚪ MESA NEUTRA — observando",cor:"#64748b",cautela:false,detalhe:`Alt ${Math.round(tx*100)}% · vol ${vol.toFixed(1)}`};
+  // Padrão de ping-pong vs streak
+  const pingpong=tx>0.6;
+  const streakDom=stMax>=3;
+  const sc=[(tx>0.78&&vol>2.2),(stMax>=5&&tx>0.45),(ties>0.28),(tx>0.68&&tx<0.88&&vol>2.0)].filter(Boolean).length;
+  if(sc>=2)return{label:"🔴 MESA EM COLETA",cor:"#ef4444",cautela:true,detalhe:`Alt${Math.round(tx*100)}% vol${vol.toFixed(1)} T${Math.round(ties*100)}% — reduzir ou aguardar`,score:-2};
+  if(sc===1)return{label:"🟡 MESA INSTÁVEL",cor:"#f59e0b",cautela:true,detalhe:`Alt${Math.round(tx*100)}% vol${vol.toFixed(1)} — conf>80% obrigatório`,score:-1};
+  if(pingpong&&!streakDom)return{label:"🟢 MESA PAGANTE — ping-pong",cor:"#22c55e",cautela:false,detalhe:`Alt${Math.round(tx*100)}% vol${vol.toFixed(1)} — padrão limpo`,score:2};
+  if(streakDom&&!pingpong)return{label:"🟢 MESA PAGANTE — streaks",cor:"#22c55e",cautela:false,detalhe:`Streak max ${stMax} — seguir tendência`,score:2};
+  if(tx>=0.4&&tx<=0.7&&vol<2.0)return{label:"🟢 MESA PAGANTE",cor:"#22c55e",cautela:false,detalhe:`Alt${Math.round(tx*100)}% vol${vol.toFixed(1)} — boa janela`,score:1};
+  return{label:"⚪ MESA NEUTRA",cor:"#64748b",cautela:false,detalhe:`Alt${Math.round(tx*100)}% vol${vol.toFixed(1)}`,score:0};
 }
 
 function motor(H,cautela){
   const C=H.filter(h=>h.r!=="T");
-  if(C.length<4)return{sinal:null,conf:0,razao:"Aguardando histórico",tg:false,tp:4,dt:99};
-  const r5=C.slice(-5).map(h=>h.r),r8=C.slice(-8);
+  if(C.length<4)return{sinal:null,conf:0,razao:"Histórico insuficiente",tg:false,tp:4,dt:99};
+
+  const r5=C.slice(-5).map(h=>h.r);
+  const r8=C.slice(-8);
+  const r12=C.slice(-12);
   const s6=H.slice(-6).map(h=>h.s).filter(Boolean);
-  const avg=s6.length?s6.reduce((a,b)=>a+b,0)/s6.length:8.5;
-  const est=s6.length>=4&&s6.reduce((a,s)=>a+Math.abs(s-avg),0)/s6.length<1.5;
-  const hi=avg>=9.5;
+  const s12=H.slice(-12).map(h=>h.s).filter(Boolean);
+  const avg6=s6.length?s6.reduce((a,b)=>a+b,0)/s6.length:8.5;
+  const avg12=s12.length?s12.reduce((a,b)=>a+b,0)/s12.length:8.5;
+  const est=s6.length>=4&&s6.reduce((a,s)=>a+Math.abs(s-avg6),0)/s6.length<1.5;
+  const hi=avg6>=9.5;
   const tc=H.slice(-12).filter(h=>h.r==="T").length;
   const td=tc/12,mp=td>=0.12;
   const ri=[...H].reverse().findIndex(h=>h.r==="T");
@@ -86,190 +73,355 @@ function motor(H,cautela){
   const ls=H[H.length-1]?.s;
   const tg=(td>=0.12&&dt>=4)||dt>=7||(!!ls&&(ls<=4||ls>=10)&&dt>=3);
   const tp=ls?TP[ls]||4:4;
-  const mn=cautela?0.78:0.62;
-  function bc(b){let v=b;if(est)v+=.07;if(hi)v+=.05;if(mp)v+=.06;return Math.min(v,.95);}
-  const pC=r8.filter(h=>h.r==="P").length,bC=r8.filter(h=>h.r==="B").length;
-  const p5=r5.length>=5&&r5.every((r,i)=>i===0||r!==r5[i-1]);
-  const p4=r5.length>=4&&r5.slice(-4).every((r,i)=>i===0||r!==r5.slice(-4)[i-1]);
-  if(p5||p4){const nx=r5[r5.length-1]==="P"?"B":"P";const c=bc(p5?.84:.72);if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`Ping-pong ${p5?"5":"4"} ciclos`,tg,tp,dt};}
-  if(r5.length>=4){const a=r5.slice(-4);
-    if(a[0]===a[1]&&a[2]===a[3]&&a[0]!==a[2]){const nx=a[3]==="P"?"B":"P";const c=bc(.78);if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"Bloco 2×2 — troca",tg,tp,dt};}
-    if(a[2]===a[3]&&a[1]!==a[2]){const c=bc(.72);if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"Bloco 2×2 — continuar",tg,tp,dt};}
+  const mn=cautela?0.80:0.64;
+
+  function bc(b,side){
+    let v=b;
+    if(est)v+=0.07;
+    if(hi)v+=0.05;
+    if(mp)v+=0.06;
+    // Bias baseado em dominância recente
+    const pC12=r12.filter(h=>h.r==="P").length;
+    const bC12=r12.filter(h=>h.r==="B").length;
+    if(side==="P"&&pC12>bC12)v+=0.04;
+    if(side==="B"&&bC12>pC12)v+=0.04;
+    return Math.min(v,0.96);
   }
-  let s=1;const ss=C[C.length-1]?.r;
-  for(let i=C.length-2;i>=0;i--){if(C[i].r===ss)s++;else break;}
-  if(s>=5)return{sinal:null,conf:0,razao:`Streak ${s}×${ss} — aguarda`,tg,tp,dt};
-  if(s>=3){const sv=H.slice(-s).map(h=>h.s).filter(Boolean);const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
-    if(vl>=3){const nx=ss==="P"?"B":"P";const c=bc(.77);if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`Streak ${s}×${ss} — quebra`,tg,tp,dt};}
-    else{const c=bc(.64);if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`Streak ${s}×${ss} — continuar`,tg,tp,dt};}
+
+  const pC8=r8.filter(h=>h.r==="P").length;
+  const bC8=r8.filter(h=>h.r==="B").length;
+  const pC12=r12.filter(h=>h.r==="P").length;
+  const bC12=r12.filter(h=>h.r==="B").length;
+
+  // ── 1. PING-PONG EXTENDIDO (5 ciclos) ─────────────────────────────────────
+  const pp5=r5.length>=5&&r5.every((r,i)=>i===0||r!==r5[i-1]);
+  if(pp5){
+    const nx=r5[r5.length-1]==="P"?"B":"P";
+    const c=bc(0.86,nx);
+    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"Ping-pong 5 ciclos",tg,tp,dt};
   }
-  if(pC>=6){const c=bc(.85);if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`Reequilíbrio B (P${pC}/8)`,tg,tp,dt};}
-  if(bC>=6){const c=bc(.62);if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`Reequilíbrio P (B${bC}/8)`,tg,tp,dt};}
-  // GATILHO EMPATE — sempre verifica independente de cautela
-  if(tg){const c=Math.min(.68+(mp?.08:0)+(dt>=7?.08:0),.86);if(c>=0.62)return{sinal:"T",conf:Math.round(c*100),razao:`Gatilho Empate · ${dt} rod. sem Tie · ${tp}x`,tg:true,tp,dt};}
-  return{sinal:null,conf:0,razao:cautela?"Mesa instável — aguardando padrão":"Aguardando convergência",tg,tp,dt};
+
+  // ── 2. PING-PONG 4 ciclos ─────────────────────────────────────────────────
+  const pp4=r5.length>=4&&r5.slice(-4).every((r,i)=>i===0||r!==r5.slice(-4)[i-1]);
+  if(pp4){
+    const nx=r5[r5.length-1]==="P"?"B":"P";
+    const c=bc(0.77,nx);
+    if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"Ping-pong 4 ciclos",tg,tp,dt};
+  }
+
+  // ── 3. BLOCO 2×2 TROCA ────────────────────────────────────────────────────
+  if(r5.length>=4){
+    const a=r5.slice(-4);
+    if(a[0]===a[1]&&a[2]===a[3]&&a[0]!==a[2]){
+      const nx=a[3]==="P"?"B":"P";
+      const c=bc(0.80,nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"Bloco 2×2 — troca",tg,tp,dt};
+    }
+  }
+
+  // ── 4. BLOCO 2×2 CONTINUAR ────────────────────────────────────────────────
+  if(r5.length>=4){
+    const a=r5.slice(-4);
+    if(a[2]===a[3]&&a[1]!==a[2]&&a[0]!==a[1]){
+      const c=bc(0.75,a[3]);
+      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"Bloco 2×2 — continuar",tg,tp,dt};
+    }
+  }
+
+  // ── 5. BLOCO 3×1 (PPPP→B ou BBBB→P) ──────────────────────────────────────
+  if(r5.length>=4){
+    const a=r5.slice(-4);
+    if(a[0]===a[1]&&a[1]===a[2]&&a[2]!==a[3]){
+      // 3 iguais + 1 diferente → continuar diferente
+      const c=bc(0.74,a[3]);
+      if(c>=mn)return{sinal:a[3],conf:Math.round(c*100),razao:"Bloco 3×1 — continuar",tg,tp,dt};
+    }
+  }
+
+  // ── 6. STREAK ─────────────────────────────────────────────────────────────
+  let stk=1;const ss=C[C.length-1]?.r;
+  for(let i=C.length-2;i>=0;i--){if(C[i].r===ss)stk++;else break;}
+  if(stk>=6)return{sinal:null,conf:0,razao:`Streak ${stk}×${ss} — exaustão`,tg,tp,dt};
+  if(stk>=4){
+    // Streak longo — verificar volatilidade de somas
+    const sv=H.slice(-stk).map(h=>h.s).filter(Boolean);
+    const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
+    if(vl>=4){
+      const nx=ss==="P"?"B":"P";
+      const c=bc(0.80,nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`Streak ${stk}×${ss} — quebra vol${vl}`,tg,tp,dt};
+    } else {
+      const c=bc(0.72,ss);
+      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`Streak ${stk}×${ss} — continuar`,tg,tp,dt};
+    }
+  }
+  if(stk===3){
+    const sv=H.slice(-stk).map(h=>h.s).filter(Boolean);
+    const vl=sv.length>=2?Math.max(...sv)-Math.min(...sv):0;
+    if(vl>=3){
+      const nx=ss==="P"?"B":"P";
+      const c=bc(0.79,nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:`Streak 3×${ss} — quebra`,tg,tp,dt};
+    } else {
+      const c=bc(0.70,ss);
+      if(c>=mn)return{sinal:ss,conf:Math.round(c*100),razao:`Streak 3×${ss} — continuar`,tg,tp,dt};
+    }
+  }
+
+  // ── 7. REEQUILÍBRIO FORTE (8/8 ou 7/8) ───────────────────────────────────
+  if(pC8>=7){const c=bc(0.86,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`Reequilíbrio B forte (P${pC8}/8)`,tg,tp,dt};}
+  if(bC8>=7){const c=bc(0.86,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`Reequilíbrio P forte (B${bC8}/8)`,tg,tp,dt};}
+  if(pC8>=6){const c=bc(0.82,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`Reequilíbrio B (P${pC8}/8)`,tg,tp,dt};}
+  if(bC8>=6){const c=bc(0.82,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`Reequilíbrio P (B${bC8}/8)`,tg,tp,dt};}
+
+  // ── 8. DOMINÂNCIA 12 RODADAS ──────────────────────────────────────────────
+  if(pC12>=10){const c=bc(0.84,"B");if(c>=mn)return{sinal:"B",conf:Math.round(c*100),razao:`Dominância P extrema (${pC12}/12) — reequil`,tg,tp,dt};}
+  if(bC12>=10){const c=bc(0.84,"P");if(c>=mn)return{sinal:"P",conf:Math.round(c*100),razao:`Dominância B extrema (${bC12}/12) — reequil`,tg,tp,dt};}
+
+  // ── 9. PADRÃO ZIG-ZAG INCOMPLETO ─────────────────────────────────────────
+  if(r5.length>=5){
+    const a=r5.slice(-5);
+    // PBPB? → P
+    if(a[0]!==a[1]&&a[1]!==a[2]&&a[2]!==a[3]&&a[3]===a[1]){
+      const nx=a[4]===a[3]?a[2]:a[3];
+      const c=bc(0.73,nx);
+      if(c>=mn)return{sinal:nx,conf:Math.round(c*100),razao:"Zig-zag incompleto",tg,tp,dt};
+    }
+  }
+
+  // ── 10. GATILHO EMPATE ────────────────────────────────────────────────────
+  if(tg){
+    const c=Math.min(0.70+(mp?0.08:0)+(dt>=7?0.08:0),0.88);
+    if(c>=0.62)return{sinal:"T",conf:Math.round(c*100),razao:`Gatilho Empate · ${dt} rod. sem Tie · ${tp}x`,tg:true,tp,dt};
+  }
+
+  return{sinal:null,conf:0,razao:cautela?"Mesa instável — aguardando":"Aguardando padrão",tg,tp,dt};
 }
 
+// ── GALE: analisa após falha e decide ─────────────────────────────────────────
+// AGUARDAR = não tem sinal claro, registra rodadas sem pontuar até ter
+// REPETIR/INVERTER = tem sinal, confirma e pontua
 function calcGale(H,sigOrig,cautela){
-  const C=H.filter(h=>h.r!=="T"),l2=C.slice(-2).map(h=>h.r),an=motor(H,cautela);
-  if(!an.sinal||an.conf<(cautela?75:58)||an.razao.includes("aguarda"))return{modo:"AGUARDAR",lado:sigOrig};
-  if(l2.length===2&&l2[0]!==l2[1]&&an.sinal!=="T"&&an.sinal!==sigOrig)return{modo:"INVERTER",lado:an.sinal};
-  return{modo:"REPETIR",lado:sigOrig};
+  const C=H.filter(h=>h.r!=="T");
+  const l2=C.slice(-2).map(h=>h.r);
+  const l3=C.slice(-3).map(h=>h.r);
+  const an=motor(H,cautela);
+
+  // Exaustão → aguardar
+  if(an.razao.includes("exaustão"))return{modo:"AGUARDAR",lado:sigOrig,razao:"Streak em exaustão"};
+  // Confiança baixa → aguardar
+  if(!an.sinal||an.conf<(cautela?78:62))return{modo:"AGUARDAR",lado:sigOrig,razao:"Confiança insuficiente"};
+  // Motor sugere empate → aguardar cor
+  if(an.sinal==="T")return{modo:"AGUARDAR",lado:sigOrig,razao:"Gatilho empate ativo"};
+
+  // Mutação clara: últimas 2 alternaram E motor aponta oposto
+  if(l2.length===2&&l2[0]!==l2[1]&&an.sinal!==sigOrig){
+    return{modo:"INVERTER",lado:an.sinal,razao:an.razao};
+  }
+
+  // Padrão estável: motor confirma mesma cor
+  if(an.sinal===sigOrig){
+    return{modo:"REPETIR",lado:sigOrig,razao:an.razao};
+  }
+
+  // Motor aponta cor diferente mas sem mutação clara → aguardar
+  return{modo:"AGUARDAR",lado:sigOrig,razao:"Padrão ambíguo"};
 }
 
-// ══ SYNC FIREBASE ════════════════════════════════════════════════════════════
-function push(newSt){
-  // Atualiza local imediatamente
-  const s = {...newSt};
-  delete s.aviso; // aviso é local apenas
-  db.ref(ROOM).set({
-    H: s.H,
-    verde: s.verde,
-    verm: s.verm,
-    ciclo: s.ciclo,
-    sig: s.sig || null,
-    galeInfo: s.galeInfo || null,
-    recupLado: s.recupLado || null,
-    tgAtivo: s.tgAtivo || false,
-    _ts: Date.now()
-  });
-}
+// ══ ESTADO ═══════════════════════════════════════════════════════════════════
+let ST={H:[],verde:0,verm:0,ciclo:"idle",sig:null,galeInfo:null,tgAtivo:false};
+let avisoTimer=null;
+let somaInput="";
+let injOpen=false;
+let injText="";
+let jsnVis=false;
 
-function showAviso(txt, dur=3000){
-  ST.aviso = txt;
+// ══ FIREBASE LISTENER ════════════════════════════════════════════════════════
+db.ref(ROOM).on("value",snap=>{
+  const val=snap.val();
+  if(val&&val._ts){
+    ST.H=val.H||ST.H;
+    ST.verde=typeof val.verde==="number"?val.verde:ST.verde;
+    ST.verm=typeof val.verm==="number"?val.verm:ST.verm;
+    ST.ciclo=val.ciclo||"idle";
+    ST.sig=val.sig||null;
+    ST.galeInfo=val.galeInfo||null;
+    ST.tgAtivo=val.tgAtivo||false;
+  }
   render();
-  if(avisoTimer) clearTimeout(avisoTimer);
-  avisoTimer = setTimeout(()=>{ ST.aviso=""; render(); }, dur);
+});
+
+function push(s){
+  const p={H:s.H,verde:s.verde,verm:s.verm,ciclo:s.ciclo,sig:s.sig||null,galeInfo:s.galeInfo||null,tgAtivo:s.tgAtivo||false,_ts:Date.now()};
+  db.ref(ROOM).set(p);
 }
 
-function GREEN(txt){ ST.verde++; showAviso("✅ GREEN — "+txt); }
-function RED(){ ST.verm++; showAviso("❌ RED — entrada + gale falharam"); }
-function resetCiclo(){ ST.ciclo="idle"; ST.sig=null; ST.galeInfo=null; ST.recupLado=null; ST.tgAtivo=false; }
+function av(txt,dur=3000){
+  ST.aviso=txt;render();
+  if(avisoTimer)clearTimeout(avisoTimer);
+  avisoTimer=setTimeout(()=>{ST.aviso="";render();},dur);
+}
+
+function GREEN(txt){ST.verde++;av("✅ GREEN — "+txt);}
+function RED(){ST.verm++;av("❌ RED — entrada + gale falharam");}
+function resetCiclo(){ST.ciclo="idle";ST.sig=null;ST.galeInfo=null;ST.tgAtivo=false;}
 
 // ══ LÓGICA PRINCIPAL ═════════════════════════════════════════════════════════
 function confirmar(){
-  const mesa = analisarMesa(ST.H);
-  const an = motor(ST.H, mesa.cautela);
-  if(!an.sinal||an.sinal==="T") return;
-  ST.sig = an.sinal;
-  ST.tgAtivo = an.tg;
-  ST.ciclo = "entrada";
-  push(ST);
-  showAviso(`${an.sinal==="P"?"🔵":"🔴"} Entrada confirmada — clique o resultado real`);
+  const mesa=analisarMesa(ST.H);
+  const an=motor(ST.H,mesa.cautela);
+  if(!an.sinal||an.sinal==="T")return;
+  ST.sig=an.sinal;ST.tgAtivo=an.tg;ST.ciclo="entrada";
+  push(ST);av(`${an.sinal==="P"?"🔵":"🔴"} Confirmado — clique o resultado real`);
 }
 
 function reg(r){
-  const s = parseInt(somaInput)||( r==="T"?7:8);
-  const tp = TP[s]||4;
-  ST.H = [...ST.H, {r,s}];
-  somaInput = "";
+  const s=parseInt(somaInput)||(r==="T"?7:8);
+  const tp=TP[s]||4;
+  ST.H=[...ST.H,{r,s}];
+  somaInput="";
+  const mesa=analisarMesa(ST.H);
 
-  // ── RECUPERAÇÃO
-  if(ST.ciclo==="recup"){
-    if(r==="T"||r===ST.recupLado){ GREEN(r==="T"?`Empate ${tp}x na recuperação`:"Recuperação acertou!"); }
-    else{ showAviso("⚠️ Recuperação falhou — ciclo encerrado"); }
-    resetCiclo(); push(ST); return;
+  // ══ RECUPERAÇÃO removida — empate sempre GREEN ════════════════════════════
+
+  // ══ GALE AGUARDANDO ══════════════════════════════════════════════════════
+  // BUG CORRIGIDO: quando gale está em AGUARDAR, registrar NÃO conta green/red
+  // apenas recalcula o gale e aguarda o momento certo
+  if(ST.ciclo==="gale"&&ST.galeInfo?.modo==="AGUARDAR"){
+    if(r==="T"&&ST.tgAtivo){
+      GREEN(`Empate ${tp}x durante espera`);resetCiclo();push(ST);return;
+    }
+    // Recalcula decisão com novo dado
+    const g=calcGale(ST.H,ST.sig,mesa.cautela);
+    ST.galeInfo=g;
+    if(g.modo!=="AGUARDAR"){
+      // Agora tem decisão clara — avisa e aguarda confirmação do usuário
+      av(g.modo==="INVERTER"
+        ?`🔄 GALE PRONTO — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`
+        :`⚡ GALE PRONTO — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`);
+    } else {
+      av("⏳ GALE AGUARDANDO — mais uma rodada...");
+    }
+    push(ST);return;
   }
 
-  // ── GALE ATIVO
-  if(ST.ciclo==="gale"&&ST.galeInfo){
+  // ══ GALE ATIVO (REPETIR ou INVERTER confirmado) ══════════════════════════
+  if(ST.ciclo==="gale"&&ST.galeInfo&&ST.galeInfo.modo!=="AGUARDAR"){
     if(r==="T"){
       // REGRA: qualquer empate com ciclo ativo = GREEN
-      GREEN(`Empate ${tp}x no Gale`);
-      if(tp<=6){ ST.recupLado=ST.galeInfo.lado; ST.galeInfo=null; ST.sig=null; ST.ciclo="recup"; }
-      else resetCiclo();
-      push(ST); return;
+      GREEN(`Empate ${tp}x no Gale`);resetCiclo();push(ST);return;
     }
-    if(r===ST.galeInfo.lado){ GREEN("Gale acertou!"); resetCiclo(); }
-    else{ RED(); resetCiclo(); }
-    push(ST); return;
+    if(r===ST.galeInfo.lado){GREEN("Gale acertou!");}
+    else{RED();}
+    resetCiclo();push(ST);return;
   }
 
-  // ── ENTRADA ATIVA
+  // ══ ENTRADA ATIVA ════════════════════════════════════════════════════════
   if(ST.ciclo==="entrada"&&ST.sig){
     if(r==="T"){
-      // REGRA: qualquer empate com entrada ativa = GREEN
-      GREEN(`Empate ${tp}x na entrada`);
-      if(tp<=6){ ST.recupLado=ST.sig; ST.sig=null; ST.ciclo="recup"; }
-      else resetCiclo();
-      push(ST); return;
+      // REGRA: qualquer empate com entrada ativa = GREEN, sem recuperação
+      GREEN(`Empate ${tp}x na entrada`);resetCiclo();push(ST);return;
     }
-    if(r===ST.sig){ GREEN("Acertou de primeira!"); resetCiclo(); push(ST); return; }
-    // Não bateu → gale
-    const mesa = analisarMesa(ST.H);
-    const g = calcGale(ST.H, ST.sig, mesa.cautela);
-    ST.galeInfo = g; ST.ciclo = "gale";
-    push(ST);
-    showAviso(g.modo==="AGUARDAR"?"⏳ GALE 1 — AGUARDAR: motor instável":
-      g.modo==="INVERTER"?`🔄 GALE 1 — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"}`:
-      `⚡ GALE 1 — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"}`);
+    if(r===ST.sig){GREEN("Acertou de primeira!");resetCiclo();push(ST);return;}
+    // Não bateu → calcular gale
+    const g=calcGale(ST.H,ST.sig,mesa.cautela);
+    ST.galeInfo=g;ST.ciclo="gale";push(ST);
+    if(g.modo==="AGUARDAR"){
+      av(`⏳ GALE 1 — AGUARDAR: ${g.razao} · Registre mais rodadas`);
+    } else {
+      av(g.modo==="INVERTER"
+        ?`🔄 GALE 1 — INVERTER: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`
+        :`⚡ GALE 1 — REPETIR: ${g.lado==="P"?"AZUL":"VERMELHO"} · Confirme`);
+    }
     return;
   }
 
-  // ── IDLE
+  // ══ IDLE ════════════════════════════════════════════════════════════════
   if(r==="T"){
-    if(ST.tgAtivo){
-      // REGRA: gatilho ativo + empate bate = GREEN
-      GREEN(`Empate ${tp}x no Gatilho!`);
-      ST.tgAtivo=false; push(ST);
-    } else {
-      // Sem gatilho ativo: neutro
-      showAviso("○ Empate — sem gatilho ativo (neutro)");
-      push(ST);
-    }
+    if(ST.tgAtivo){GREEN(`Empate ${tp}x no Gatilho!`);ST.tgAtivo=false;push(ST);}
+    else{av("○ Empate — neutro");push(ST);}
     return;
   }
-  // Sem sinal — só registra
+  push(ST);av("○ Registrado");
+}
+
+function confirmarGale(){
+  if(!ST.galeInfo||ST.galeInfo.modo==="AGUARDAR")return;
+  // Usuário confirma que vai entrar no gale — agora espera resultado
+  ST.ciclo="gale"; // já está, mas garante modo ativo
   push(ST);
-  showAviso("○ Registrado");
+  av(`${ST.galeInfo.lado==="P"?"🔵":"🔴"} Gale confirmado — clique o resultado real`);
 }
 
 function aplicarJson(){
   try{
     const d=JSON.parse(injText);
-    if(Array.isArray(d.history)&&d.history.length>0) ST.H=d.history.map(h=>({r:h.r||h.result,s:h.s||h.sum||8}));
-    if(typeof d.greens==="number") ST.verde=d.greens;
-    if(typeof d.reds==="number") ST.verm=d.reds;
-    resetCiclo(); push(ST);
-    injText=""; injOpen=false;
-    showAviso("✅ JSON aplicado!");
-  }catch{ showAviso("❌ JSON inválido"); }
+    if(Array.isArray(d.history)&&d.history.length>0)ST.H=d.history.map(h=>({r:h.r||h.result,s:h.s||h.sum||8}));
+    if(typeof d.greens==="number")ST.verde=d.greens;
+    if(typeof d.reds==="number")ST.verm=d.reds;
+    if(d.weights)ST.weights=d.weights;
+    resetCiclo();push(ST);injText="";injOpen=false;av("✅ JSON aplicado!");
+  }catch{av("❌ JSON inválido");}
 }
 
 function copiar(){
-  const d=JSON.stringify({history:ST.H,greens:ST.verde,reds:ST.verm,rate:ST.verde+ST.verm?Math.round(ST.verde/(ST.verde+ST.verm)*100):0,timestamp:new Date().toISOString()},null,2);
-  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(d).then(()=>showAviso("📋 Copiado!")).catch(()=>{ jsnVis=true; render(); });
-  else{try{const t=document.createElement("textarea");t.value=d;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);showAviso("📋 Copiado!");}catch{jsnVis=true;render();}}
+  const d=JSON.stringify({history:ST.H,greens:ST.verde,reds:ST.verm,rate:ST.verde+ST.verm?Math.round(ST.verde/(ST.verde+ST.verm)*100):0,weights:ST.weights||{},timestamp:new Date().toISOString()},null,2);
+  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(d).then(()=>av("📋 Copiado!")).catch(()=>{jsnVis=true;render();});
+  else{try{const t=document.createElement("textarea");t.value=d;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);av("📋 Copiado!");}catch{jsnVis=true;render();}}
 }
 
 // ══ RENDER ═══════════════════════════════════════════════════════════════════
 function render(){
-  const mesa = analisarMesa(ST.H);
-  const an = motor(ST.H, mesa.cautela);
-  const tot=ST.verde+ST.verm, taxa=tot?Math.round(ST.verde/tot*100):0;
-  const rcor=taxa>=60?"#22c55e":taxa>=45?"#f59e0b":"#ef4444";
+  const mesa=analisarMesa(ST.H);
+  const an=motor(ST.H,mesa.cautela);
+  const tot=ST.verde+ST.verm,taxa=tot?Math.round(ST.verde/tot*100):0;
+  const rcor=taxa>=65?"#22c55e":taxa>=50?"#f59e0b":"#ef4444";
   const pP=Math.round(ST.H.filter(h=>h.r==="P").length/Math.max(ST.H.length,1)*100);
   const tP=Math.round(ST.H.filter(h=>h.r==="T").length/Math.max(ST.H.length,1)*100);
   const bP=Math.round(ST.H.filter(h=>h.r==="B").length/Math.max(ST.H.length,1)*100);
 
-  // Card
-  let cCor="#475569",cBg="rgba(0,0,0,0.3)",cBrd="rgba(255,255,255,0.08)",cTit="⏳ AGUARDA",cSub=an.razao,showBtn=false;
-  if(ST.ciclo==="recup"){{cCor="#f59e0b";cBg="rgba(80,50,0,0.35)";cBrd="#f59e0baa";cTit=`⚠️ RECUPERAÇÃO — ${ST.recupLado==="P"?"AZUL":"VERMELHO"}`;cSub="Clique o resultado da entrada de recuperação";}}
-  else if(ST.ciclo==="gale"&&ST.galeInfo){const gc=ST.galeInfo.lado==="P"?"#60a5fa":"#f87171";if(ST.galeInfo.modo==="AGUARDAR"){cCor="#f59e0b";cBg="rgba(80,50,0,0.3)";cBrd="#f59e0b88";cTit="⏳ GALE 1 — AGUARDAR";cSub="Motor instável — registre mais rodadas";}else{cCor=gc;cBg="rgba(60,0,80,0.25)";cBrd=`${gc}88`;cTit=ST.galeInfo.modo==="INVERTER"?`🔄 GALE 1 — INVERTER: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`:`⚡ GALE 1 — REPETIR: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`;cSub="Clique o resultado real do Gale";}}
-  else if(ST.ciclo==="entrada"&&ST.sig){const ac=ST.sig==="P"?"#60a5fa":"#f87171";cCor=ac;cBg=ST.sig==="P"?"rgba(0,30,120,0.25)":"rgba(100,0,0,0.25)";cBrd=`${ac}88`;cTit=`${ST.sig==="P"?"🔵":"🔴"} ENTRADA ATIVA — ${ST.sig==="P"?"AZUL":"VERMELHO"}`;cSub="Clique o resultado real da mesa";}
-  else if(an.sinal==="T"){cCor="#f59e0b";cBg="rgba(100,70,0,0.2)";cBrd="#f59e0b88";cTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod. sem Tie`;cSub=an.razao;}
-  else if(an.sinal==="P"){cCor="#60a5fa";cBg="rgba(0,30,120,0.2)";cBrd="#3b82f688";cTit=`🔵 SINAL: AZUL · ${an.conf}%`;cSub=an.razao;showBtn=true;}
-  else if(an.sinal==="B"){cCor="#f87171";cBg="rgba(100,0,0,0.2)";cBrd="#ef444488";cTit=`🔴 SINAL: VERMELHO · ${an.conf}%`;cSub=an.razao;showBtn=true;}
+  // Card principal
+  let cCor="#475569",cBg="rgba(0,0,0,0.3)",cBrd="rgba(255,255,255,0.08)",cTit="⏳ AGUARDA",cSub=an.razao;
+  let showBtn=false,showGaleBtn=false;
+
+  if(ST.ciclo==="gale"&&ST.galeInfo){
+    if(ST.galeInfo.modo==="AGUARDAR"){
+      cCor="#f59e0b";cBg="rgba(80,50,0,0.3)";cBrd="#f59e0b88";
+      cTit="⏳ GALE 1 — AGUARDANDO PADRÃO";
+      cSub=`${ST.galeInfo.razao} · Registre rodadas sem pontuar`;
+    } else {
+      const gc=ST.galeInfo.lado==="P"?"#60a5fa":"#f87171";
+      cCor=gc;cBg="rgba(60,0,80,0.25)";cBrd=`${gc}88`;
+      cTit=ST.galeInfo.modo==="INVERTER"
+        ?`🔄 GALE 1 — INVERTER: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`
+        :`⚡ GALE 1 — REPETIR: ${ST.galeInfo.lado==="P"?"AZUL":"VERMELHO"}`;
+      cSub=`${ST.galeInfo.razao} · Confirme e registre o resultado`;
+      showGaleBtn=true;
+    }
+  } else if(ST.ciclo==="entrada"&&ST.sig){
+    const ac=ST.sig==="P"?"#60a5fa":"#f87171";
+    cCor=ac;cBg=ST.sig==="P"?"rgba(0,30,120,0.25)":"rgba(100,0,0,0.25)";cBrd=`${ac}88`;
+    cTit=`${ST.sig==="P"?"🔵":"🔴"} ENTRADA ATIVA — ${ST.sig==="P"?"AZUL":"VERMELHO"}`;
+    cSub="Clique o resultado real da mesa";
+  } else if(an.sinal==="T"){
+    cCor="#f59e0b";cBg="rgba(100,70,0,0.2)";cBrd="#f59e0b88";
+    cTit=`🔥 GATILHO EMPATE · ${an.tp}x · ${an.dt} rod.`;cSub=an.razao;
+  } else if(an.sinal==="P"){
+    cCor="#60a5fa";cBg="rgba(0,30,120,0.2)";cBrd="#3b82f688";
+    cTit=`🔵 SINAL: AZUL · ${an.conf}%`;cSub=an.razao;showBtn=true;
+  } else if(an.sinal==="B"){
+    cCor="#f87171";cBg="rgba(100,0,0,0.2)";cBrd="#ef444488";
+    cTit=`🔴 SINAL: VERMELHO · ${an.conf}%`;cSub=an.razao;showBtn=true;
+  }
 
   const instrucao=ST.ciclo==="entrada"?"🎯 ENTRADA ATIVA — clique o resultado real da mesa":
-    ST.ciclo==="gale"&&ST.galeInfo?.modo!=="AGUARDAR"?"⚡ GALE ATIVO — clique o resultado real do Gale":
-    ST.ciclo==="gale"?"⏳ Registre rodadas — aguardando padrão":
-    ST.ciclo==="recup"?"🔄 RECUPERAÇÃO — clique o resultado real":"";
+    ST.ciclo==="gale"&&ST.galeInfo?.modo!=="AGUARDAR"?"⚡ CONFIRME O GALE acima e clique o resultado":
+    ST.ciclo==="gale"?"⏳ AGUARDANDO — registre rodadas, motor recalcula o gale a cada uma":"";
 
   // Beads
-  const C=20,R=6,cells=Array.from({length:R},()=>Array(C).fill(null));
+  const COLS=20,ROWS=6,cells=Array.from({length:ROWS},()=>Array(COLS).fill(null));
   let col=0,row=0;
-  ST.H.forEach(h=>{if(col>=C)return;cells[row][col]=h;row++;if(row>=R){row=0;col++;}});
+  ST.H.forEach(h=>{if(col>=COLS)return;cells[row][col]=h;row++;if(row>=ROWS){row=0;col++;}});
   const beadHTML=cells.flatMap((rw,ri)=>rw.map((c,ci)=>{
     const cor=c?{P:"#3b82f6",B:"#ef4444",T:"#f59e0b"}[c.r]:"rgba(255,255,255,0.04)";
     return `<div style="width:18px;height:18px;border-radius:50%;background:${cor};border:1px solid ${c?cor:"rgba(255,255,255,0.07)"};display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:bold">${c?c.r:""}</div>`;
@@ -280,27 +432,24 @@ function render(){
     return `<div style="padding:4px 10px;border-radius:7px;background:${c}${isL?"22":"0d"};border:1px solid ${c}${isL?"aa":"33"};color:${c};font-size:12px;font-weight:${isL?"bold":"normal"}">${h.r}${h.s?`<span style="opacity:.4;font-size:9px">·${h.s}</span>`:""}</div>`;
   }).join("");
 
-  const jsonStr=JSON.stringify({history:ST.H,greens:ST.verde,reds:ST.verm,rate:taxa,timestamp:new Date().toISOString()},null,2);
+  const jsonStr=JSON.stringify({history:ST.H,greens:ST.verde,reds:ST.verm,rate:taxa,weights:ST.weights||{},timestamp:new Date().toISOString()},null,2);
 
   document.getElementById("app").innerHTML=`
 <div style="min-height:100vh;background:#030712;padding-bottom:40px;background-image:radial-gradient(ellipse 80% 35% at 50% -5%,rgba(245,158,11,0.06),transparent 60%)">
-
-  <!-- HEADER -->
-  <div style="text-align:center;padding:18px 16px 12px;border-bottom:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,#060d20,transparent)">
+  <div style="text-align:center;padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,.07);background:linear-gradient(180deg,#060d20,transparent)">
     <div style="font-size:8px;letter-spacing:5px;color:#1a3050;margin-bottom:4px">EVOLUTION GAMING · BAC BO</div>
-    <div class="tg" style="font-size:28px;font-weight:900;letter-spacing:4px;font-family:sans-serif">APP BAC BRU</div>
-    <div style="font-size:8px;letter-spacing:3px;color:#0d1e30;margin-top:3px">v4.6 · DETECTOR DE COLETA · FIREBASE SYNC</div>
-    <div style="font-size:10px;color:#22c55e;margin-top:4px;letter-spacing:2px">🟢 SYNC ATIVO — espelhando em tempo real</div>
-    <div style="display:flex;justify-content:center;gap:8px;margin-top:10px;flex-wrap:wrap">
-      ${[{l:"P",v:`${pP}%`,c:"#3b82f6"},{l:"T",v:`${tP}%`,c:"#f59e0b"},{l:"B",v:`${bP}%`,c:"#ef4444"},{l:"#",v:ST.H.length,c:"#475569"}].map(x=>`<div style="padding:3px 11px;border-radius:20px;border:1px solid ${x.c}33;background:${x.c}0d;font-size:11px;color:${x.c}"><span style="color:#334155">${x.l} </span>${x.v}</div>`).join("")}
+    <div class="tg" style="font-size:26px;font-weight:900;letter-spacing:4px;font-family:sans-serif">APP BAC BRU</div>
+    <div style="font-size:8px;letter-spacing:3px;color:#0d1e30;margin-top:2px">v4.7 · MOTOR APRIMORADO · FIREBASE SYNC</div>
+    <div style="font-size:10px;color:#22c55e;margin-top:3px;letter-spacing:2px">🟢 SYNC ATIVO — espelhando em tempo real</div>
+    <div style="display:flex;justify-content:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+      ${[{l:"P",v:`${pP}%`,c:"#3b82f6"},{l:"T",v:`${tP}%`,c:"#f59e0b"},{l:"B",v:`${bP}%`,c:"#ef4444"},{l:"#",v:ST.H.length,c:"#475569"}].map(x=>`<div style="padding:3px 10px;border-radius:20px;border:1px solid ${x.c}33;background:${x.c}0d;font-size:11px;color:${x.c}"><span style="color:#334155">${x.l} </span>${x.v}</div>`).join("")}
     </div>
   </div>
 
   <div style="padding:10px 13px 0">
-
     <!-- DETECTOR MESA -->
-    <div style="margin-bottom:10px;padding:11px 14px;border-radius:12px;background:${mesa.cor}10;border:2px solid ${mesa.cor}55">
-      <div style="font-size:14px;font-weight:900;color:${mesa.cor};font-family:sans-serif;margin-bottom:2px">${mesa.label}</div>
+    <div style="margin-bottom:10px;padding:10px 14px;border-radius:12px;background:${mesa.cor}10;border:2px solid ${mesa.cor}55">
+      <div style="font-size:13px;font-weight:900;color:${mesa.cor};font-family:sans-serif;margin-bottom:2px">${mesa.label}</div>
       <div style="font-size:10px;color:${mesa.cor};opacity:.8">${mesa.detalhe}</div>
     </div>
 
@@ -308,104 +457,82 @@ function render(){
     ${ST.aviso?`<div style="margin-bottom:10px;padding:12px 16px;border-radius:10px;background:${ST.aviso.startsWith("✅")?"rgba(20,80,40,0.5)":ST.aviso.startsWith("❌")?"rgba(80,20,20,0.5)":"rgba(0,0,0,0.4)"};border:1px solid ${ST.aviso.startsWith("✅")?"#22c55e":ST.aviso.startsWith("❌")?"#ef4444":"#475569"}88;font-size:15px;font-weight:900;color:${ST.aviso.startsWith("✅")?"#22c55e":ST.aviso.startsWith("❌")?"#ef4444":"#94a3b8"};text-align:center;font-family:sans-serif">${ST.aviso}</div>`:""}
 
     <!-- CARD SINAL -->
-    <div style="background:${cBg};border:1px solid ${cBrd};border-radius:14px;padding:16px 18px;margin-bottom:10px;transition:all .25s">
-      <div style="font-size:16px;font-weight:900;color:${cCor};margin-bottom:4px;font-family:sans-serif">${cTit}</div>
+    <div style="background:${cBg};border:1px solid ${cBrd};border-radius:14px;padding:14px 16px;margin-bottom:10px;transition:all .25s">
+      <div style="font-size:15px;font-weight:900;color:${cCor};margin-bottom:3px;font-family:sans-serif">${cTit}</div>
       ${cSub?`<div style="font-size:11px;color:#475569">${cSub}</div>`:""}
-      ${showBtn&&ST.ciclo==="idle"?`<button onclick="confirmar()" style="width:100%;margin-top:12px;padding:13px 0;background:${cCor}22;border:2px solid ${cCor};border-radius:10px;color:${cCor};font-size:15px;font-weight:900;cursor:pointer;letter-spacing:1px;font-family:sans-serif">▶ CONFIRMAR ENTRADA — ${an.sinal==="P"?"AZUL":"VERMELHO"}${mesa.cautela?`<span style="font-size:11px;opacity:.7;display:block;margin-top:2px">⚠️ Mesa instável — alto risco</span>`:""}
+      ${showBtn&&ST.ciclo==="idle"?`<button onclick="confirmar()" style="width:100%;margin-top:11px;padding:12px 0;background:${cCor}22;border:2px solid ${cCor};border-radius:10px;color:${cCor};font-size:14px;font-weight:900;cursor:pointer;font-family:sans-serif">▶ CONFIRMAR ENTRADA — ${an.sinal==="P"?"AZUL":"VERMELHO"}${mesa.cautela?`<span style="font-size:10px;opacity:.7;display:block">⚠️ Mesa instável — alto risco</span>`:""}
       </button>`:""}
-      ${an.tg&&ST.ciclo==="idle"?`<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid #f59e0b44;font-size:11px;color:#f59e0b">🔥 Gatilho Empate · ${an.dt} rod. sem Tie · ${an.tp}x<br><span style="color:#78400a;font-size:10px">Bater = GREEN ✅ · Não bater = neutro</span></div>`:""}
+      ${showGaleBtn?`<button onclick="confirmarGale()" style="width:100%;margin-top:11px;padding:12px 0;background:${cCor}22;border:2px solid ${cCor};border-radius:10px;color:${cCor};font-size:14px;font-weight:900;cursor:pointer;font-family:sans-serif">⚡ CONFIRMAR GALE — ${ST.galeInfo?.lado==="P"?"AZUL":"VERMELHO"}</button>`:""}
+      ${an.tg&&ST.ciclo==="idle"?`<div style="margin-top:10px;padding:7px 11px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid #f59e0b44;font-size:11px;color:#f59e0b">🔥 Gatilho Empate · ${an.dt} rod. · ${an.tp}x · <span style="color:#78400a">Bater = GREEN sempre · Não bater = neutro</span></div>`:""}
     </div>
 
     <!-- INSTRUÇÃO -->
-    ${instrucao?`<div style="margin-bottom:10px;padding:10px 14px;border-radius:10px;background:rgba(168,85,247,.1);border:1px solid #a855f755;font-size:13px;color:#c084fc;font-weight:bold;text-align:center">${instrucao}</div>`:""}
+    ${instrucao?`<div style="margin-bottom:10px;padding:9px 13px;border-radius:10px;background:rgba(168,85,247,.1);border:1px solid #a855f755;font-size:12px;color:#c084fc;font-weight:bold;text-align:center">${instrucao}</div>`:""}
 
     <!-- BOTÕES RESULTADO -->
-    <div style="background:rgba(4,8,20,.9);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px;margin-bottom:14px">
-      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:10px;text-align:center">${ST.ciclo==="idle"?"REGISTRAR RODADA":"▼ CLIQUE O RESULTADO REAL DA MESA"}</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+    <div style="background:rgba(4,8,20,.9);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;margin-bottom:12px">
+      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:9px;text-align:center">${ST.ciclo==="idle"?"REGISTRAR RODADA":"▼ CLIQUE O RESULTADO REAL DA MESA"}</div>
+      <div style="display:flex;gap:7px;align-items:center;margin-bottom:9px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
           <span style="font-size:9px;color:#1e3a5f">SOMA</span>
-          <input id="soma" type="number" min="2" max="12" value="${somaInput}" oninput="somaInput=this.value" placeholder="Σ" style="width:52px;height:58px;background:rgba(0,0,0,.6);border:1px solid #1e3a5f;border-radius:10px;color:#e2e8f0;font-size:22px;text-align:center;font-family:monospace;outline:none"/>
+          <input id="soma" type="number" min="2" max="12" value="${somaInput}" oninput="somaInput=this.value" placeholder="Σ" style="width:50px;height:56px;background:rgba(0,0,0,.6);border:1px solid #1e3a5f;border-radius:10px;color:#e2e8f0;font-size:21px;text-align:center;font-family:monospace;outline:none"/>
         </div>
-        <button onclick="reg('P')" style="flex:1;height:58px;background:linear-gradient(135deg,#1e3a8a,#2563eb);border:2px solid #3b82f6;border-radius:12px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;letter-spacing:1px;font-family:sans-serif">AZUL</button>
-        <button onclick="reg('B')" style="flex:1;height:58px;background:linear-gradient(135deg,#7f1d1d,#dc2626);border:2px solid #ef4444;border-radius:12px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;letter-spacing:1px;font-family:sans-serif">VERM.</button>
-        <button onclick="reg('T')" style="flex:1;height:58px;background:linear-gradient(135deg,#451a03,#b45309);border:2px solid #f59e0b;border-radius:12px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;letter-spacing:1px;font-family:sans-serif">EMPATE</button>
+        <button onclick="reg('P')" style="flex:1;height:56px;background:linear-gradient(135deg,#1e3a8a,#2563eb);border:2px solid #3b82f6;border-radius:11px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;font-family:sans-serif">AZUL</button>
+        <button onclick="reg('B')" style="flex:1;height:56px;background:linear-gradient(135deg,#7f1d1d,#dc2626);border:2px solid #ef4444;border-radius:11px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;font-family:sans-serif">VERM.</button>
+        <button onclick="reg('T')" style="flex:1;height:56px;background:linear-gradient(135deg,#451a03,#b45309);border:2px solid #f59e0b;border-radius:11px;color:#fff;cursor:pointer;font-size:15px;font-weight:900;font-family:sans-serif">EMPATE</button>
       </div>
-      <button onclick="ST.verde=0;ST.verm=0;resetCiclo();push(ST);render()" style="width:100%;padding:11px 0;background:linear-gradient(135deg,#14532d,#16a34a);border:1px solid #22c55e;border-radius:10px;color:#fff;cursor:pointer;font-size:13px;font-weight:bold;letter-spacing:1px">🏁 FINALIZAR SESSÃO</button>
+      <button onclick="ST.verde=0;ST.verm=0;resetCiclo();push(ST);render()" style="width:100%;padding:10px 0;background:linear-gradient(135deg,#14532d,#16a34a);border:1px solid #22c55e;border-radius:10px;color:#fff;cursor:pointer;font-size:13px;font-weight:bold">🏁 FINALIZAR SESSÃO</button>
     </div>
 
     <!-- PLACAR -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-      ${[{l:"ACERTOS",v:ST.verde,c:"#22c55e"},{l:"TAXA",v:taxa+"%",c:rcor},{l:"ERROS",v:ST.verm,c:"#ef4444"}].map(x=>`<div style="background:${x.c}0d;border:2px solid ${x.c}55;border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:9px;color:#334155;letter-spacing:3px;margin-bottom:4px">${x.l}</div><div style="font-size:36px;font-weight:900;color:${x.c};font-family:sans-serif;line-height:1">${x.v}</div></div>`).join("")}
+      ${[{l:"ACERTOS",v:ST.verde,c:"#22c55e"},{l:"TAXA",v:taxa+"%",c:rcor},{l:"ERROS",v:ST.verm,c:"#ef4444"}].map(x=>`<div style="background:${x.c}0d;border:2px solid ${x.c}55;border-radius:12px;padding:11px 8px;text-align:center"><div style="font-size:9px;color:#334155;letter-spacing:3px;margin-bottom:3px">${x.l}</div><div style="font-size:34px;font-weight:900;color:${x.c};font-family:sans-serif;line-height:1">${x.v}</div></div>`).join("")}
     </div>
-    <div style="height:4px;background:rgba(255,255,255,.05);border-radius:2px;margin-bottom:14px;overflow:hidden"><div style="height:100%;width:${taxa}%;background:linear-gradient(90deg,${rcor}88,${rcor});border-radius:2px;transition:width .6s ease"></div></div>
+    <div style="height:4px;background:rgba(255,255,255,.05);border-radius:2px;margin-bottom:12px;overflow:hidden"><div style="height:100%;width:${taxa}%;background:linear-gradient(90deg,${rcor}88,${rcor});border-radius:2px;transition:width .6s ease"></div></div>
 
     <!-- BEAD ROAD -->
-    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px;margin-bottom:10px">
-      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:8px">BEAD ROAD</div>
+    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px;margin-bottom:10px">
+      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:7px">BEAD ROAD</div>
       <div style="display:grid;grid-template-columns:repeat(20,18px);gap:2px;overflow-x:auto">${beadHTML}</div>
     </div>
 
     <!-- ÚLTIMAS 10 -->
-    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:12px;margin-bottom:14px">
-      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:8px">ÚLTIMAS 10 RODADAS</div>
+    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:11px;margin-bottom:12px">
+      <div style="font-size:10px;letter-spacing:3px;color:#2d4a6a;margin-bottom:7px">ÚLTIMAS 10</div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${last10}</div>
     </div>
 
     <!-- JSON -->
-    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;margin-bottom:14px;overflow:hidden">
-      <div onclick="injOpen=!injOpen;render()" style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:${injOpen?"1px solid rgba(255,255,255,.07)":"none"}">
+    <div style="background:rgba(4,8,20,.85);border:1px solid rgba(255,255,255,.07);border-radius:12px;margin-bottom:12px;overflow:hidden">
+      <div onclick="injOpen=!injOpen;render()" style="padding:11px 15px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:${injOpen?"1px solid rgba(255,255,255,.07)":"none"}">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:30px;height:30px;border-radius:8px;background:rgba(59,130,246,.12);border:1px solid #3b82f633;display:flex;align-items:center;justify-content:center;font-size:16px;color:#60a5fa">↑</div>
-          <div><div style="font-size:13px;color:#5090b0;font-weight:bold">INJETAR JSON</div><div style="font-size:10px;color:#1e3a5f">Calibragem · histórico</div></div>
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(59,130,246,.12);border:1px solid #3b82f633;display:flex;align-items:center;justify-content:center;font-size:15px;color:#60a5fa">↑</div>
+          <div><div style="font-size:12px;color:#5090b0;font-weight:bold">INJETAR JSON</div><div style="font-size:9px;color:#1e3a5f">Calibragem · histórico · pesos</div></div>
         </div>
         <span style="color:#1e3a5f">${injOpen?"▲":"▼"}</span>
       </div>
-      ${injOpen?`<div style="padding:0 14px 14px"><textarea id="injta" oninput="injText=this.value" placeholder="Cole o JSON aqui..." style="width:100%;height:80px;background:rgba(0,0,0,.65);border:1px solid #1e3a5f;border-radius:8px;color:#3a6080;font-size:10px;font-family:monospace;padding:8px;resize:none;outline:none;margin-bottom:8px;line-height:1.5;margin-top:8px">${injText}</textarea><button onclick="aplicarJson()" style="width:100%;padding:10px 0;background:rgba(59,130,246,.12);border:1px solid #3b82f644;border-radius:8px;color:#60a5fa;font-size:13px;letter-spacing:2px;cursor:pointer;font-family:monospace;font-weight:bold">↑ APLICAR</button></div>`:""}
+      ${injOpen?`<div style="padding:0 13px 13px"><textarea id="injta" oninput="injText=this.value" placeholder="Cole o JSON aqui..." style="width:100%;height:80px;background:rgba(0,0,0,.65);border:1px solid #1e3a5f;border-radius:8px;color:#3a6080;font-size:10px;font-family:monospace;padding:8px;resize:none;outline:none;margin-bottom:7px;margin-top:8px;line-height:1.5">${injText}</textarea><button onclick="aplicarJson()" style="width:100%;padding:9px 0;background:rgba(59,130,246,.12);border:1px solid #3b82f644;border-radius:8px;color:#60a5fa;font-size:13px;letter-spacing:2px;cursor:pointer;font-family:monospace;font-weight:bold">↑ APLICAR</button></div>`:""}
       <div style="height:1px;background:linear-gradient(90deg,transparent,#1e3a5f44,transparent)"></div>
       <div style="display:flex">
-        <button onclick="copiar()" style="flex:1;padding:12px 16px;display:flex;align-items:center;gap:10px;background:transparent;border:none;cursor:pointer;text-align:left">
-          <div style="width:30px;height:30px;border-radius:8px;background:rgba(34,197,94,.08);border:1px solid #22c55e22;display:flex;align-items:center;justify-content:center;font-size:16px;color:#22c55e">↓</div>
-          <div><div style="font-size:13px;color:#3a6a4a;font-weight:bold">COPIAR JSON</div><div style="font-size:10px;color:#0d1e30">Exportar calibragem</div></div>
+        <button onclick="copiar()" style="flex:1;padding:11px 15px;display:flex;align-items:center;gap:9px;background:transparent;border:none;cursor:pointer;text-align:left">
+          <div style="width:28px;height:28px;border-radius:7px;background:rgba(34,197,94,.08);border:1px solid #22c55e22;display:flex;align-items:center;justify-content:center;font-size:15px;color:#22c55e">↓</div>
+          <div><div style="font-size:12px;color:#3a6a4a;font-weight:bold">COPIAR JSON</div><div style="font-size:9px;color:#0d1e30">Exportar calibragem</div></div>
         </button>
-        <button onclick="jsnVis=!jsnVis;render()" style="padding:0 14px;background:transparent;border:none;cursor:pointer;font-size:11px;color:#334155">👁 VER</button>
+        <button onclick="jsnVis=!jsnVis;render()" style="padding:0 13px;background:transparent;border:none;cursor:pointer;font-size:11px;color:#334155">👁 VER</button>
       </div>
-      ${jsnVis?`<div style="padding:0 14px 14px"><textarea readonly onclick="this.select();try{document.execCommand('copy');showAviso('📋 Copiado!');}catch{}" style="width:100%;height:160px;background:rgba(0,0,0,.6);border:1px solid #1e3a5f;border-radius:8px;color:#3a9060;font-size:9px;font-family:monospace;padding:8px;resize:none;outline:none;line-height:1.4;cursor:text">${jsonStr.replace(/</g,"&lt;")}</textarea><div style="font-size:10px;color:#334155;margin-top:4px">Clique para selecionar e copiar</div></div>`:""}
+      ${jsnVis?`<div style="padding:0 13px 13px"><textarea readonly onclick="this.select();try{document.execCommand('copy');av('📋 Copiado!');}catch{}" style="width:100%;height:150px;background:rgba(0,0,0,.6);border:1px solid #1e3a5f;border-radius:8px;color:#3a9060;font-size:9px;font-family:monospace;padding:8px;resize:none;outline:none;line-height:1.4;cursor:text">${jsonStr.replace(/</g,"&lt;")}</textarea><div style="font-size:9px;color:#334155;margin-top:3px">Clique para selecionar e copiar</div></div>`:""}
     </div>
 
-    <!-- RODAPÉ -->
     <div style="display:flex;gap:8px;margin-bottom:8px">
-      <button onclick="if(ST.H.length>0){ST.H=ST.H.slice(0,-1);}resetCiclo();push(ST);render()" style="flex:1;padding:11px 0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#2d4a6a;font-size:12px;letter-spacing:2px;cursor:pointer;font-family:monospace">↩ DESFAZER</button>
-      <button onclick="ST.H=HIST0;ST.verde=0;ST.verm=0;resetCiclo();push(ST);render()" style="flex:1;padding:11px 0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#2d4a6a;font-size:12px;letter-spacing:2px;cursor:pointer;font-family:monospace">◌ ZERAR</button>
+      <button onclick="if(ST.H.length>0){ST.H=ST.H.slice(0,-1);}resetCiclo();push(ST);render()" style="flex:1;padding:10px 0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#2d4a6a;font-size:12px;letter-spacing:2px;cursor:pointer;font-family:monospace">↩ DESFAZER</button>
+      <button onclick="ST.H=[];ST.verde=0;ST.verm=0;resetCiclo();push(ST);render()" style="flex:1;padding:10px 0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:9px;color:#2d4a6a;font-size:12px;letter-spacing:2px;cursor:pointer;font-family:monospace">◌ ZERAR</button>
     </div>
-    <div style="text-align:center;font-size:9px;color:#0a1828;letter-spacing:4px;margin-top:12px">APP BAC BRU · v4.6 · FIREBASE SYNC · PLACAR AUTOMÁTICO</div>
+    <div style="text-align:center;font-size:9px;color:#0a1828;letter-spacing:4px;margin-top:10px">APP BAC BRU · v4.7 · MOTOR APRIMORADO</div>
   </div>
 </div>`;
+  // Restaurar input após render
+  document.addEventListener("input",e=>{if(e.target.id==="soma")somaInput=e.target.value;if(e.target.id==="injta")injText=e.target.value;},{once:true});
 }
-
-// ══ FIREBASE LISTENER — sync em tempo real ═══════════════════════════════════
-db.ref(ROOM).on("value", snap => {
-  const val = snap.val();
-  if(val && val._ts){
-    ST.H = val.H || ST.H;
-    ST.verde = typeof val.verde==="number" ? val.verde : ST.verde;
-    ST.verm = typeof val.verm==="number" ? val.verm : ST.verm;
-    ST.ciclo = val.ciclo || "idle";
-    ST.sig = val.sig || null;
-    ST.galeInfo = val.galeInfo || null;
-    ST.recupLado = val.recupLado || null;
-    ST.tgAtivo = val.tgAtivo || false;
-    render();
-  } else {
-    render();
-  }
-});
-
-// Input de soma persiste no render
-document.addEventListener("input", e => {
-  if(e.target.id==="soma") somaInput = e.target.value;
-  if(e.target.id==="injta") injText = e.target.value;
-});
 </script>
 </body>
 </html>
