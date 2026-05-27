@@ -334,7 +334,7 @@ function aprenderCom(padrao, acertou){
 // ── ÍNDICE DE ESTABILIDADE (0-100, quanto maior melhor) ────────────────────
 function calcStability(H){
   const ult=H.slice(-15),C=ult.filter(h=>h.r!=="T");
-  if(C.length<8)return{idx:50,standby:false,detalhes:{}};
+  if(C.length<8)return{idx:50,standby:false,detalhes:{alternancia:13,volatilidade:13,empates:13,streaks:13,txTrocas:"--",volSomas:"--",tPct:"--",stMax:"--"}};
   let trocas=0,stAtual=1,stMax=1;
   for(let i=1;i<C.length;i++){if(C[i].r!==C[i-1].r){trocas++;stAtual=1;}else{stAtual++;stMax=Math.max(stMax,stAtual);}}
   const txT=trocas/(C.length-1);
