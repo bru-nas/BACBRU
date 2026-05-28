@@ -230,6 +230,10 @@ function pushToFirebase(){
     ciclo_sinal: ST.ciclo_sinal,
     ciclo_conf: ST.ciclo_conf,
     ciclo_razao: ST.ciclo_razao,
+    ciclo_tie: ST.ciclo_tie || null,
+    ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
+    ciclo_gale_dec: ST.ciclo_gale_dec || null,
+    ciclo_gale_tie: ST.ciclo_gale_tie || null,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -265,6 +269,10 @@ function initFirebaseSync(){
     ST.ciclo_sinal = data.ciclo_sinal || null;
     ST.ciclo_conf = data.ciclo_conf || 0;
     ST.ciclo_razao = data.ciclo_razao || "";
+    ST.ciclo_tie = data.ciclo_tie || null;
+    ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
+    ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
+    ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
     SUPPRESS_PUSH = false;
     render();
   }, err => {
@@ -379,6 +387,63 @@ function trendRoad(rd){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// PERFIL HISTÓRICO DE STREAKS · anti-armadilha
+// Analisa todos os streaks do histórico para saber QUANDO a mesa costuma quebrar
+// ════════════════════════════════════════════════════════════════════════════
+function streakProfile(col){
+  if(col.length < 8) return null;
+  const runs = [];
+  let cur = 1;
+  for(let i=1;i<col.length;i++){
+    if(col[i].r === col[i-1].r) cur++;
+    else { runs.push(cur); cur = 1; }
+  }
+  runs.push(cur); // último run em aberto
+  const closed = runs.slice(0, -1); // runs finalizados (sabemos onde quebraram)
+  if(closed.length < 4) return null;
+  const sorted = [...closed].sort((a,b)=>a-b);
+  const avg = closed.reduce((a,b)=>a+b,0)/closed.length;
+  const max = Math.max(...closed);
+  const p = q => sorted[Math.min(sorted.length-1, Math.floor(sorted.length*q))];
+  // Distribuição de sobrevivência: dado streak chegou a L, qual % continuou?
+  // P(quebra | comprimento atual = L) = (runs que terminaram em L) / (runs que chegaram a L)
+  function breakProbAt(L){
+    const reached = closed.filter(r=>r>=L).length;
+    const broke = closed.filter(r=>r===L).length;
+    if(reached === 0) return 0.5;
+    return broke / reached;
+  }
+  return {
+    runs: closed, avg, max,
+    p50: p(0.50), p75: p(0.75), p90: p(0.90),
+    count: closed.length, breakProbAt
+  };
+}
+
+// Fadiga de padrão: conta quantas vezes seguidas o MESMO regime se repetiu
+// (ex.: alternância pura prolongada, ou blocos 2x2 repetidos)
+function patternFatigue(col){
+  if(col.length < 6) return {regime:"N", repeats:0, fatigued:false};
+  const lastN = last(col, 12).map(x=>x.r);
+  // detectar regime de alternância
+  let altRun = 1;
+  for(let i=lastN.length-1;i>0;i--){
+    if(lastN[i] !== lastN[i-1]) altRun++;
+    else break;
+  }
+  // detectar regime de blocos 2x2
+  let blockRun = 0;
+  const r = lastN;
+  for(let i=r.length-1;i>=3;i-=2){
+    if(r[i]===r[i-1] && r[i-2]===r[i-3] && r[i]!==r[i-2]) blockRun++;
+    else break;
+  }
+  if(altRun >= 6) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 8};
+  if(blockRun >= 3) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 4};
+  return {regime:"MISTO", repeats:0, fatigued:false};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MOTOR NEURAL · análise completa
 // ════════════════════════════════════════════════════════════════════════════
 function analyze(){
@@ -488,19 +553,70 @@ function analyze(){
     }
   }
 
-  // STREAK
+  // ════════════════════════════════════════════════════════════════════════
+  // STREAK · com PERFIL HISTÓRICO (anti-armadilha)
+  // ════════════════════════════════════════════════════════════════════════
   const st = streak(col);
+  const prof = streakProfile(col);
+  out.streakLen = st.len;
+  out.streakSide = st.side;
+  out.profile = prof;
+
+  // Zona estatística de quebra: quando a mesa COSTUMA quebrar
+  let breakZone = null, breakProb = 0.5, premature = false, danger = false;
+  if(prof && st.len >= 2){
+    breakProb = prof.breakProbAt(st.len);
+    // streak ainda curto (abaixo da mediana histórica) → quebra é PREMATURA
+    premature = st.len < prof.p50;
+    // streak na zona onde a mesa historicamente quebra → break é seguro
+    breakZone = st.len >= prof.p75;
+    // streak perto/no máximo histórico → zona de PERIGO (pode quebrar a qualquer momento)
+    danger = st.len >= prof.p90;
+  }
+
   if(st.len === 4){
     const v4 = volSoma(last(col,4));
-    if(v4 >= 3) add("SK4Q", opos(st.side), W.SK4Q, `Streak 4 ${st.side} + volatilidade ${v4}`, true);
-    else add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} estável → continuar`);
+    if(prof && premature){
+      // mesa costuma esticar mais → NÃO bater quebra ainda; favorece continuação
+      add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} · mesa estica até ~${prof.p75} → continuar`);
+    } else if(prof && breakZone){
+      // zona de quebra confirmada pelo histórico
+      const conf = v4 >= 3 ? W.SK4Q + 0.04 : W.SK4Q;
+      add("SK4Q", opos(st.side), conf, `Streak 4 ${st.side} · zona de quebra (hist p75=${prof.p75}) vol${v4}`, true);
+    } else {
+      // neutro
+      if(v4 >= 3) add("SK4Q", opos(st.side), W.SK4Q, `Streak 4 ${st.side} + volatilidade ${v4}`, true);
+      else add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} estável → continuar`);
+    }
   } else if(st.len === 3){
     const v3 = volSoma(last(col,3));
-    if(v3 >= 3) add("SK3Q", opos(st.side), W.SK3Q, `Streak 3 ${st.side} + volatilidade ${v3}`);
-    else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
+    if(prof && premature){
+      add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} · ainda curto p/ mesa → continuar`);
+    } else if(prof && breakZone){
+      add("SK3Q", opos(st.side), W.SK3Q + 0.03, `Streak 3 ${st.side} · zona de quebra (hist) vol${v3}`);
+    } else {
+      if(v3 >= 3) add("SK3Q", opos(st.side), W.SK3Q, `Streak 3 ${st.side} + volatilidade ${v3}`);
+      else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
+    }
   } else if(st.len >= 5){
-    // EXAUSTAO — AGUARDA
-    out.exaustao = true;
+    // EXAUSTÃO — streak longo
+    if(prof && st.len < prof.p90 && st.len < prof.max){
+      // ainda dentro do range histórico desta mesa → pode continuar, mas NÃO entrar
+      out.exaustao = true;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · mesa já fez até ${prof.max} · NÃO perseguir quebra ainda`;
+    } else {
+      out.exaustao = true;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão${prof?` (hist máx ${prof.max})`:''}`;
+    }
+  }
+
+  // ── PADRÃO PAGANTE MADURO · fadiga de regime ──
+  const fatigue = patternFatigue(col);
+  out.fatigue = fatigue;
+  if(fatigue.fatigued){
+    // regime pagante repetiu demais → prestes a quebrar → bloquear novas entradas
+    out.regimeFatigado = true;
+    out.regimeMotivo = `${fatigue.regime} repetiu ${fatigue.repeats}× · padrão maduro, risco de quebra`;
   }
 
   // REEQUILÍBRIO 6/7/8 de 8
@@ -629,6 +745,14 @@ function analyze(){
   // [7] Exaustão
   if(out.exaustao){ heat -= 20; heatReasons.push("streak exaustão"); }
 
+  // [7b] Regime pagante maduro/fatigado
+  if(out.regimeFatigado){ heat -= 16; heatReasons.push(`${out.fatigue.regime} maduro`); }
+
+  // [7c] Zona de perigo de quebra (streak no p90 histórico)
+  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
+    heat -= 12; heatReasons.push("streak na zona de perigo");
+  }
+
   // [8] Big Road clean signals
   if(big.length >= 3){
     // colunas longas e consistentes = bom momento
@@ -679,13 +803,22 @@ function analyze(){
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence };
 
-  // ── DECISÃO FINAL · COM HEAT ──
+  // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA ──
   if(out.exaustao){
     out.signal = "W";
-    out.reason = `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
+    out.reason = out.exaustaoMotivo || `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
     out.conf = 0;
+  } else if(out.regimeFatigado){
+    // padrão pagante maduro repetiu demais → parar de entrar (vai quebrar)
+    out.signal = "W";
+    out.reason = `🛑 ${out.regimeMotivo} · pare antes da quebra`;
+    out.conf = bestConf;
+  } else if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
+    // streak na zona de perigo histórica → não perseguir quebra nem continuação
+    out.signal = "W";
+    out.reason = `⚠️ Streak ${out.streakLen} ${out.streakSide} na zona de perigo (hist máx ${out.profile.max}) · aguardar quebra confirmar`;
+    out.conf = bestConf;
   } else if(out.contradiction && tableState !== "QUENTE"){
-    // contradição em mesa não-quente → aguardar
     out.signal = "W";
     out.reason = `Padrões contraditórios em mesa ${tableState} · AGUARDA`;
     out.conf = bestConf;
@@ -727,6 +860,13 @@ function confirmEntry(){
   ST.ciclo_sinal = a.signal;
   ST.ciclo_conf = a.conf;
   ST.ciclo_razao = a.reason;
+  ST.ciclo_tie = a.tie.active ? a.tie.payout : null;
+  ST.ciclo_gale_sinal = null;
+  ST.ciclo_gale_dec = null;
+  ST.ciclo_gale_tie = null;
+  let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
+  if(a.tie.active) msg += ` + EMPATE ${a.tie.payout}`;
+  toast(msg, 2800);
   save(); render();
 }
 
@@ -735,6 +875,10 @@ function abortCiclo(){
   ST.ciclo_sinal = null;
   ST.ciclo_conf = 0;
   ST.ciclo_razao = "";
+  ST.ciclo_tie = null;
+  ST.ciclo_gale_sinal = null;
+  ST.ciclo_gale_dec = null;
+  ST.ciclo_gale_tie = null;
   save(); render();
 }
 
@@ -742,35 +886,52 @@ function addRound(r, sNum){
   const s = parseInt(sNum) || 0;
   ST.H.push({r, s});
 
-  // CICLO LOGIC
+  // ── CICLO ──
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
     if(r === sig || r === "T"){
-      // GREEN
+      // GREEN na entrada (cor certa OU empate)
       ST.greens++;
-      toast(`✅ GREEN · ${lbl(r)}`);
+      toast(r === "T" ? `✅ GREEN · EMPATE bateu!` : `✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
-      // virar para GALE — analisar mutação
+      // Entrada falhou → DECIDIR GALE (analisar APÓS o novo resultado já registrado)
+      const a2 = analyze();
+      let galeSide, dec;
+      if(a2.signal && a2.signal !== "W"){
+        // motor tem sinal claro
+        galeSide = a2.signal;
+        dec = (galeSide === sig) ? "MANTER" : "INVERTER";
+      } else {
+        // motor incerto → AGUARDAR mas fallback inverte (padrão mudou)
+        galeSide = opos(sig);
+        dec = "AGUARDAR";
+      }
       ST.ciclo = "gale";
-      // decisão: REPETIR ou INVERTER conforme próxima análise
-      save();
+      ST.ciclo_gale_sinal = galeSide;
+      ST.ciclo_gale_dec = dec;
+      ST.ciclo_gale_tie = a2.tie.active ? a2.tie.payout : null;
+      let gmsg = dec === "AGUARDAR"
+        ? `⏳ GALE · AGUARDAR melhor momento · tendência ${lbl(galeSide)}`
+        : `⚡ GALE · ${dec} · ${lbl(galeSide)}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${a2.tie.payout}`;
+      toast(gmsg, 3400);
+      save(); render();
     }
   } else if(ST.ciclo === "gale"){
-    // já em gale — aguardando entrada do usuário
-    // ao registrar resultado de novo se o lado escolhido bateu
-    const a2 = analyze();
-    const galeSide = a2.signal && a2.signal !== "W" ? a2.signal : ST.ciclo_sinal;
+    // Resultado do GALE — CONTABILIZA SEMPRE
+    const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
     if(r === galeSide || r === "T"){
       ST.greens++;
-      toast(`✅ GREEN GALE · ${lbl(r)}`);
+      toast(r === "T" ? `✅ GREEN GALE · EMPATE bateu!` : `✅ GREEN GALE · ${lbl(r)}`);
     } else {
       ST.reds++;
       toast(`❌ RED · entrada e gale falharam`);
     }
     abortCiclo();
+  } else {
+    save(); render();
   }
-  save(); render();
 }
 
 function undo(){
@@ -969,28 +1130,48 @@ function render(){
   else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
   else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
 
+  // Tie badge junto da entrada
+  const tieBadge = (a.tie.active && a.signal !== "W")
+    ? `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+        🔥 + GATILHO EMPATE ${a.tie.payout}
+      </div>`
+    : "";
+
   // Entry section
   let entryHtml = "";
   if(ST.ciclo === "idle"){
     if(a.signal && a.signal !== "W"){
-      entryHtml = `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}</button>`;
+      const tieExtra = a.tie.active ? ` + EMPATE ${a.tie.payout}` : "";
+      entryHtml = `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`;
     } else {
       entryHtml = `<div class="wait-card"><div class="wait-act">⏳ AGUARDA · ${a.reason}</div></div>`;
     }
   } else if(ST.ciclo === "entrada"){
+    const tieLine = ST.ciclo_tie
+      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_tie}</div>`
+      : "";
     entryHtml = `<div class="entry-card">
       <div class="entry-ttl">▶ ENTRADA ATIVA</div>
-      <div class="entry-act">Apostando em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
+      <div class="entry-act">Apostar em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
+      ${tieLine}
       <div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>
     </div>`;
   } else if(ST.ciclo === "gale"){
-    const a2 = analyze();
-    const newSide = a2.signal && a2.signal !== "W" ? a2.signal : ST.ciclo_sinal;
-    const dec = newSide === ST.ciclo_sinal ? "REPETIR" : "INVERTER";
-    entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(245,158,11,.02));border-color:rgba(245,158,11,.3)">
-      <div class="entry-ttl" style="color:var(--gold2)">⚡ GALE 1 · ${dec}</div>
-      <div class="entry-act">Apostando em ${lbl(newSide)}</div>
-      <div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">${a2.reason}</div>
+    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    const gDec = ST.ciclo_gale_dec || "INVERTER";
+    const decColor = gDec === "AGUARDAR" ? "var(--txt2)" : gDec === "MANTER" ? "var(--blue2)" : "var(--gold2)";
+    const decIcon = gDec === "AGUARDAR" ? "⏳" : gDec === "MANTER" ? "↻" : "⇄";
+    const tieLine = ST.ciclo_gale_tie
+      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_gale_tie}</div>`
+      : "";
+    const aviso = gDec === "AGUARDAR"
+      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou). Registre o resultado quando entrar.</div>`
+      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong> · registre o resultado do gale ↓</div>`;
+    entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.1),rgba(245,158,11,.03));border-color:rgba(245,158,11,.4)">
+      <div class="entry-ttl" style="color:${decColor}">${decIcon} GALE 1 · ${gDec}</div>
+      <div class="entry-act">Apostar em ${lbl(gSide)}</div>
+      ${tieLine}
+      ${aviso}
     </div>`;
   }
 
@@ -1054,6 +1235,34 @@ function render(){
         </div>
       </div>` : ''}
 
+      <!-- STREAK PROFILE · anti-armadilha -->
+      ${a.profile && a.streakLen >= 2 ? `
+      <div class="card" style="background:rgba(0,0,0,.25);padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:9px;color:var(--txt3);letter-spacing:2px;font-family:var(--mono)">PERFIL DE QUEBRA DA MESA</div>
+          <div style="font-size:11px;font-family:var(--mono);font-weight:700;color:${
+            a.streakLen >= a.profile.p90 ? 'var(--red2)' :
+            a.streakLen >= a.profile.p75 ? 'var(--gold2)' :
+            a.streakLen < a.profile.p50 ? 'var(--blue2)' : 'var(--txt2)'
+          }">streak ${a.streakLen} ${lbl(a.streakSide)}</div>
+        </div>
+        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          Mesa quebra em média: <strong style="color:var(--txt)">${a.profile.avg.toFixed(1)}</strong> · máx histórico: <strong style="color:var(--txt)">${a.profile.max}</strong><br/>
+          Prob. quebrar agora: <strong style="color:${a.profile.breakProbAt(a.streakLen)>=0.5?'var(--gold2)':'var(--txt2)'}">${(a.profile.breakProbAt(a.streakLen)*100).toFixed(0)}%</strong> · zona segura quebra: <strong style="color:var(--txt)">≥${a.profile.p75}</strong><br/>
+          <span style="color:${
+            a.streakLen >= a.profile.p90 ? 'var(--red2)' :
+            a.streakLen >= a.profile.p75 ? 'var(--gold2)' :
+            a.streakLen < a.profile.p50 ? 'var(--blue2)' : 'var(--txt3)'
+          }">${
+            a.streakLen >= a.profile.p90 ? '🛑 zona de perigo · aguardar confirmação' :
+            a.streakLen >= a.profile.p75 ? '⚡ zona de quebra · favorável virar' :
+            a.streakLen < a.profile.p50 ? '↻ ainda curto · favorece continuação' :
+            '○ zona neutra'
+          }</span>
+        </div>
+        ${a.regimeFatigado ? `<div style="margin-top:8px;padding:7px 10px;background:rgba(239,68,68,.1);border-radius:7px;font-size:10px;color:var(--red2);font-family:var(--mono)">🛑 ${a.regimeMotivo}</div>` : ''}
+      </div>` : ''}
+
       <!-- SIGNAL CARD -->
       <div class="card signal-card">
         <div class="sig-status">
@@ -1062,13 +1271,14 @@ function render(){
           MOTOR NEURAL · ${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}
         </div>
         <div class="sig-main ${sigClass}">${sigText}</div>
+        ${tieBadge}
         <div class="sig-reason">${a.reason}</div>
         <div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
         <div class="conf-txt">
           <span>CONFIANÇA</span>
-          <span>${(a.conf*100).toFixed(0)}% · mín ${(ST.weights.min_conf*100).toFixed(0)}%</span>
+          <span>${(a.conf*100).toFixed(0)}% · mín ${a.heat?(a.heat.threshold*100).toFixed(0):(ST.weights.min_conf*100).toFixed(0)}%</span>
         </div>
         ${entryHtml}
       </div>
@@ -1184,7 +1394,7 @@ function render(){
         <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
       </div>
 
-      <div class="credit">BAC BRU · v6.2 · CRITERIOUS MODE · HEAT-AWARE · 5 GRÁFICOS</div>
+      <div class="credit">BAC BRU · v6.4 · ANTI-ARMADILHA · PERFIL DE QUEBRA · SYNC</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
     </div>
