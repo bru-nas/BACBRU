@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="theme-color" content="#030712"/>
+<title>BAC BRU v6.2 · CRITERIOUS · HEAT-AWARE</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#030712;--bg2:#0a1220;--bg3:#0f1828;
+  --txt:#e2e8f0;--txt2:#94a3b8;--txt3:#475569;--txt4:#1e293b;
+  --blue:#3b82f6;--blue2:#60a5fa;--blue3:rgba(59,130,246,.08);
+  --red:#ef4444;--red2:#f87171;--red3:rgba(239,68,68,.08);
+  --green:#22c55e;--green2:#4ade80;--green3:rgba(34,197,94,.08);
+  --gold:#f59e0b;--gold2:#fbbf24;--gold3:rgba(245,158,11,.08);
+  --cyan:#22d3ee;--purple:#a78bfa;
+  --border:rgba(255,255,255,.05);--mono:'JetBrains Mono','Courier New',monospace
+}
+html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;overscroll-behavior:none}
+::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a2540;border-radius:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes glow{0%,100%{box-shadow:0 0 8px rgba(34,197,94,.3)}50%{box-shadow:0 0 16px rgba(34,197,94,.6)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
+.app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
+.hdr-l{font-size:16px;font-family:var(--mono)}
+.hdr-r{font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;margin-right:5px;vertical-align:middle}
+.card{background:linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 100%);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;animation:slideIn .3s ease}
+.sec-lbl{font-size:9px;color:var(--txt3);letter-spacing:3px;font-family:var(--mono);margin-bottom:8px;padding:0 2px}
+.input-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:8px}
+.btn{padding:13px 0;border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer;transition:all .15s;color:var(--txt);background:transparent}
+.btn:active{transform:scale(.97)}
+.btn-p{background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(59,130,246,.05));border-color:rgba(59,130,246,.3);color:var(--blue2)}
+.btn-b{background:linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05));border-color:rgba(239,68,68,.3);color:var(--red2)}
+.btn-t{background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border-color:rgba(245,158,11,.3);color:var(--gold2)}
+.sum-row{display:flex;gap:7px;margin-top:6px}
+.sum-inp{flex:1;padding:11px 13px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:10px;color:var(--txt);font-family:var(--mono);font-size:13px;outline:none}
+.sum-inp:focus{border-color:rgba(34,211,238,.4)}
+.sum-lbl{padding:11px 14px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;font-family:var(--mono);font-size:11px;color:var(--txt3);letter-spacing:1px}
+/* SIGNAL */
+.signal-card{position:relative;overflow:hidden}
+.sig-status{font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px}
+.sig-main{font-size:32px;font-weight:900;letter-spacing:1px;margin:4px 0;line-height:1.1}
+.sig-main.p{color:var(--blue2);text-shadow:0 0 24px rgba(59,130,246,.4)}
+.sig-main.b{color:var(--red2);text-shadow:0 0 24px rgba(239,68,68,.4)}
+.sig-main.t{color:var(--gold2);text-shadow:0 0 24px rgba(245,158,11,.4)}
+.sig-main.w{color:var(--txt3);font-size:24px}
+.sig-reason{font-size:11px;color:var(--txt2);font-family:var(--mono);margin-top:8px;line-height:1.5}
+.conf-bar{margin-top:12px;height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden}
+.conf-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.conf-txt{display:flex;justify-content:space-between;font-size:10px;color:var(--txt3);font-family:var(--mono);margin-top:6px;letter-spacing:1px}
+/* SCORE */
+.score-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.score-cell{padding:11px 8px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:9px;text-align:center}
+.score-val{font-size:22px;font-weight:800;font-family:var(--mono)}
+.score-val.g{color:var(--green2)}.score-val.r{color:var(--red2)}.score-val.y{color:var(--cyan)}
+.score-lbl{font-size:8px;color:var(--txt3);letter-spacing:2px;font-family:var(--mono);margin-top:3px}
+/* ROADS */
+.roads-grid{display:grid;gap:8px}
+.road{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:10px;padding:10px;overflow-x:auto}
+.road-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.road-name{font-size:10px;color:var(--txt2);font-family:var(--mono);letter-spacing:2px;font-weight:700}
+.road-trend{font-size:9px;font-family:var(--mono);padding:2px 7px;border-radius:8px;letter-spacing:1px}
+.road-trend.p{color:var(--blue2);background:rgba(59,130,246,.1)}
+.road-trend.b{color:var(--red2);background:rgba(239,68,68,.1)}
+.road-trend.n{color:var(--txt3);background:rgba(255,255,255,.03)}
+.road-board{display:grid;grid-template-rows:repeat(6,12px);grid-auto-flow:column;grid-auto-columns:12px;gap:2px;min-width:max-content}
+.cell{width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.cell.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af);box-shadow:0 0 4px rgba(59,130,246,.4)}
+.cell.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b);box-shadow:0 0 4px rgba(239,68,68,.4)}
+.cell.t{background:radial-gradient(circle at 30% 30%,#fcd34d,#92400e);box-shadow:0 0 4px rgba(245,158,11,.4)}
+.cell-r{width:12px;height:12px;border-radius:50%;border:2px solid var(--red2)}
+.cell-b{width:12px;height:12px;border-radius:50%;border:2px solid var(--blue2)}
+.cell-empty{width:12px;height:12px}
+/* BEAD ROAD NUMÉRICO */
+.bead-grid{display:grid;grid-template-rows:repeat(6,22px);grid-auto-flow:column;grid-auto-columns:22px;gap:2px;min-width:max-content}
+.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:var(--mono);color:#fff}
+.bead.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af)}
+.bead.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b)}
+.bead.t{background:radial-gradient(circle at 30% 30%,#fcd34d,#92400e)}
+/* PATTERNS BREAKDOWN */
+.pat-list{display:grid;gap:6px}
+.pat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(0,0,0,.3);border-radius:8px;border-left:3px solid var(--txt4)}
+.pat-row.act{border-left-color:var(--green);background:rgba(34,197,94,.05)}
+.pat-row.high{border-left-color:var(--cyan);background:rgba(34,211,238,.05)}
+.pat-name{font-size:10px;color:var(--txt2);font-family:var(--mono);letter-spacing:1px}
+.pat-name.act{color:var(--green2)}
+.pat-name.high{color:var(--cyan)}
+.pat-conf{font-size:11px;font-family:var(--mono);color:var(--txt2);font-weight:700}
+/* TIE */
+.tie-card{background:linear-gradient(135deg,rgba(245,158,11,.05),rgba(245,158,11,.02));border-color:rgba(245,158,11,.15)}
+.tie-status{font-size:11px;font-family:var(--mono);letter-spacing:1px;margin-bottom:8px}
+.tie-status.act{color:var(--gold2)}
+.tie-status.idle{color:var(--txt3)}
+.tie-pays{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px}
+.pay-cell{padding:6px 0;text-align:center;background:rgba(0,0,0,.3);border-radius:6px;font-family:var(--mono)}
+.pay-num{font-size:10px;color:var(--txt2);font-weight:700}
+.pay-pct{font-size:9px;color:var(--txt3);margin-top:1px}
+.pay-cell.hot{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3)}
+.pay-cell.hot .pay-num{color:var(--gold2)}
+/* JSON */
+.json-panel{margin-top:10px}
+.json-hdr{display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:6px 4px}
+.json-ttl{font-size:11px;color:var(--txt2);font-family:var(--mono);letter-spacing:2px}
+.json-arr{font-size:11px;color:var(--txt3);transition:transform .2s}
+.json-body{margin-top:8px}
+.json-ta{width:100%;height:140px;padding:10px;background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:9px;color:#5a9970;font-family:var(--mono);font-size:9px;resize:none;outline:none;line-height:1.4}
+.json-ta.view{height:160px;color:#3a9060;cursor:pointer}
+.json-btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.json-btn{padding:11px 0;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:11px;letter-spacing:2px;cursor:pointer;font-weight:700}
+.json-btn:active{transform:scale(.97)}
+.json-btn.blue{background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.2);color:var(--blue2)}
+/* FOOTER */
+.foot-btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.util-btn{padding:11px 0;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:9px;color:var(--txt3);font-family:var(--mono);font-size:11px;letter-spacing:2px;cursor:pointer}
+.util-btn:active{transform:scale(.97)}
+.credit{text-align:center;font-size:9px;color:#0a1828;letter-spacing:4px;margin-top:14px;font-family:var(--mono)}
+/* CONVERGENCE BADGE */
+.conv-badge{display:inline-block;padding:3px 8px;background:linear-gradient(135deg,rgba(167,139,250,.15),rgba(34,211,238,.15));border:1px solid rgba(167,139,250,.3);border-radius:6px;font-size:9px;color:var(--purple);font-family:var(--mono);letter-spacing:1px;margin-left:6px}
+/* ENTRY ACTION */
+.entry-card{margin-top:8px;padding:11px 13px;background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,211,238,.04));border:1px solid rgba(34,197,94,.3);border-radius:10px}
+.entry-ttl{font-size:9px;color:var(--green);letter-spacing:2px;font-family:var(--mono);margin-bottom:4px}
+.entry-act{font-size:13px;color:var(--txt);font-family:var(--mono);font-weight:700}
+.wait-card{margin-top:8px;padding:11px 13px;background:rgba(0,0,0,.3);border:1px dashed var(--border);border-radius:10px;text-align:center}
+.wait-act{font-size:11px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px}
+/* STATS BAR */
+.stats-bar{display:flex;justify-content:space-between;padding:8px 12px;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:9px;margin-bottom:10px}
+.stat{text-align:center;flex:1}
+.stat-v{font-size:14px;font-weight:800;font-family:var(--mono)}
+.stat-l{font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;margin-top:2px}
+.stat-v.g{color:var(--green2)}
+.stat-v.r{color:var(--red2)}
+.stat-v.y{color:var(--cyan)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+"use strict";
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIREBASE · SINCRONIZAÇÃO MULTI-DISPOSITIVO
+// ════════════════════════════════════════════════════════════════════════════
+firebase.initializeApp({
+  apiKey: "AIzaSyBiyeiTk8Kt1ndNOcNxI4b6mcpenZ3KL6A",
+  authDomain: "bac-bru.firebaseapp.com",
+  databaseURL: "https://bac-bru-default-rtdb.firebaseio.com",
+  projectId: "bac-bru",
+  storageBucket: "bac-bru.firebasestorage.app",
+  messagingSenderId: "469841612189",
+  appId: "1:469841612189:web:0b2ba85cde45a7d17c3374"
+});
+const db = firebase.database();
+const ROOM = "bac-bru-sala-1";
+const ROOM_REF = db.ref("rooms/" + ROOM);
+let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
+let SUPPRESS_PUSH = false;
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
+// ════════════════════════════════════════════════════════════════════════════
+const DEFAULT_WEIGHTS = {
+  PP5: 0.87, PP4: 0.79,
+  B22T: 0.81, B22C: 0.76, B31: 0.75,
+  SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71,
+  RE8: 0.87, RE7: 0.82, RE6: 0.78,
+  DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
+  boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
+  boost_conv2: 0.06, boost_conv3: 0.10, boost_road_align: 0.05,
+  min_conf: 0.65, min_conf_cautela: 0.80,
+  bias_P: 0, bias_B: 0, stability: 0.92
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════════════════════════════════════════
+const ST = {
+  H: [],
+  greens: 0, reds: 0,
+  weights: {...DEFAULT_WEIGHTS},
+  deltaAcum: {}, countAcum: {},
+  sessoes: 0,
+  somaIn: "",
+  ciclo: "idle", // idle | entrada | gale | recup
+  ciclo_lado: null,
+  ciclo_sinal: null,
+  ciclo_conf: 0,
+  ciclo_razao: "",
+  jsonOpen: false, viewOpen: false, injTxt: "",
+  toast: "",
+  toastT: 0
+};
+
+// load from localStorage as fallback first
+try{
+  const sv = localStorage.getItem("bacbru_v6");
+  if(sv){
+    const d = JSON.parse(sv);
+    Object.assign(ST, d);
+  }
+}catch(e){}
+
+function save(){
+  try{
+    const {toast,toastT,jsonOpen,viewOpen,injTxt,somaIn,...keep} = ST;
+    localStorage.setItem("bacbru_v6", JSON.stringify(keep));
+  }catch(e){}
+  // push to Firebase
+  pushToFirebase();
+}
+
+function pushToFirebase(){
+  if(SUPPRESS_PUSH) return;
+  const payload = {
+    H: ST.H,
+    greens: ST.greens,
+    reds: ST.reds,
+    weights: ST.weights,
+    deltaAcum: ST.deltaAcum,
+    countAcum: ST.countAcum,
+    sessoes: ST.sessoes,
+    ciclo: ST.ciclo,
+    ciclo_sinal: ST.ciclo_sinal,
+    ciclo_conf: ST.ciclo_conf,
+    ciclo_razao: ST.ciclo_razao,
+    ciclo_tie: ST.ciclo_tie || null,
+    ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
+    ciclo_gale_dec: ST.ciclo_gale_dec || null,
+    ciclo_gale_tie: ST.ciclo_gale_tie || null,
+    updatedAt: Date.now()
+  };
+  ROOM_REF.set(payload).catch(e=>{
+    SYNC_STATUS = "OFFLINE";
+    render();
+  });
+}
+
+function initFirebaseSync(){
+  SYNC_STATUS = "CONNECTING";
+  // Connection state monitor
+  db.ref(".info/connected").on("value", snap => {
+    if(snap.val() === true){
+      SYNC_STATUS = "LIVE";
+    } else {
+      SYNC_STATUS = "OFFLINE";
+    }
+    render();
+  });
+  // Real-time listener
+  ROOM_REF.on("value", snap => {
+    const data = snap.val();
+    if(!data) return;
+    SUPPRESS_PUSH = true;
+    if(Array.isArray(data.H)) ST.H = data.H;
+    if(typeof data.greens === "number") ST.greens = data.greens;
+    if(typeof data.reds === "number") ST.reds = data.reds;
+    if(data.weights) ST.weights = {...DEFAULT_WEIGHTS, ...data.weights};
+    if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
+    if(data.countAcum) ST.countAcum = data.countAcum;
+    if(typeof data.sessoes === "number") ST.sessoes = data.sessoes;
+    if(typeof data.ciclo === "string") ST.ciclo = data.ciclo;
+    ST.ciclo_sinal = data.ciclo_sinal || null;
+    ST.ciclo_conf = data.ciclo_conf || 0;
+    ST.ciclo_razao = data.ciclo_razao || "";
+    ST.ciclo_tie = data.ciclo_tie || null;
+    ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
+    ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
+    ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
+    SUPPRESS_PUSH = false;
+    render();
+  }, err => {
+    SYNC_STATUS = "OFFLINE";
+    render();
+  });
+}
+
+function toast(msg, dur=2200){
+  ST.toast = msg;
+  clearTimeout(ST.toastT);
+  ST.toastT = setTimeout(()=>{ST.toast="";render();}, dur);
+  render();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+const coloridas = arr => arr.filter(x=>x.r!=="T");
+const last = (arr,n) => arr.slice(-n);
+const opos = c => c==="P"?"B":"P";
+const lbl = c => c==="P"?"AZUL":c==="B"?"VERMELHO":c==="T"?"EMPATE":"AGUARDA";
+
+function streak(arr){
+  if(arr.length===0) return {len:0,side:null};
+  let s = arr[arr.length-1].r, c = 1;
+  for(let i=arr.length-2;i>=0;i--){
+    if(arr[i].r===s) c++;
+    else break;
+  }
+  return {len:c, side:s};
+}
+
+function volSoma(arr){
+  if(arr.length<2) return 0;
+  const ss = arr.map(x=>x.s||0).filter(x=>x>0);
+  if(ss.length<2) return 0;
+  return Math.max(...ss) - Math.min(...ss);
+}
+
+function avgSum(arr){
+  const ss = arr.map(x=>x.s||0).filter(x=>x>0);
+  if(ss.length===0) return 0;
+  return ss.reduce((a,b)=>a+b,0)/ss.length;
+}
+
+function deltaSum(arr){
+  if(arr.length<2) return 0;
+  const ss = arr.map(x=>x.s||0).filter(x=>x>0);
+  let d = 0;
+  for(let i=1;i<ss.length;i++) d += Math.abs(ss[i]-ss[i-1]);
+  return d/(ss.length-1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BIG ROAD · derivação de colunas
+// ════════════════════════════════════════════════════════════════════════════
+function bigRoad(hist){
+  const col = [], cur = coloridas(hist);
+  let c = -1, r = -1, lastR = null;
+  for(const x of cur){
+    if(x.r !== lastR){
+      c++; r = 0;
+      col[c] = [];
+    } else {
+      if(r < 5){ r++; }
+      else { c++; r=0; col[c]=[]; } // dragão > 6 vira coluna nova
+    }
+    if(!col[c]) col[c] = [];
+    col[c][r] = x.r;
+    lastR = x.r;
+  }
+  return col;
+}
+
+// BIG EYE BOY · compara coluna atual com 1 anterior
+// SMALL ROAD · compara com 2 anteriores
+// COCKROACH PIG · compara com 3 anteriores
+function derivedRoad(big, offset){
+  if(big.length < offset+1) return [];
+  const res = [];
+  for(let i=offset+1;i<big.length;i++){
+    const cur = big[i];
+    if(!cur || cur.length===0) continue;
+    const prev = big[i-offset];
+    if(!prev) continue;
+    for(let j=0;j<cur.length;j++){
+      // R (red) = padrão estável; B (blue) = padrão muda
+      if(j===0){
+        // primeira bola da coluna: comparar comprimento da coluna anterior com a coluna-offset anterior
+        const colPrev = big[i-1];
+        const colPrevOff = big[i-1-offset];
+        if(!colPrev || !colPrevOff) continue;
+        res.push(colPrev.length === colPrevOff.length ? "R" : "B");
+      } else {
+        // próximas bolas: tem bola na coluna comparada?
+        res.push((prev[j] !== undefined) ? "R" : "B");
+      }
+    }
+  }
+  return res;
+}
+
+function trendRoad(rd){
+  if(rd.length < 3) return {trend:"N", strength:0};
+  const last5 = rd.slice(-5);
+  const R = last5.filter(x=>x==="R").length;
+  const B = last5.length - R;
+  if(R >= 4) return {trend:"STABLE", strength:R/last5.length};
+  if(B >= 4) return {trend:"VOLATILE", strength:B/last5.length};
+  return {trend:"MIX", strength:0.5};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MOTOR NEURAL · análise completa
+// ════════════════════════════════════════════════════════════════════════════
+function analyze(){
+  const W = ST.weights;
+  const col = coloridas(ST.H);
+  const out = {
+    signal:null, conf:0, reason:"Aguardando dados", patterns:[],
+    convergence:0, derivedAlign:0, tie:{active:false,payout:null,dt:null,mp:false,probs:{}},
+    distrib:{P:0,B:0,T:0}, sumAvg:0, sumDelta:0, dominancia:"N", padrao:""
+  };
+
+  if(ST.H.length < 4){ return out; }
+
+  // Distribuição
+  const tot = ST.H.length;
+  ST.H.forEach(x=>{out.distrib[x.r]++;});
+  out.distrib.P = Math.round(100*out.distrib.P/tot);
+  out.distrib.B = Math.round(100*out.distrib.B/tot);
+  out.distrib.T = Math.round(100*out.distrib.T/tot);
+
+  // Soma stats
+  const last15c = last(col, 15);
+  out.sumAvg = avgSum(last15c);
+  out.sumDelta = deltaSum(last(col,6));
+
+  // Dominância
+  const last20 = last(col,20);
+  const P20 = last20.filter(x=>x.r==="P").length;
+  const B20 = last20.filter(x=>x.r==="B").length;
+  if(P20/last20.length >= 0.65) out.dominancia = "PLAYER";
+  else if(B20/last20.length >= 0.65) out.dominancia = "BANKER";
+  else out.dominancia = "BALANCEADO";
+
+  // ── TIE ANALYSIS ──
+  const last15 = last(ST.H, 15);
+  const ties15 = last15.filter(x=>x.r==="T").length;
+  out.tie.mp = ties15/15 >= 0.10;
+  let dt = 0;
+  for(let i=ST.H.length-1;i>=0;i--){ if(ST.H[i].r==="T"){dt = ST.H.length-1-i; break;} dt++; }
+  out.tie.dt = dt;
+  const avg6 = avgSum(last(col,6));
+  const sumExt = avg6 <= 5.5 || avg6 >= 10.5;
+  out.tie.active = out.tie.mp && (dt >= 8 || sumExt);
+  out.tie.probs = {
+    "88x_2_12": Math.min(8, ties15*1.5),
+    "25x_3_11": Math.min(15, ties15*2),
+    "10x_4_10": Math.min(18, ties15*2.5),
+    "6x_5_9": Math.min(22, ties15*3),
+    "4x_6_8": Math.min(30, ties15*4)
+  };
+  if(avg6 <= 5.5) out.tie.payout = avg6 <= 3.5 ? "88x" : "10x";
+  else if(avg6 >= 10.5) out.tie.payout = avg6 >= 11.5 ? "88x" : "10x";
+  else if(avg6 >= 8 && avg6 <= 9) out.tie.payout = "6x";
+  else out.tie.payout = "4x";
+
+  // ── PADRÕES ──
+  const c4 = last(col, 4);
+  const c5 = last(col, 5);
+  const c8 = last(col, 8);
+  const stab = out.sumDelta < 1.5;
+  const high = out.sumAvg >= 9.5;
+  const boostS = stab ? W.boost_est : 0;
+  const boostH = high ? W.boost_hi : 0;
+  const boostM = out.tie.mp ? W.boost_mp : 0;
+  const boostD = out.dominancia !== "BALANCEADO" ? W.boost_dom : 0;
+  const totalBoost = boostS + boostH + boostM + boostD;
+
+  const patterns = [];
+  function add(name, sig, base, reason, hi=false){
+    let conf = Math.min(0.95, base + totalBoost);
+    if(sig === "P") conf += W.bias_P;
+    if(sig === "B") conf += W.bias_B;
+    conf = Math.max(0, Math.min(0.95, conf));
+    patterns.push({name, sig, conf, reason, hi});
+  }
+
+  // PING_PONG_5 — 5 alternadas estritas
+  if(c5.length === 5){
+    let pp5 = true;
+    for(let i=1;i<5;i++) if(c5[i].r === c5[i-1].r){pp5=false;break;}
+    if(pp5) add("PP5", opos(c5[4].r), W.PP5, "Ping-pong 5 ciclos · alternância pura", true);
+  }
+
+  // PING_PONG_4
+  if(c4.length === 4 && !patterns.find(p=>p.name==="PP5")){
+    let pp4 = true;
+    for(let i=1;i<4;i++) if(c4[i].r === c4[i-1].r){pp4=false;break;}
+    if(pp4) add("PP4", opos(c4[3].r), W.PP4, "Ping-pong 4 ciclos");
+  }
+
+  // BLOCO_2x2_TROCA · [A,A,B,B]
+  if(c4.length === 4){
+    if(c4[0].r === c4[1].r && c4[2].r === c4[3].r && c4[0].r !== c4[2].r){
+      add("B22T", opos(c4[3].r), W.B22T, "Bloco 2×2 troca · próximo par muda", true);
+    }
+    // BLOCO_2x2_CONT · [X,A,A,?] — par formado, próxima é A novamente? regra: continuar o par
+    // Aqui interpreto como últimas 3 = [X,A,A] e prevê A novamente para formar bloco
+    if(c4.length >= 3){
+      const c3 = last(col,3);
+      if(c3[1].r === c3[2].r && c3[0].r !== c3[1].r){
+        add("B22C", c3[2].r, W.B22C, "Bloco 2×2 continuação · par incompleto");
+      }
+    }
+    // BLOCO_3_1 · [A,A,A,B] após 3 do mesmo lado quebra
+    if(c4[0].r === c4[1].r && c4[1].r === c4[2].r && c4[3].r !== c4[2].r){
+      add("B31", opos(c4[3].r), W.B31, "Bloco 3-1 · quebra esperada para anterior");
+    }
+  }
+
+  // STREAK
+  const st = streak(col);
+  if(st.len === 4){
+    const v4 = volSoma(last(col,4));
+    if(v4 >= 3) add("SK4Q", opos(st.side), W.SK4Q, `Streak 4 ${st.side} + volatilidade ${v4}`, true);
+    else add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} estável → continuar`);
+  } else if(st.len === 3){
+    const v3 = volSoma(last(col,3));
+    if(v3 >= 3) add("SK3Q", opos(st.side), W.SK3Q, `Streak 3 ${st.side} + volatilidade ${v3}`);
+    else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
+  } else if(st.len >= 5){
+    // EXAUSTAO — AGUARDA
+    out.exaustao = true;
+  }
+
+  // REEQUILÍBRIO 6/7/8 de 8
+  if(c8.length === 8){
+    const P8 = c8.filter(x=>x.r==="P").length;
+    const B8 = 8 - P8;
+    if(P8 >= 8) add("RE8", "B", W.RE8, "Reequilíbrio máximo · P=8/8", true);
+    else if(P8 >= 7) add("RE7", "B", W.RE7, `Reequilíbrio forte · P=${P8}/8`);
+    else if(P8 >= 6) add("RE6", "B", W.RE6, `Reequilíbrio · P=${P8}/8`);
+    if(B8 >= 8) add("RE8", "P", W.RE8, "Reequilíbrio máximo · B=8/8", true);
+    else if(B8 >= 7) add("RE7", "P", W.RE7, `Reequilíbrio forte · B=${B8}/8`);
+    else if(B8 >= 6) add("RE6", "P", W.RE6, `Reequilíbrio · B=${B8}/8`);
+  }
+
+  // DOMINÂNCIA 12 — se últimos 12 mostram >=70% de um lado, continuar
+  const c12 = last(col,12);
+  if(c12.length === 12){
+    const P12 = c12.filter(x=>x.r==="P").length;
+    if(P12/12 >= 0.70) add("DOM12", "P", W.DOM12, `Dominância P ${P12}/12 últimas`);
+    else if((12-P12)/12 >= 0.70) add("DOM12", "B", W.DOM12, `Dominância B ${12-P12}/12 últimas`);
+  }
+
+  // ZIGZAG 3 — micro-variação tipo [A,B,A] = zigzag curto, próximo = B
+  if(col.length >= 3){
+    const c3 = last(col,3);
+    if(c3[0].r !== c3[1].r && c3[1].r !== c3[2].r && c3[0].r === c3[2].r){
+      add("ZZ3", opos(c3[2].r), W.ZZ3, "Zigzag 3 detectado");
+    }
+  }
+
+  // TIE_GATILHO
+  if(out.tie.active){
+    add("TIE", "T", W.TIE, `Mesa pagadora · ${ties15}/15 Ties · ${out.tie.payout}`);
+  }
+
+  out.patterns = patterns;
+
+  // ── DERIVED ROADS · convergência ──
+  const big = bigRoad(ST.H);
+  const beb = derivedRoad(big, 1);
+  const sm = derivedRoad(big, 2);
+  const cp = derivedRoad(big, 3);
+  const tBeb = trendRoad(beb);
+  const tSm = trendRoad(sm);
+  const tCp = trendRoad(cp);
+  out.roads = {beb, sm, cp, tBeb, tSm, tCp, big};
+
+  // Alinhamento das estradas derivadas
+  const trends = [tBeb.trend, tSm.trend, tCp.trend];
+  const stableCt = trends.filter(t=>t==="STABLE").length;
+  const volatileCt = trends.filter(t=>t==="VOLATILE").length;
+  let roadHint = null;
+  if(stableCt >= 2){
+    // padrão atual continua
+    roadHint = "CONT";
+    out.derivedAlign = stableCt;
+  } else if(volatileCt >= 2){
+    roadHint = "MUDA";
+    out.derivedAlign = -volatileCt;
+  }
+
+  // ── CONVERGÊNCIA ──
+  // Agrupa por lado e soma boost se 2+ padrões apontam o mesmo
+  const byBet = {P:[], B:[], T:[]};
+  patterns.forEach(p=>{ if(byBet[p.sig]) byBet[p.sig].push(p); });
+  let bestSide = null, bestConf = 0, bestReason = "";
+  for(const side of ["P","B","T"]){
+    if(byBet[side].length === 0) continue;
+    let conf = Math.max(...byBet[side].map(p=>p.conf));
+    if(byBet[side].length >= 3) conf += W.boost_conv3;
+    else if(byBet[side].length >= 2) conf += W.boost_conv2;
+    // Alinhamento road
+    if(roadHint && side !== "T"){
+      const lastSide = col.length ? col[col.length-1].r : null;
+      if(roadHint === "CONT" && side === lastSide) conf += W.boost_road_align;
+      if(roadHint === "MUDA" && side !== lastSide) conf += W.boost_road_align;
+    }
+    conf = Math.min(0.95, conf);
+    if(conf > bestConf){
+      bestConf = conf;
+      bestSide = side;
+      const top = byBet[side].sort((a,b)=>b.conf-a.conf)[0];
+      const others = byBet[side].length > 1 ? ` (+${byBet[side].length-1} padrões)` : "";
+      bestReason = top.reason + others;
+    }
+  }
+  out.convergence = bestSide ? byBet[bestSide].length : 0;
+
+  // Contradição: padrões apontando para P E B ao mesmo tempo
+  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0;
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ── TABLE HEAT · momento da mesa ──
+  // ════════════════════════════════════════════════════════════════════════
+  let heat = 50;
+  const heatReasons = [];
+
+  // [1] Estabilidade das somas
+  if(out.sumDelta > 0 && out.sumDelta < 1.0){ heat += 10; heatReasons.push("somas muito estáveis"); }
+  else if(out.sumDelta < 1.5){ heat += 6; heatReasons.push("somas estáveis"); }
+  else if(out.sumDelta > 3.5){ heat -= 12; heatReasons.push("somas muito voláteis"); }
+  else if(out.sumDelta > 2.5){ heat -= 6; heatReasons.push("somas voláteis"); }
+
+  // [2] Estradas derivadas (5 gráficos: Bead, Big, BigEye, Small, Cockroach)
+  const trends2 = [tBeb.trend, tSm.trend, tCp.trend];
+  const stableCt2 = trends2.filter(t=>t==="STABLE").length;
+  const volatileCt2 = trends2.filter(t=>t==="VOLATILE").length;
+  if(stableCt2 === 3){ heat += 18; heatReasons.push("3 estradas estáveis"); }
+  else if(stableCt2 === 2){ heat += 10; heatReasons.push("2 estradas estáveis"); }
+  if(volatileCt2 === 3){ heat -= 18; heatReasons.push("3 estradas voláteis"); }
+  else if(volatileCt2 === 2){ heat -= 10; heatReasons.push("2 estradas voláteis"); }
+
+  // [3] Convergência de padrões
+  if(out.convergence >= 3){ heat += 15; heatReasons.push("3+ padrões convergem"); }
+  else if(out.convergence === 2){ heat += 8; heatReasons.push("2 padrões convergem"); }
+
+  // [4] Contradição entre padrões
+  if(out.contradiction){ heat -= 12; heatReasons.push("padrões contraditórios"); }
+
+  // [5] Dominância
+  if(out.dominancia !== "BALANCEADO"){ heat += 5; heatReasons.push(`dom. ${out.dominancia}`); }
+
+  // [6] Cluster de Tie (ruim · mesa caótica)
+  if(ties15 >= 3){ heat -= 10; heatReasons.push("cluster Tie"); }
+
+  // [7] Exaustão
+  if(out.exaustao){ heat -= 20; heatReasons.push("streak exaustão"); }
+
+  // [8] Big Road clean signals
+  if(big.length >= 3){
+    // colunas longas e consistentes = bom momento
+    const lastCols = big.slice(-4);
+    const avgColLen = lastCols.reduce((s,c)=>s+(c?c.length:0),0)/lastCols.length;
+    if(avgColLen >= 2.5 && avgColLen <= 3.5){ heat += 6; heatReasons.push("colunas regulares"); }
+    if(avgColLen > 4.5){ heat -= 4; heatReasons.push("colunas longas (instável)"); }
+  }
+
+  // [9] Alternância pura PP (excelente)
+  if(patterns.some(p=>p.name==="PP5")){ heat += 10; heatReasons.push("PP5 ativo"); }
+
+  // [10] Bead Road · zigzag caótico de somas
+  const last8s = last(col,8).map(x=>x.s||0).filter(x=>x>0);
+  if(last8s.length >= 6){
+    let crossings = 0;
+    for(let i=1;i<last8s.length;i++){
+      if((last8s[i]>=8 && last8s[i-1]<8) || (last8s[i]<8 && last8s[i-1]>=8)) crossings++;
+    }
+    if(crossings >= 5){ heat -= 6; heatReasons.push("somas caóticas"); }
+  }
+
+  heat = Math.max(0, Math.min(100, heat));
+
+  // Determinar estado da mesa e threshold dinâmico
+  let tableState, dynThreshold, requireConvergence;
+  if(heat >= 75){
+    tableState = "QUENTE";
+    dynThreshold = 0.62;
+    requireConvergence = false;
+  } else if(heat >= 60){
+    tableState = "FAVORÁVEL";
+    dynThreshold = 0.68;
+    requireConvergence = false;
+  } else if(heat >= 45){
+    tableState = "NEUTRA";
+    dynThreshold = 0.75;
+    requireConvergence = false;
+  } else if(heat >= 30){
+    tableState = "FRIA";
+    dynThreshold = 0.82;
+    requireConvergence = true; // exige 2+ padrões
+  } else {
+    tableState = "CONGELADA";
+    dynThreshold = 0.88;
+    requireConvergence = true;
+  }
+
+  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence };
+
+  // ── DECISÃO FINAL · COM HEAT ──
+  if(out.exaustao){
+    out.signal = "W";
+    out.reason = `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
+    out.conf = 0;
+  } else if(out.contradiction && tableState !== "QUENTE"){
+    // contradição em mesa não-quente → aguardar
+    out.signal = "W";
+    out.reason = `Padrões contraditórios em mesa ${tableState} · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && bestConf >= dynThreshold &&
+            (!requireConvergence || byBet[bestSide].length >= 2)){
+    out.signal = bestSide;
+    out.conf = bestConf;
+    out.reason = bestReason;
+    if(roadHint){ out.reason += ` · roads:${roadHint}`; }
+  } else {
+    out.signal = "W";
+    if(bestSide && requireConvergence && byBet[bestSide].length < 2){
+      out.reason = `Mesa ${tableState} exige 2+ padrões convergentes · só ${byBet[bestSide].length} detectado`;
+    } else if(bestSide){
+      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín mesa ${tableState} ${(dynThreshold*100).toFixed(0)}%`;
+    } else {
+      out.reason = `Mesa ${tableState} · sem padrão dominante`;
+    }
+    out.conf = bestConf;
+  }
+
+  // Padrão narrativo
+  if(out.dominancia !== "BALANCEADO"){
+    out.padrao = `Dominância ${out.dominancia} · P=${out.distrib.P}% B=${out.distrib.B}% T=${out.distrib.T}%`;
+  } else {
+    out.padrao = `Equilíbrio · P=${out.distrib.P}% B=${out.distrib.B}% T=${out.distrib.T}%`;
+  }
+
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CICLO · entrada / gale / placar
+// ════════════════════════════════════════════════════════════════════════════
+function confirmEntry(){
+  const a = analyze();
+  if(!a.signal || a.signal === "W") return;
+  ST.ciclo = "entrada";
+  ST.ciclo_sinal = a.signal;
+  ST.ciclo_conf = a.conf;
+  ST.ciclo_razao = a.reason;
+  ST.ciclo_tie = a.tie.active ? a.tie.payout : null;
+  ST.ciclo_gale_sinal = null;
+  ST.ciclo_gale_dec = null;
+  ST.ciclo_gale_tie = null;
+  let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
+  if(a.tie.active) msg += ` + EMPATE ${a.tie.payout}`;
+  toast(msg, 2800);
+  save(); render();
+}
+
+function abortCiclo(){
+  ST.ciclo = "idle";
+  ST.ciclo_sinal = null;
+  ST.ciclo_conf = 0;
+  ST.ciclo_razao = "";
+  ST.ciclo_tie = null;
+  ST.ciclo_gale_sinal = null;
+  ST.ciclo_gale_dec = null;
+  ST.ciclo_gale_tie = null;
+  save(); render();
+}
+
+function addRound(r, sNum){
+  const s = parseInt(sNum) || 0;
+  ST.H.push({r, s});
+
+  // ── CICLO ──
+  if(ST.ciclo === "entrada"){
+    const sig = ST.ciclo_sinal;
+    if(r === sig || r === "T"){
+      // GREEN na entrada (cor certa OU empate)
+      ST.greens++;
+      toast(r === "T" ? `✅ GREEN · EMPATE bateu!` : `✅ GREEN · ${lbl(r)}`);
+      abortCiclo();
+    } else {
+      // Entrada falhou → DECIDIR GALE (analisar APÓS o novo resultado já registrado)
+      const a2 = analyze();
+      let galeSide, dec;
+      if(a2.signal && a2.signal !== "W"){
+        // motor tem sinal claro
+        galeSide = a2.signal;
+        dec = (galeSide === sig) ? "MANTER" : "INVERTER";
+      } else {
+        // motor incerto → AGUARDAR mas fallback inverte (padrão mudou)
+        galeSide = opos(sig);
+        dec = "AGUARDAR";
+      }
+      ST.ciclo = "gale";
+      ST.ciclo_gale_sinal = galeSide;
+      ST.ciclo_gale_dec = dec;
+      ST.ciclo_gale_tie = a2.tie.active ? a2.tie.payout : null;
+      let gmsg = dec === "AGUARDAR"
+        ? `⏳ GALE · AGUARDAR melhor momento · tendência ${lbl(galeSide)}`
+        : `⚡ GALE · ${dec} · ${lbl(galeSide)}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${a2.tie.payout}`;
+      toast(gmsg, 3400);
+      save(); render();
+    }
+  } else if(ST.ciclo === "gale"){
+    // Resultado do GALE — CONTABILIZA SEMPRE
+    const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    if(r === galeSide || r === "T"){
+      ST.greens++;
+      toast(r === "T" ? `✅ GREEN GALE · EMPATE bateu!` : `✅ GREEN GALE · ${lbl(r)}`);
+    } else {
+      ST.reds++;
+      toast(`❌ RED · entrada e gale falharam`);
+    }
+    abortCiclo();
+  } else {
+    save(); render();
+  }
+}
+
+function undo(){
+  if(ST.H.length > 0) ST.H.pop();
+  abortCiclo();
+}
+
+function reset(){
+  if(!confirm("Zerar tudo? (histórico, placar)")) return;
+  ST.H = []; ST.greens = 0; ST.reds = 0;
+  ST.deltaAcum = {}; ST.countAcum = {};
+  abortCiclo();
+}
+
+function finalizarSessao(){
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100 * ST.greens / total) : 0;
+  if(!confirm(`Finalizar sessão?\n\n✅ ${ST.greens} GREEN · ❌ ${ST.reds} RED · ${rate}% rate\n\n• Placar será zerado\n• Aprendizado, histórico e pesos serão mantidos\n• Sessão #${ST.sessoes + 1} iniciada`)) return;
+
+  // Copia JSON antes de zerar
+  copyJSON();
+
+  // Zera somente placar
+  ST.greens = 0;
+  ST.reds = 0;
+  ST.sessoes++;
+  abortCiclo();
+  toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
+  save();
+}
+
+function injectJSON(){
+  try{
+    const d = JSON.parse(ST.injTxt);
+    if(d.history && Array.isArray(d.history)) ST.H = d.history;
+    if(typeof d.greens === "number") ST.greens = d.greens;
+    if(typeof d.reds === "number") ST.reds = d.reds;
+    if(d.weights){
+      // Aceita formato novo (números diretos) ou antigo (objeto base/ceil)
+      for(const k of Object.keys(d.weights)){
+        const v = d.weights[k];
+        if(typeof v === "number"){
+          ST.weights[k] = v;
+        } else if(v && typeof v.base === "number"){
+          // mapear nomes antigos para novos
+          const map = {
+            "PING_PONG_4P":"PP4","PING_PONG_23":"PP4",
+            "BLOCO_2x2_TROCA":"B22T","BLOCO_2x2_CONT":"B22C",
+            "STREAK_QUEBRA":"SK4Q","STREAK_CONT":"SK4C",
+            "REEQUIL_B":"RE7","REEQUIL_P":"RE7",
+            "TIE_GATILHO":"TIE"
+          };
+          if(map[k]) ST.weights[map[k]] = v.base;
+          else if(ST.weights[k] !== undefined) ST.weights[k] = v.base;
+        }
+      }
+    }
+    if(d.deltaAcum) ST.deltaAcum = d.deltaAcum;
+    if(d.countAcum) ST.countAcum = d.countAcum;
+    if(typeof d.sessoes === "number") ST.sessoes = d.sessoes + 1;
+    save();
+    toast(`✓ ${ST.H.length} rodadas carregadas · ${ST.greens}/${ST.reds}`);
+    ST.injTxt = "";
+    ST.jsonOpen = false;
+    render();
+  }catch(e){
+    toast("❌ JSON inválido");
+  }
+}
+
+function exportJSON(){
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100 * ST.greens / total) : 0;
+  return JSON.stringify({
+    history: ST.H,
+    greens: ST.greens,
+    reds: ST.reds,
+    rate,
+    weights: ST.weights,
+    sessoes: ST.sessoes,
+    deltaAcum: ST.deltaAcum,
+    countAcum: ST.countAcum,
+    timestamp: new Date().toISOString()
+  }, null, 2);
+}
+
+function copyJSON(){
+  const txt = exportJSON();
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(txt).then(()=>{toast("📋 JSON copiado!");}).catch(()=>{fallbackCopy(txt);});
+  } else {
+    fallbackCopy(txt);
+  }
+}
+function fallbackCopy(t){
+  const ta = document.createElement("textarea");
+  ta.value = t;
+  document.body.appendChild(ta);
+  ta.select();
+  try{document.execCommand("copy");toast("📋 JSON copiado!");}catch(e){}
+  document.body.removeChild(ta);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════════════════════
+function render(){
+  const a = analyze();
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
+  const root = document.getElementById("root");
+
+  // Bead road render (últimas 6×N)
+  const beadCells = [];
+  const colCount = Math.ceil(ST.H.length / 6);
+  for(let c=0;c<colCount;c++){
+    for(let r=0;r<6;r++){
+      const idx = c*6+r;
+      if(idx < ST.H.length){
+        const x = ST.H[idx];
+        beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
+      } else {
+        beadCells.push(`<div></div>`);
+      }
+    }
+  }
+
+  // Big Road render
+  let bigCells = "";
+  if(a.roads && a.roads.big){
+    const big = a.roads.big;
+    const maxRows = 6;
+    for(let c=0;c<big.length;c++){
+      for(let r=0;r<maxRows;r++){
+        if(big[c] && big[c][r]){
+          bigCells += `<div class="cell ${big[c][r].toLowerCase()}"></div>`;
+        } else {
+          bigCells += `<div class="cell-empty"></div>`;
+        }
+      }
+    }
+  }
+
+  // Derived render
+  function renderDR(rd){
+    let s = "";
+    const rows = 6;
+    const cols = Math.ceil(rd.length / rows);
+    for(let c=0;c<cols;c++){
+      for(let r=0;r<rows;r++){
+        const idx = c*rows+r;
+        if(idx < rd.length){
+          s += `<div class="cell-${rd[idx]==="R"?"r":"b"}"></div>`;
+        } else {
+          s += `<div class="cell-empty"></div>`;
+        }
+      }
+    }
+    return s;
+  }
+
+  // Patterns breakdown
+  let patHtml = "";
+  if(a.patterns.length === 0){
+    patHtml = `<div class="pat-row"><div class="pat-name">Nenhum padrão detectado</div><div class="pat-conf">—</div></div>`;
+  } else {
+    a.patterns.sort((x,y)=>y.conf-x.conf).slice(0,6).forEach(p=>{
+      const cls = p.hi ? "high" : (p.conf >= ST.weights.min_conf ? "act" : "");
+      patHtml += `<div class="pat-row ${cls}">
+        <div class="pat-name ${cls}">${p.name} → ${lbl(p.sig)}</div>
+        <div class="pat-conf">${(p.conf*100).toFixed(0)}%</div>
+      </div>`;
+    });
+  }
+
+  // Tie pays
+  const tieHi = a.tie.payout;
+  const tieRows = [
+    ["88x","2,12",a.tie.probs["88x_2_12"]],
+    ["25x","3,11",a.tie.probs["25x_3_11"]],
+    ["10x","4,10",a.tie.probs["10x_4_10"]],
+    ["6x","5,9",a.tie.probs["6x_5_9"]],
+    ["4x","6,7,8",a.tie.probs["4x_6_8"]]
+  ];
+  const tiePays = tieRows.map(([n,t,p])=>{
+    const isHi = a.tie.active && n === tieHi;
+    return `<div class="pay-cell ${isHi?'hot':''}">
+      <div class="pay-num">${n}</div>
+      <div class="pay-pct">${t}</div>
+    </div>`;
+  }).join("");
+
+  // Signal main
+  let sigClass = "w", sigText = "AGUARDA", confColor = "#475569";
+  if(a.signal === "P"){sigClass="p";sigText="AZUL";confColor="#3b82f6";}
+  else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
+  else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
+
+  // Tie badge junto da entrada
+  const tieBadge = (a.tie.active && a.signal !== "W")
+    ? `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+        🔥 + GATILHO EMPATE ${a.tie.payout}
+      </div>`
+    : "";
+
+  // Entry section
+  let entryHtml = "";
+  if(ST.ciclo === "idle"){
+    if(a.signal && a.signal !== "W"){
+      const tieExtra = a.tie.active ? ` + EMPATE ${a.tie.payout}` : "";
+      entryHtml = `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`;
+    } else {
+      entryHtml = `<div class="wait-card"><div class="wait-act">⏳ AGUARDA · ${a.reason}</div></div>`;
+    }
+  } else if(ST.ciclo === "entrada"){
+    const tieLine = ST.ciclo_tie
+      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_tie}</div>`
+      : "";
+    entryHtml = `<div class="entry-card">
+      <div class="entry-ttl">▶ ENTRADA ATIVA</div>
+      <div class="entry-act">Apostar em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
+      ${tieLine}
+      <div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>
+    </div>`;
+  } else if(ST.ciclo === "gale"){
+    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    const gDec = ST.ciclo_gale_dec || "INVERTER";
+    const decColor = gDec === "AGUARDAR" ? "var(--txt2)" : gDec === "MANTER" ? "var(--blue2)" : "var(--gold2)";
+    const decIcon = gDec === "AGUARDAR" ? "⏳" : gDec === "MANTER" ? "↻" : "⇄";
+    const tieLine = ST.ciclo_gale_tie
+      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_gale_tie}</div>`
+      : "";
+    const aviso = gDec === "AGUARDAR"
+      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou). Registre o resultado quando entrar.</div>`
+      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong> · registre o resultado do gale ↓</div>`;
+    entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.1),rgba(245,158,11,.03));border-color:rgba(245,158,11,.4)">
+      <div class="entry-ttl" style="color:${decColor}">${decIcon} GALE 1 · ${gDec}</div>
+      <div class="entry-act">Apostar em ${lbl(gSide)}</div>
+      ${tieLine}
+      ${aviso}
+    </div>`;
+  }
+
+  root.innerHTML = `
+    <div class="app">
+      <div class="hdr">
+        <div class="tg">⬢ BAC BRU</div>
+        <div class="hdr-r">
+          <span class="dot" style="background:${SYNC_STATUS==='LIVE'?'#22c55e':SYNC_STATUS==='CONNECTING'?'#f59e0b':'#ef4444'}"></span>
+          ${SYNC_STATUS === 'LIVE' ? 'LIVE · SYNC' : SYNC_STATUS === 'CONNECTING' ? 'CONECTANDO...' : 'OFFLINE'}
+        </div>
+      </div>
+
+      <div class="stats-bar">
+        <div class="stat"><div class="stat-v g">${ST.greens}</div><div class="stat-l">GREEN</div></div>
+        <div class="stat"><div class="stat-v r">${ST.reds}</div><div class="stat-l">RED</div></div>
+        <div class="stat"><div class="stat-v y">${rate}%</div><div class="stat-l">RATE</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
+      </div>
+
+      <!-- TABLE HEAT STATUS -->
+      ${a.heat ? `
+      <div class="card" style="background:linear-gradient(135deg,${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.10),rgba(34,211,238,.05)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.08),rgba(34,197,94,.04)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.06),rgba(255,255,255,.02)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.06),rgba(239,68,68,.03)':
+        'rgba(239,68,68,.10),rgba(245,158,11,.04)'
+      });border-color:${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.4)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.3)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.2)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.3)':
+        'rgba(239,68,68,.4)'
+      }">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:9px;color:var(--txt3);letter-spacing:3px;font-family:var(--mono)">STATUS DA MESA</div>
+          <div style="font-size:11px;font-family:var(--mono);color:${
+            a.heat.state==='QUENTE'?'var(--green2)':
+            a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+            a.heat.state==='NEUTRA'?'var(--txt2)':
+            a.heat.state==='FRIA'?'var(--gold2)':
+            'var(--red2)'
+          };font-weight:700;letter-spacing:1px">
+            ${a.heat.state==='QUENTE'?'🔥':a.heat.state==='FAVORÁVEL'?'⚡':a.heat.state==='NEUTRA'?'○':a.heat.state==='FRIA'?'❄':'🧊'} ${a.heat.state}
+          </div>
+        </div>
+        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${
+          a.heat.state==='QUENTE'?'var(--green2)':
+          a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+          a.heat.state==='NEUTRA'?'var(--txt)':
+          a.heat.state==='FRIA'?'var(--gold2)':
+          'var(--red2)'
+        };margin-bottom:6px">${a.heat.score}/100</div>
+        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;margin-bottom:10px">
+          <div style="width:${a.heat.score}%;height:100%;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 30%,#94a3b8 50%,#22d3ee 70%,#22c55e 100%);transition:width .4s"></div>
+        </div>
+        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          <strong style="color:var(--txt)">Critério ativo:</strong> conf mín ${(a.heat.threshold*100).toFixed(0)}%${a.heat.requireConvergence?' · exige 2+ padrões':''}<br/>
+          <span style="color:var(--txt3)">${a.heat.reasons.length ? a.heat.reasons.slice(0,4).join(' · ') : 'mesa em análise inicial'}</span>
+        </div>
+      </div>` : ''}
+
+      <!-- SIGNAL CARD -->
+      <div class="card signal-card">
+        <div class="sig-status">
+          ${a.convergence >= 2 ? `<span class="conv-badge">⚡ CONVERGÊNCIA ${a.convergence}</span>` : ""}
+          ${a.derivedAlign >= 2 ? `<span class="conv-badge">📊 ROADS ALINHADAS</span>` : ""}
+          MOTOR NEURAL · ${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}
+        </div>
+        <div class="sig-main ${sigClass}">${sigText}</div>
+        ${tieBadge}
+        <div class="sig-reason">${a.reason}</div>
+        <div class="conf-bar">
+          <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
+        </div>
+        <div class="conf-txt">
+          <span>CONFIANÇA</span>
+          <span>${(a.conf*100).toFixed(0)}% · mín ${a.heat?(a.heat.threshold*100).toFixed(0):(ST.weights.min_conf*100).toFixed(0)}%</span>
+        </div>
+        ${entryHtml}
+      </div>
+
+      <!-- INPUT -->
+      <div class="sec-lbl">REGISTRAR RODADA</div>
+      <div class="card">
+        <div class="sum-row">
+          <input id="soma" class="sum-inp" type="number" placeholder="SOMA (ex: 8)" value="${ST.somaIn}"/>
+          <div class="sum-lbl">DADOS</div>
+        </div>
+        <div class="input-row" style="margin-top:8px">
+          <button class="btn btn-p" onclick="reg('P')">AZUL · P</button>
+          <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
+          <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
+        </div>
+      </div>
+
+      <!-- PADRÕES DETECTADOS -->
+      <div class="sec-lbl">PADRÕES DETECTADOS · ${a.patterns.length} ATIVOS</div>
+      <div class="card">
+        <div class="pat-list">${patHtml}</div>
+        <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.6">
+          ${a.padrao}<br/>
+          Soma méd: <strong style="color:var(--txt2)">${a.sumAvg.toFixed(1)}</strong> · Δsoma: <strong style="color:var(--txt2)">${a.sumDelta.toFixed(2)}</strong>
+        </div>
+      </div>
+
+      <!-- BEAD ROAD NUMÉRICO -->
+      <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
+      <div class="card road">
+        <div class="bead-grid">${beadCells.join("")}</div>
+      </div>
+
+      <!-- BIG ROAD · LINHAS DE BOLINHA -->
+      <div class="sec-lbl">BIG ROAD · COLORIDAS</div>
+      <div class="card road">
+        <div class="road-board">${bigCells}</div>
+      </div>
+
+      <!-- BIG EYE BOY / SMALL ROAD / COCKROACH -->
+      <div class="sec-lbl">DERIVADAS · BIG EYE · SMALL · COCKROACH</div>
+      <div class="card" style="display:grid;gap:8px">
+        ${a.roads ? `
+        <div class="road">
+          <div class="road-hdr">
+            <div class="road-name">BIG EYE BOY (1)</div>
+            <div class="road-trend ${a.roads.tBeb.trend==='STABLE'?'p':a.roads.tBeb.trend==='VOLATILE'?'b':'n'}">
+              ${a.roads.tBeb.trend === 'STABLE' ? '● ESTÁVEL' : a.roads.tBeb.trend === 'VOLATILE' ? '○ VOLÁTIL' : '— MIX'}
+            </div>
+          </div>
+          <div class="road-board">${renderDR(a.roads.beb)}</div>
+        </div>
+        <div class="road">
+          <div class="road-hdr">
+            <div class="road-name">SMALL ROAD (2)</div>
+            <div class="road-trend ${a.roads.tSm.trend==='STABLE'?'p':a.roads.tSm.trend==='VOLATILE'?'b':'n'}">
+              ${a.roads.tSm.trend === 'STABLE' ? '● ESTÁVEL' : a.roads.tSm.trend === 'VOLATILE' ? '○ VOLÁTIL' : '— MIX'}
+            </div>
+          </div>
+          <div class="road-board">${renderDR(a.roads.sm)}</div>
+        </div>
+        <div class="road">
+          <div class="road-hdr">
+            <div class="road-name">COCKROACH PIG (3)</div>
+            <div class="road-trend ${a.roads.tCp.trend==='STABLE'?'p':a.roads.tCp.trend==='VOLATILE'?'b':'n'}">
+              ${a.roads.tCp.trend === 'STABLE' ? '● ESTÁVEL' : a.roads.tCp.trend === 'VOLATILE' ? '○ VOLÁTIL' : '— MIX'}
+            </div>
+          </div>
+          <div class="road-board">${renderDR(a.roads.cp)}</div>
+        </div>` : '<div style="color:var(--txt3);font-size:11px;text-align:center;padding:14px">Aguardando mais dados...</div>'}
+      </div>
+
+      <!-- TIE ANALYSIS -->
+      <div class="sec-lbl">EMPATE · ANÁLISE PROBABILÍSTICA</div>
+      <div class="card tie-card">
+        <div class="tie-status ${a.tie.active?'act':'idle'}">
+          ${a.tie.active ? '🔥 GATILHO ATIVO' : '○ MONITORANDO'} · ${a.tie.dt} rodadas sem Tie${a.tie.mp?' · MESA PAGADORA':''}
+        </div>
+        <div class="tie-pays">${tiePays}</div>
+        ${a.tie.active ? `<div style="margin-top:10px;padding:7px 10px;background:rgba(245,158,11,.1);border-radius:7px;font-size:10px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
+          Faixa mais provável: <strong>${a.tie.payout}</strong> · soma média: ${a.sumAvg.toFixed(1)}
+        </div>` : ''}
+      </div>
+
+      <!-- JSON PANEL -->
+      <div class="sec-lbl">CALIBRAGEM · APRENDIZADO ADAPTATIVO</div>
+      <div class="card">
+        <div class="json-hdr" onclick="toggleJson()">
+          <div class="json-ttl">⊡ INJETAR / EXPORTAR JSON</div>
+          <div class="json-arr" style="${ST.jsonOpen?'transform:rotate(180deg)':''}">▼</div>
+        </div>
+        ${ST.jsonOpen ? `
+        <div class="json-body">
+          <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt}</textarea>
+          <div class="json-btns">
+            <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR</button>
+            <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
+          </div>
+          <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
+          ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
+        </div>` : ''}
+      </div>
+
+      <!-- FINALIZAR SESSÃO -->
+      <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-top:10px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
+        ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
+      </button>
+
+      <!-- FOOTER -->
+      <div class="foot-btns">
+        <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
+        <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
+      </div>
+
+      <div class="credit">BAC BRU · v6.3 · GALE INVERTER/MANTER/AGUARDAR · TIE INLINE · SYNC</div>
+
+      ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
+    </div>
+  `;
+
+  // bind soma input
+  const si = document.getElementById("soma");
+  if(si){
+    si.addEventListener("input", e => { ST.somaIn = e.target.value; });
+  }
+  const ja = document.getElementById("injta");
+  if(ja){
+    ja.addEventListener("input", e => { ST.injTxt = e.target.value; });
+  }
+}
+
+window.reg = function(r){
+  const soma = ST.somaIn;
+  addRound(r, soma);
+  ST.somaIn = "";
+};
+window.confirmEntry = confirmEntry;
+window.abortCiclo = abortCiclo;
+window.undo = undo;
+window.reset = reset;
+window.injectJSON = injectJSON;
+window.copyJSON = copyJSON;
+window.finalizarSessao = finalizarSessao;
+window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; render(); };
+window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; render(); };
+
+render();
+initFirebaseSync();
+</script>
+</body>
+</html>
