@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.2 · CRITERIOUS · HEAT-AWARE</title>
+<title>BAC BRU v6.5 · ASSINATURAS · CRITERIOUS</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -238,7 +238,7 @@ function pushToFirebase(){
   };
   ROOM_REF.set(payload).catch(e=>{
     SYNC_STATUS = "OFFLINE";
-    render();
+    renderRouter();
   });
 }
 
@@ -251,7 +251,7 @@ function initFirebaseSync(){
     } else {
       SYNC_STATUS = "OFFLINE";
     }
-    render();
+    renderRouter();
   });
   // Real-time listener
   ROOM_REF.on("value", snap => {
@@ -274,18 +274,18 @@ function initFirebaseSync(){
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
     SUPPRESS_PUSH = false;
-    render();
+    renderRouter();
   }, err => {
     SYNC_STATUS = "OFFLINE";
-    render();
+    renderRouter();
   });
 }
 
 function toast(msg, dur=2200){
   ST.toast = msg;
   clearTimeout(ST.toastT);
-  ST.toastT = setTimeout(()=>{ST.toast="";render();}, dur);
-  render();
+  ST.toastT = setTimeout(()=>{ST.toast="";renderRouter();}, dur);
+  renderRouter();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -441,6 +441,103 @@ function patternFatigue(col){
   if(altRun >= 6) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 8};
   if(blockRun >= 3) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 4};
   return {regime:"MISTO", repeats:0, fatigued:false};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FAREJADOR DE EMPATES · estuda TODO o histórico de ties
+// Detecta janela de empate ABERTA / QUENTE / FECHADA / PASSOU
+// ════════════════════════════════════════════════════════════════════════════
+function payoutDaSoma(s){
+  if(s===2||s===12) return "88x";
+  if(s===3||s===11) return "25x";
+  if(s===4||s===10) return "10x";
+  if(s===5||s===9) return "6x";
+  return "4x"; // 6,7,8
+}
+
+function tieHunter(H, heatScore){
+  const res = {
+    status:"DADOS", conf:0, msg:"Coletando histórico...",
+    dist:0, avgGap:0, maxGap:0, ties15:0, ties30:0,
+    payoutProvavel:null, ultimosPay:[], cluster:false, atrasado:false
+  };
+  if(H.length < 12) return res;
+
+  // índices de todos os empates
+  const tieIdx = [];
+  H.forEach((x,i)=>{ if(x.r==="T") tieIdx.push(i); });
+
+  // gaps entre empates
+  const gaps = [];
+  for(let i=1;i<tieIdx.length;i++) gaps.push(tieIdx[i]-tieIdx[i-1]);
+  res.avgGap = gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : 12;
+  res.maxGap = gaps.length ? Math.max(...gaps) : 0;
+
+  // distância desde o último empate
+  const lastTie = tieIdx.length ? tieIdx[tieIdx.length-1] : -1;
+  res.dist = lastTie >= 0 ? (H.length - 1 - lastTie) : H.length;
+
+  // densidades
+  res.ties15 = last(H,15).filter(x=>x.r==="T").length;
+  res.ties30 = last(H,30).filter(x=>x.r==="T").length;
+  const ties5 = last(H,5).filter(x=>x.r==="T").length;
+  const ties8 = last(H,8).filter(x=>x.r==="T").length;
+
+  // payouts dos últimos empates
+  res.ultimosPay = tieIdx.slice(-5).map(i=>({s:H[i].s, pay:payoutDaSoma(H[i].s)}));
+
+  // ── Previsão de payout pela soma recente ──
+  // Se as somas vencedoras recentes estão indo a extremos (2,3,10,11,12),
+  // um empate que vier tende a cair em soma alta de pagamento.
+  const col = H.filter(x=>x.r!=="T");
+  const last6sum = last(col,6).map(x=>x.s||0).filter(x=>x>0);
+  const avg6 = last6sum.length ? last6sum.reduce((a,b)=>a+b,0)/last6sum.length : 7;
+  const extremos = last6sum.filter(s=>s<=4 || s>=10).length;
+  if(extremos >= 3){
+    res.payoutProvavel = avg6 <= 4.5 || avg6 >= 10.5 ? "25x-88x" : "10x";
+  } else if(avg6 <= 5.5 || avg6 >= 9.5){
+    res.payoutProvavel = "6x-10x";
+  } else {
+    res.payoutProvavel = "4x";
+  }
+
+  // ── Estado da janela ──
+  // PASSOU: cluster recente (2+ ties nas últimas 5) → janela se esgotou
+  // QUENTE: muito atrasado (dist >= 1.4× média) → empate iminente
+  // ABERTA: atrasado (dist >= média) e há ties no histórico recente
+  // + mesa fria/congelada reforça (quando rouba, o empate bom vem)
+  // FECHADA: ainda cedo
+  res.cluster = ties5 >= 2 || ties8 >= 3;
+  res.atrasado = res.dist >= res.avgGap;
+
+  const mesaFria = heatScore !== undefined && heatScore < 48;
+
+  if(res.cluster){
+    res.status = "PASSOU";
+    res.msg = `Cluster recente (${ties8} empates/8 rodadas) · janela se esgotou · NÃO perseguir`;
+    res.conf = 0;
+  } else if(res.dist >= res.avgGap*1.4 && res.ties30 >= 1){
+    res.status = "QUENTE";
+    res.msg = `Empate MUITO atrasado (${res.dist} rodadas · média ${res.avgGap.toFixed(0)}) · iminente`;
+    res.conf = Math.min(0.85, 0.6 + (res.dist/res.avgGap - 1.4)*0.3);
+    if(mesaFria){ res.conf = Math.min(0.9, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
+  } else if(res.atrasado && res.ties30 >= 1){
+    res.status = "ABERTA";
+    res.msg = `Empate atrasado (${res.dist}/${res.avgGap.toFixed(0)} rodadas) · janela aberta`;
+    res.conf = Math.min(0.75, 0.45 + (res.dist/res.avgGap - 1)*0.4);
+    if(mesaFria){ res.conf = Math.min(0.85, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
+  } else if(mesaFria && res.ties15 >= 2){
+    // mesa roubando + empates aparecendo = zona de empate
+    res.status = "ABERTA";
+    res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de empate ativa`;
+    res.conf = 0.55;
+  } else {
+    res.status = "FECHADA";
+    res.msg = `Cedo para empate · ${res.dist}/${res.avgGap.toFixed(0)} rodadas desde o último`;
+    res.conf = Math.max(0.1, res.dist/res.avgGap * 0.3);
+  }
+
+  return res;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -779,31 +876,55 @@ function analyze(){
 
   // Determinar estado da mesa e threshold dinâmico
   let tableState, dynThreshold, requireConvergence;
-  if(heat >= 75){
+  // ════════════════════════════════════════════════════════════════════════
+  // THRESHOLDS CONSERVADORES · cada RED = 3 GREEN → precisa >75% acerto
+  // Só entra quando o valor esperado é fortemente positivo
+  // ════════════════════════════════════════════════════════════════════════
+  if(heat >= 78){
     tableState = "QUENTE";
-    dynThreshold = 0.62;
-    requireConvergence = false;
-  } else if(heat >= 60){
+    dynThreshold = 0.72;          // antes 0.62
+    requireConvergence = true;     // mesmo quente, exige 2+ padrões
+  } else if(heat >= 62){
     tableState = "FAVORÁVEL";
-    dynThreshold = 0.68;
-    requireConvergence = false;
-  } else if(heat >= 45){
+    dynThreshold = 0.76;
+    requireConvergence = true;
+  } else if(heat >= 48){
     tableState = "NEUTRA";
-    dynThreshold = 0.75;
-    requireConvergence = false;
-  } else if(heat >= 30){
-    tableState = "FRIA";
     dynThreshold = 0.82;
-    requireConvergence = true; // exige 2+ padrões
+    requireConvergence = true;
+  } else if(heat >= 32){
+    tableState = "FRIA";
+    dynThreshold = 0.88;
+    requireConvergence = true;     // + exige 3 (tratado abaixo)
   } else {
     tableState = "CONGELADA";
-    dynThreshold = 0.88;
+    dynThreshold = 0.99;           // praticamente bloqueado
     requireConvergence = true;
   }
 
-  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence };
+  // Em mesa FRIA exige 3+ padrões; nas demais, 2+
+  // EXCEÇÃO: mesa QUENTE/FAVORÁVEL aceita 1 padrão ÚNICO MUITO FORTE (≥0.84)
+  // para não travar entradas no bom momento.
+  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 3 : 2;
+  const strongSingleOK = (tableState === "QUENTE" || tableState === "FAVORÁVEL");
+  const STRONG_SINGLE = 0.84;
 
-  // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA ──
+  // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
+  const hunter = tieHunter(ST.H, heat);
+  out.hunter = hunter;
+  // Atualiza o tie.active com base no farejador (mais inteligente)
+  out.tie.active = (hunter.status === "ABERTA" || hunter.status === "QUENTE");
+  out.tie.hunterStatus = hunter.status;
+  out.tie.hunterConf = hunter.conf;
+
+  // EV gate: cada red vale 3 greens. EV ≈ conf - 3*(1-conf) = 4*conf - 3 (sem gale)
+  // Com gale, há segunda chance, mas mantemos piso rígido de segurança.
+  const EV_FLOOR = 0.72; // nunca abaixo disso, independente do estado
+
+  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
+
+  // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
+  const effThreshold = Math.max(dynThreshold, EV_FLOOR);
   if(out.exaustao){
     out.signal = "W";
     out.reason = out.exaustaoMotivo || `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
@@ -818,24 +939,33 @@ function analyze(){
     out.signal = "W";
     out.reason = `⚠️ Streak ${out.streakLen} ${out.streakSide} na zona de perigo (hist máx ${out.profile.max}) · aguardar quebra confirmar`;
     out.conf = bestConf;
-  } else if(out.contradiction && tableState !== "QUENTE"){
+  } else if(out.contradiction){
+    // contradição entre padrões P e B → sempre aguarda (cada red custa 3 greens)
     out.signal = "W";
-    out.reason = `Padrões contraditórios em mesa ${tableState} · AGUARDA`;
+    out.reason = `Padrões contraditórios · risco alto · AGUARDA`;
     out.conf = bestConf;
-  } else if(bestSide && bestConf >= dynThreshold &&
-            (!requireConvergence || byBet[bestSide].length >= 2)){
+  } else if(bestSide && bestSide !== "T" && roadHint === "MUDA" &&
+            col.length && bestSide === col[col.length-1].r){
+    // estradas derivadas dizem MUDA mas o sinal aposta em continuar → conflito → aguarda
+    out.signal = "W";
+    out.reason = `Gráficos derivados indicam mudança, sinal apostaria continuação · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && bestConf >= effThreshold &&
+            (byBet[bestSide].length >= minPatterns ||
+             (strongSingleOK && bestConf >= STRONG_SINGLE))){
     out.signal = bestSide;
     out.conf = bestConf;
     out.reason = bestReason;
+    if(byBet[bestSide].length < minPatterns) out.reason += " · padrão único forte";
     if(roadHint){ out.reason += ` · roads:${roadHint}`; }
   } else {
     out.signal = "W";
-    if(bestSide && requireConvergence && byBet[bestSide].length < 2){
-      out.reason = `Mesa ${tableState} exige 2+ padrões convergentes · só ${byBet[bestSide].length} detectado`;
+    if(bestSide && byBet[bestSide].length < minPatterns){
+      out.reason = `Mesa ${tableState} exige ${minPatterns}+ padrões · só ${byBet[bestSide].length} detectado · AGUARDA`;
     } else if(bestSide){
-      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín mesa ${tableState} ${(dynThreshold*100).toFixed(0)}%`;
+      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín ${(effThreshold*100).toFixed(0)}% (mesa ${tableState}) · AGUARDA`;
     } else {
-      out.reason = `Mesa ${tableState} · sem padrão dominante`;
+      out.reason = `Mesa ${tableState} · sem padrão forte · AGUARDA`;
     }
     out.conf = bestConf;
   }
@@ -867,7 +997,7 @@ function confirmEntry(){
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${a.tie.payout}`;
   toast(msg, 2800);
-  save(); render();
+  save(); renderRouter();
 }
 
 function abortCiclo(){
@@ -879,7 +1009,7 @@ function abortCiclo(){
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
-  save(); render();
+  save(); renderRouter();
 }
 
 function addRound(r, sNum){
@@ -916,7 +1046,7 @@ function addRound(r, sNum){
         : `⚡ GALE · ${dec} · ${lbl(galeSide)}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${a2.tie.payout}`;
       toast(gmsg, 3400);
-      save(); render();
+      save(); renderRouter();
     }
   } else if(ST.ciclo === "gale"){
     // Resultado do GALE — CONTABILIZA SEMPRE
@@ -930,7 +1060,7 @@ function addRound(r, sNum){
     }
     abortCiclo();
   } else {
-    save(); render();
+    save(); renderRouter();
   }
 }
 
@@ -996,7 +1126,7 @@ function injectJSON(){
     toast(`✓ ${ST.H.length} rodadas carregadas · ${ST.greens}/${ST.reds}`);
     ST.injTxt = "";
     ST.jsonOpen = false;
-    render();
+    renderRouter();
   }catch(e){
     toast("❌ JSON inválido");
   }
@@ -1038,7 +1168,7 @@ function fallbackCopy(t){
 // ════════════════════════════════════════════════════════════════════════════
 // RENDER
 // ════════════════════════════════════════════════════════════════════════════
-function render(){
+function renderApp(){
   const a = analyze();
   const total = ST.greens + ST.reds;
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
@@ -1109,6 +1239,8 @@ function render(){
 
   // Tie pays
   const tieHi = a.tie.payout;
+  const hunterOpen = a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE');
+  const provavel = a.hunter ? a.hunter.payoutProvavel : null;
   const tieRows = [
     ["88x","2,12",a.tie.probs["88x_2_12"]],
     ["25x","3,11",a.tie.probs["25x_3_11"]],
@@ -1117,7 +1249,8 @@ function render(){
     ["4x","6,7,8",a.tie.probs["4x_6_8"]]
   ];
   const tiePays = tieRows.map(([n,t,p])=>{
-    const isHi = a.tie.active && n === tieHi;
+    // destaca a faixa provável do farejador quando a janela está aberta
+    const isHi = hunterOpen && provavel && provavel.includes(n);
     return `<div class="pay-cell ${isHi?'hot':''}">
       <div class="pay-num">${n}</div>
       <div class="pay-pct">${t}</div>
@@ -1130,12 +1263,17 @@ function render(){
   else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
   else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
 
-  // Tie badge junto da entrada
-  const tieBadge = (a.tie.active && a.signal !== "W")
-    ? `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
-        🔥 + GATILHO EMPATE ${a.tie.payout}
-      </div>`
-    : "";
+  // Tie badge junto da entrada — dirigido pelo farejador
+  let tieBadge = "";
+  if(a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE')){
+    tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+        🐕 FAREJADOR: EMPATE ${a.hunter.status==='QUENTE'?'IMINENTE':'PRÓXIMO'} · ${a.hunter.payoutProvavel||'4x'}
+      </div>`;
+  } else if(a.hunter && a.hunter.status==='PASSOU'){
+    tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:9px;font-size:11px;color:var(--red2);font-family:var(--mono)">
+        🛑 Empate já passou · não apostar no tie agora
+      </div>`;
+  }
 
   // Entry section
   let entryHtml = "";
@@ -1178,7 +1316,10 @@ function render(){
   root.innerHTML = `
     <div class="app">
       <div class="hdr">
-        <div class="tg">⬢ BAC BRU</div>
+        <div onclick="${isAdmin()?'abrirAdminApp()':''}" style="display:flex;align-items:center;gap:7px;${isAdmin()?'cursor:pointer':''}">
+          ${isAdmin()?diceSVG("blue",4).replace('width="34" height="34"','width="20" height="20"')+diceSVG("red",3).replace('width="34" height="34"','width="20" height="20"'):''}
+          <div class="tg">⬢ BAC BRU</div>
+        </div>
         <div class="hdr-r">
           <span class="dot" style="background:${SYNC_STATUS==='LIVE'?'#22c55e':SYNC_STATUS==='CONNECTING'?'#f59e0b':'#ef4444'}"></span>
           ${SYNC_STATUS === 'LIVE' ? 'LIVE · SYNC' : SYNC_STATUS === 'CONNECTING' ? 'CONECTANDO...' : 'OFFLINE'}
@@ -1353,15 +1494,57 @@ function render(){
       </div>
 
       <!-- TIE ANALYSIS -->
-      <div class="sec-lbl">EMPATE · ANÁLISE PROBABILÍSTICA</div>
-      <div class="card tie-card">
-        <div class="tie-status ${a.tie.active?'act':'idle'}">
-          ${a.tie.active ? '🔥 GATILHO ATIVO' : '○ MONITORANDO'} · ${a.tie.dt} rodadas sem Tie${a.tie.mp?' · MESA PAGADORA':''}
+      <!-- FAREJADOR DE EMPATES -->
+      <div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
+      <div class="card" style="background:linear-gradient(135deg,${
+        a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.12),rgba(239,68,68,.05)' :
+        a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.08),rgba(34,211,238,.03)' :
+        a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.06),rgba(0,0,0,.2)' :
+        'rgba(148,163,184,.04),rgba(0,0,0,.2)'
+      });border-color:${
+        a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.45)' :
+        a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.3)' :
+        a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.3)' :
+        'var(--border)'
+      }">
+        ${a.hunter ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:${
+            a.hunter.status==='QUENTE' ? 'var(--gold2)' :
+            a.hunter.status==='ABERTA' ? 'var(--gold2)' :
+            a.hunter.status==='PASSOU' ? 'var(--red2)' :
+            'var(--txt2)'
+          }">
+            ${a.hunter.status==='QUENTE'?'🔥 QUENTE':a.hunter.status==='ABERTA'?'🟢 JANELA ABERTA':a.hunter.status==='PASSOU'?'🛑 PASSOU':a.hunter.status==='FECHADA'?'⏳ FECHADA':'○ COLETANDO'}
+          </div>
+          <div style="font-size:12px;font-family:var(--mono);color:var(--txt2)">${(a.hunter.conf*100).toFixed(0)}%</div>
         </div>
-        <div class="tie-pays">${tiePays}</div>
-        ${a.tie.active ? `<div style="margin-top:10px;padding:7px 10px;background:rgba(245,158,11,.1);border-radius:7px;font-size:10px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
-          Faixa mais provável: <strong>${a.tie.payout}</strong> · soma média: ${a.sumAvg.toFixed(1)}
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6;margin-bottom:10px">${a.hunter.msg}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--cyan)">${a.hunter.dist}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">SEM EMPATE</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--txt)">${a.hunter.avgGap.toFixed(0)}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">MÉDIA GAP</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--purple)">${a.hunter.ties30}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">EM 30</div>
+          </div>
+        </div>
+        ${(a.hunter.status==='ABERTA'||a.hunter.status==='QUENTE') ? `
+        <div style="padding:9px 11px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:11px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
+          💰 Payout provável: <strong>${a.hunter.payoutProvavel||'4x'}</strong> · soma média recente: ${a.sumAvg.toFixed(1)}<br/>
+          <span style="font-size:10px;color:var(--txt2)">Apostar no empate agora tem valor de bônus</span>
         </div>` : ''}
+        ${a.hunter.ultimosPay && a.hunter.ultimosPay.length ? `
+        <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono)">
+          Últimos empates: ${a.hunter.ultimosPay.map(p=>`<span style="color:${p.pay==='88x'||p.pay==='25x'?'var(--gold2)':'var(--txt3)'}">${p.pay}</span>`).join(' · ')}
+        </div>` : ''}
+        ` : '<div style="color:var(--txt3);font-size:11px;text-align:center;padding:12px;font-family:var(--mono)">Coletando histórico de empates...</div>'}
+        <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>
 
       <!-- JSON PANEL -->
@@ -1394,7 +1577,16 @@ function render(){
         <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
       </div>
 
-      <div class="credit">BAC BRU · v6.4 · ANTI-ARMADILHA · PERFIL DE QUEBRA · SYNC</div>
+      <!-- HORÁRIOS DE SESSÃO -->
+      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
+      <div class="sec-lbl" style="margin-top:14px">HORÁRIOS DE SESSÃO</div>
+      <div class="card" style="padding:12px">
+        <div style="display:flex;flex-wrap:wrap;gap:7px">
+          ${AUTH.config.sessoes.map(t=>`<div style="padding:7px 13px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);border-radius:20px;font-family:var(--mono);font-size:12px;color:var(--cyan)">🕐 ${t}</div>`).join("")}
+        </div>
+      </div>` : ''}
+
+      <div class="credit">BAC BRU · v6.6 · FAREJADOR DE EMPATES · ASSINATURAS · SYNC</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
     </div>
@@ -1411,6 +1603,362 @@ function render(){
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AUTENTICAÇÃO · ASSINATURA + ADMIN
+// ════════════════════════════════════════════════════════════════════════════
+const AUTH = {
+  view: "loading", // loading | lock | admin | app
+  key: localStorage.getItem("bacbru_key") || "",
+  adminToken: localStorage.getItem("bacbru_admin") || "",
+  keys: {},          // keys carregadas do firebase
+  config: { sessoes: [], adminHash: null },
+  msg: "",
+  keyInput: "",
+  pwInput: "",
+  newKeyName: "",
+  newKeyTipo: "mensal",
+  newSessao: "",
+  secretCount: 0,
+  secretTimer: null
+};
+
+// hash simples (não-criptográfico, suficiente p/ gate de acesso)
+function simpleHash(s){
+  let h = 5381;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)+h) + s.charCodeAt(i); h = h & h; }
+  return "h" + (h>>>0).toString(36);
+}
+
+function genKey(tipo){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let k = "";
+  for(let i=0;i<6;i++) k += chars[Math.floor(Math.random()*chars.length)];
+  return (tipo === "vitalicia" ? "BRU-V-" : "BRU-M-") + k;
+}
+
+function keyIsValid(rec){
+  if(!rec || !rec.ativo) return false;
+  if(rec.tipo === "vitalicia") return true;
+  if(rec.expiraEm && Date.now() > rec.expiraEm) return false;
+  return true;
+}
+
+function initAuth(){
+  // Carrega config (sessões + adminHash) e chaves
+  db.ref("config").on("value", s => {
+    const c = s.val() || {};
+    AUTH.config.sessoes = c.sessoes || [];
+    AUTH.config.adminHash = c.adminHash || null;
+    routeAuth();
+  });
+  db.ref("keys").on("value", s => {
+    AUTH.keys = s.val() || {};
+    routeAuth();
+  });
+}
+
+function routeAuth(){
+  // Admin reconhecido pelo dispositivo?
+  if(AUTH.adminToken && AUTH.config.adminHash && AUTH.adminToken === AUTH.config.adminHash){
+    if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
+  } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key])){
+    if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
+  } else {
+    if(AUTH.view === "loading" || AUTH.view === "app") AUTH.view = "lock";
+  }
+  renderRouter();
+}
+
+function isAdmin(){
+  return AUTH.adminToken && AUTH.config.adminHash && AUTH.adminToken === AUTH.config.adminHash;
+}
+
+// ── Ações de acesso ──
+window.tentarChave = function(){
+  const k = (AUTH.keyInput||"").trim().toUpperCase();
+  if(!k){ AUTH.msg = "Digite sua chave"; renderRouter(); return; }
+  const rec = AUTH.keys[k];
+  if(keyIsValid(rec)){
+    AUTH.key = k;
+    localStorage.setItem("bacbru_key", k);
+    AUTH.msg = "";
+    AUTH.view = "app";
+    renderRouter();
+  } else if(rec && !keyIsValid(rec)){
+    AUTH.msg = "Chave expirada ou desativada";
+    renderRouter();
+  } else {
+    AUTH.msg = "Chave inválida";
+    renderRouter();
+  }
+};
+
+window.abrirAdmin = function(){
+  if(isAdmin()){ AUTH.view = "admin"; renderRouter(); return; }
+  AUTH.view = "adminLogin";
+  renderRouter();
+};
+
+// Toque secreto: 5 toques na logo/dadinhos abre o admin (escondido dos assinantes)
+window.secretAdmin = function(){
+  AUTH.secretCount++;
+  clearTimeout(AUTH.secretTimer);
+  AUTH.secretTimer = setTimeout(()=>{ AUTH.secretCount = 0; renderRouter(); }, 1500);
+  if(AUTH.secretCount >= 5){
+    AUTH.secretCount = 0;
+    clearTimeout(AUTH.secretTimer);
+    abrirAdmin();
+  } else {
+    renderRouter();
+  }
+};
+
+window.loginAdmin = function(){
+  const pw = (AUTH.pwInput||"").trim();
+  if(!pw){ AUTH.msg = "Digite a senha-mestra"; renderRouter(); return; }
+  const hash = simpleHash(pw);
+  if(!AUTH.config.adminHash){
+    // primeira configuração — define a senha-mestra
+    db.ref("config/adminHash").set(hash);
+    AUTH.adminToken = hash;
+    localStorage.setItem("bacbru_admin", hash);
+    AUTH.msg = "";
+    AUTH.pwInput = "";
+    AUTH.view = "admin";
+    renderRouter();
+  } else if(hash === AUTH.config.adminHash){
+    AUTH.adminToken = hash;
+    localStorage.setItem("bacbru_admin", hash);
+    AUTH.msg = "";
+    AUTH.pwInput = "";
+    AUTH.view = "admin";
+    renderRouter();
+  } else {
+    AUTH.msg = "Senha incorreta";
+    renderRouter();
+  }
+};
+
+window.criarChave = function(){
+  const nome = (AUTH.newKeyName||"").trim() || "sem nome";
+  const tipo = AUTH.newKeyTipo;
+  const k = genKey(tipo);
+  const rec = {
+    ativo: true,
+    tipo,
+    nome,
+    criadoEm: Date.now(),
+    expiraEm: tipo === "mensal" ? Date.now() + 30*24*60*60*1000 : null
+  };
+  db.ref("keys/" + k).set(rec);
+  AUTH.newKeyName = "";
+  AUTH.msg = "✓ Chave criada: " + k;
+  renderRouter();
+};
+
+window.toggleChave = function(k){
+  const rec = AUTH.keys[k];
+  if(!rec) return;
+  db.ref("keys/" + k + "/ativo").set(!rec.ativo);
+};
+
+window.renovarChave = function(k){
+  const rec = AUTH.keys[k];
+  if(!rec) return;
+  const base = (rec.expiraEm && rec.expiraEm > Date.now()) ? rec.expiraEm : Date.now();
+  db.ref("keys/" + k + "/expiraEm").set(base + 30*24*60*60*1000);
+  db.ref("keys/" + k + "/ativo").set(true);
+};
+
+window.removerChave = function(k){
+  if(!confirm("Remover a chave " + k + "?")) return;
+  db.ref("keys/" + k).remove();
+};
+
+window.addSessao = function(){
+  const t = (AUTH.newSessao||"").trim();
+  if(!/^\d{1,2}:\d{2}$/.test(t)){ AUTH.msg = "Horário inválido (use HH:MM)"; renderRouter(); return; }
+  const arr = [...AUTH.config.sessoes, t].sort();
+  db.ref("config/sessoes").set(arr);
+  AUTH.newSessao = "";
+};
+
+window.removerSessao = function(t){
+  const arr = AUTH.config.sessoes.filter(x=>x!==t);
+  db.ref("config/sessoes").set(arr);
+};
+
+window.sairAdmin = function(){ AUTH.view = "app"; renderRouter(); };
+window.voltarLock = function(){ AUTH.view = "lock"; renderRouter(); };
+
+window.logoutAcesso = function(){
+  if(!confirm("Sair do acesso neste dispositivo?")) return;
+  localStorage.removeItem("bacbru_key");
+  localStorage.removeItem("bacbru_admin");
+  AUTH.key = ""; AUTH.adminToken = "";
+  AUTH.view = "lock";
+  renderRouter();
+};
+
+// ── Render do roteador ──
+function renderRouter(){
+  if(AUTH.view === "app"){ renderApp(); return; }
+  const root = document.getElementById("root");
+  if(AUTH.view === "loading"){
+    root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
+    return;
+  }
+  if(AUTH.view === "lock"){
+    root.innerHTML = renderLock();
+    bindAuthInputs();
+    return;
+  }
+  if(AUTH.view === "adminLogin"){
+    root.innerHTML = renderAdminLogin();
+    bindAuthInputs();
+    return;
+  }
+  if(AUTH.view === "admin"){
+    root.innerHTML = renderAdminPanel();
+    bindAuthInputs();
+    return;
+  }
+}
+
+function diceSVG(color, pips){
+  const c = color === "blue" ? "#3b82f6" : "#ef4444";
+  const c2 = color === "blue" ? "#1e40af" : "#991b1b";
+  const dotPos = {
+    1:[[50,50]],
+    2:[[30,30],[70,70]],
+    3:[[28,28],[50,50],[72,72]],
+    4:[[30,30],[70,30],[30,70],[70,70]],
+    5:[[30,30],[70,30],[50,50],[30,70],[70,70]],
+    6:[[30,28],[70,28],[30,50],[70,50],[30,72],[70,72]]
+  }[pips];
+  const dots = dotPos.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="8" fill="#fff"/>`).join("");
+  return `<svg width="34" height="34" viewBox="0 0 100 100" style="filter:drop-shadow(0 2px 6px ${c}66)">
+    <rect x="6" y="6" width="88" height="88" rx="20" fill="url(#g${color})" stroke="${c2}" stroke-width="2"/>
+    <defs><linearGradient id="g${color}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c2}"/>
+    </linearGradient></defs>
+    ${dots}
+  </svg>`;
+}
+
+function renderLock(){
+  return `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:420px;margin:0 auto">
+    <div onclick="secretAdmin()" style="display:flex;gap:10px;margin-bottom:18px;cursor:pointer">${diceSVG("blue",4)}${diceSVG("red",3)}</div>
+    <div onclick="secretAdmin()" class="tg" style="font-size:30px;margin-bottom:6px;cursor:pointer">BAC BRU</div>
+    <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:28px">ACESSO RESTRITO · ASSINANTES</div>
+    <input id="keyInput" placeholder="DIGITE SUA CHAVE" value="${AUTH.keyInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none;text-transform:uppercase"/>
+    ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono)">${AUTH.msg}</div>` : ""}
+    <button onclick="tentarChave()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,211,238,.08));border:1px solid rgba(34,197,94,.3);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">▶ ENTRAR</button>
+    ${AUTH.secretCount > 0 && AUTH.secretCount < 5 ? `<div style="margin-top:18px;font-size:9px;color:var(--txt4);font-family:var(--mono)">${'●'.repeat(AUTH.secretCount)}${'○'.repeat(5-AUTH.secretCount)}</div>` : ""}
+  </div>`;
+}
+
+function renderAdminLogin(){
+  const first = !AUTH.config.adminHash;
+  return `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:420px;margin:0 auto">
+    <div style="display:flex;gap:10px;margin-bottom:18px">${diceSVG("blue",6)}${diceSVG("red",6)}</div>
+    <div class="tg" style="font-size:24px;margin-bottom:6px">PAINEL ADMIN</div>
+    <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;margin-bottom:24px">${first ? "DEFINA SUA SENHA-MESTRA" : "DIGITE A SENHA-MESTRA"}</div>
+    <input id="pwInput" type="password" placeholder="SENHA-MESTRA" value="${AUTH.pwInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none"/>
+    ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:var(--red2);font-family:var(--mono)">${AUTH.msg}</div>` : ""}
+    ${first ? `<div style="margin-top:12px;font-size:10px;color:var(--gold2);font-family:var(--mono);line-height:1.5;text-align:center">⚠️ Esta será a senha-mestra do sistema. Guarde-a bem. Este dispositivo será reconhecido como admin automaticamente.</div>` : ""}
+    <button onclick="loginAdmin()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(167,139,250,.15),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">${first ? "✓ DEFINIR E ENTRAR" : "▶ ENTRAR"}</button>
+    <div onclick="voltarLock()" style="margin-top:20px;font-size:10px;color:var(--txt3);font-family:var(--mono);cursor:pointer">← voltar</div>
+  </div>`;
+}
+
+function renderAdminPanel(){
+  const keys = Object.entries(AUTH.keys).sort((a,b)=>(b[1].criadoEm||0)-(a[1].criadoEm||0));
+  const ativas = keys.filter(([k,r])=>keyIsValid(r)).length;
+  const keyRows = keys.length ? keys.map(([k,r])=>{
+    const valid = keyIsValid(r);
+    const exp = r.tipo === "vitalicia" ? "vitalícia" :
+      (r.expiraEm ? new Date(r.expiraEm).toLocaleDateString("pt-BR") : "—");
+    const dias = r.tipo === "mensal" && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
+    return `<div style="padding:11px;background:rgba(0,0,0,.3);border:1px solid ${valid?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;margin-bottom:7px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${valid?'var(--green2)':'var(--red2)'}">${k}</div>
+        <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${r.tipo==='vitalicia'?'♾ VITALÍCIA':'📅 MENSAL'}</div>
+      </div>
+      <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
+      <div style="display:flex;gap:5px;margin-top:8px">
+        <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
+        ${r.tipo==='mensal'?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
+        <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
+      </div>
+    </div>`;
+  }).join("") : `<div style="color:var(--txt3);font-size:11px;font-family:var(--mono);text-align:center;padding:14px">nenhuma chave criada</div>`;
+
+  const sessoesRows = AUTH.config.sessoes.length ? AUTH.config.sessoes.map(t=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:13px;color:var(--cyan)">🕐 ${t}</span>
+      <button onclick="removerSessao('${t}')" style="padding:4px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:var(--red2);font-family:var(--mono);font-size:9px;cursor:pointer">×</button>
+    </div>`).join("") : `<div style="color:var(--txt3);font-size:10px;font-family:var(--mono);padding:8px">nenhum horário definido</div>`;
+
+  return `<div class="app" style="padding:18px 14px 60px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${diceSVG("blue",5).replace('width="34" height="34"','width="26" height="26"')}${diceSVG("red",2).replace('width="34" height="34"','width="26" height="26"')}
+        <div class="tg" style="font-size:18px">ADMIN</div>
+      </div>
+      <button onclick="sairAdmin()" style="padding:8px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">▶ ABRIR APP</button>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-v g">${ativas}</div><div class="stat-l">ATIVAS</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--purple)">${keys.length}</div><div class="stat-l">TOTAL</div></div>
+      <div class="stat"><div class="stat-v y">${AUTH.config.sessoes.length}</div><div class="stat-l">SESSÕES</div></div>
+    </div>
+
+    <div class="sec-lbl">CRIAR NOVA CHAVE</div>
+    <div class="card">
+      <input id="newKeyName" placeholder="Nome do assinante" value="${AUTH.newKeyName}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">
+        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:11px;letter-spacing:1px;cursor:pointer">📅 MENSAL</button>
+        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:11px;letter-spacing:1px;cursor:pointer">♾ VITALÍCIA</button>
+      </div>
+      <button onclick="criarChave()" style="width:100%;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,211,238,.06));border:1px solid rgba(34,197,94,.3);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">+ GERAR CHAVE</button>
+      ${AUTH.msg ? `<div style="margin-top:10px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono);text-align:center">${AUTH.msg}</div>` : ""}
+    </div>
+
+    <div class="sec-lbl">CHAVES · ${keys.length}</div>
+    <div class="card" style="max-height:340px;overflow-y:auto">${keyRows}</div>
+
+    <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
+    <div class="card">
+      ${sessoesRows}
+      <div style="display:flex;gap:7px;margin-top:8px">
+        <input id="newSessao" placeholder="HH:MM (ex: 20:00)" value="${AUTH.newSessao}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
+        <button onclick="addSessao()" style="padding:11px 18px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);border-radius:9px;color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer">+</button>
+      </div>
+    </div>
+
+    <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
+
+    <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
+  </div>`;
+}
+
+window.setTipo = function(t){ AUTH.newKeyTipo = t; renderRouter(); };
+
+function bindAuthInputs(){
+  const bind = (id, field, upper) => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener("input", e => {
+      AUTH[field] = upper ? e.target.value.toUpperCase() : e.target.value;
+    });
+  };
+  bind("keyInput", "keyInput", true);
+  bind("pwInput", "pwInput", false);
+  bind("newKeyName", "newKeyName", false);
+  bind("newSessao", "newSessao", false);
+}
+
 window.reg = function(r){
   const soma = ST.somaIn;
   addRound(r, soma);
@@ -1423,11 +1971,13 @@ window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
 window.finalizarSessao = finalizarSessao;
-window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; render(); };
-window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; render(); };
+window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; renderApp(); };
+window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
+window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 
-render();
+renderRouter();
 initFirebaseSync();
+initAuth();
 </script>
 </body>
 </html>
