@@ -688,6 +688,23 @@ function reset(){
   abortCiclo();
 }
 
+function finalizarSessao(){
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100 * ST.greens / total) : 0;
+  if(!confirm(`Finalizar sessão?\n\n✅ ${ST.greens} GREEN · ❌ ${ST.reds} RED · ${rate}% rate\n\n• Placar será zerado\n• Aprendizado, histórico e pesos serão mantidos\n• Sessão #${ST.sessoes + 1} iniciada`)) return;
+
+  // Copia JSON antes de zerar
+  copyJSON();
+
+  // Zera somente placar
+  ST.greens = 0;
+  ST.reds = 0;
+  ST.sessoes++;
+  abortCiclo();
+  toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
+  save();
+}
+
 function injectJSON(){
   try{
     const d = JSON.parse(ST.injTxt);
@@ -894,7 +911,7 @@ function render(){
         <div class="stat"><div class="stat-v g">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r">${ST.reds}</div><div class="stat-l">RED</div></div>
         <div class="stat"><div class="stat-v y">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.H.length}</div><div class="stat-l">ROUNDS</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
       </div>
 
       <!-- SIGNAL CARD -->
@@ -1016,6 +1033,11 @@ function render(){
         </div>` : ''}
       </div>
 
+      <!-- FINALIZAR SESSÃO -->
+      <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-top:10px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
+        ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
+      </button>
+
       <!-- FOOTER -->
       <div class="foot-btns">
         <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
@@ -1050,6 +1072,7 @@ window.undo = undo;
 window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
+window.finalizarSessao = finalizarSessao;
 window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; render(); };
 window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; render(); };
 
