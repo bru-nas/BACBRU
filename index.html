@@ -240,6 +240,7 @@ function pushToFirebase(){
     ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
     ciclo_gale_dec: ST.ciclo_gale_dec || null,
     ciclo_gale_tie: ST.ciclo_gale_tie || null,
+    sessaoAtiva: !!ST.sessaoAtiva,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -279,6 +280,7 @@ function initFirebaseSync(){
     ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
+    ST.sessaoAtiva = !!data.sessaoAtiva;
     SUPPRESS_PUSH = false;
     renderRouter();
   }, err => {
@@ -482,10 +484,19 @@ function tieHunter(H, heatScore){
 
   // ── PADRÃO DE ECO · empates que vêm na quina um do outro ──
   // Quantos % dos empates vieram a ≤3 rodadas do empate anterior?
+  // Classificações: DUPLO (gap=1) · SANDWICH (gap=2) · QUINA (gap=3)
+  res.echoTipos = { duplo:0, sandwich:0, quina:0 };
   if(gaps.length >= 2){
-    const echoGaps = gaps.filter(g=>g<=3).length;
+    res.echoTipos.duplo = gaps.filter(g=>g===1).length;
+    res.echoTipos.sandwich = gaps.filter(g=>g===2).length;
+    res.echoTipos.quina = gaps.filter(g=>g===3).length;
+    const echoGaps = res.echoTipos.duplo + res.echoTipos.sandwich + res.echoTipos.quina;
     res.echoRate = echoGaps / gaps.length;
-    res.echo = res.echoRate >= 0.30; // 30%+ dos empates ecoam → mesa de eco
+    res.echo = res.echoRate >= 0.30;
+    // tipo predominante
+    const tipos = res.echoTipos;
+    res.echoTipoPredom = tipos.duplo >= tipos.sandwich && tipos.duplo >= tipos.quina ? "DUPLO"
+                       : tipos.sandwich >= tipos.quina ? "SANDWICH" : "QUINA";
   }
 
   // distância desde o último empate
@@ -521,9 +532,11 @@ function tieHunter(H, heatScore){
   // ── ECO ATIVO: empate há 1-3 rodadas + mesa que ecoa → outro empate na quina ──
   if(res.echo && res.dist >= 1 && res.dist <= 3 && ties5 < 3){
     res.status = "ECO";
-    res.echoMsg = `Mesa de eco (${(res.echoRate*100).toFixed(0)}% dos empates vêm coladinhos)`;
-    res.msg = `Empate há ${res.dist} rodada(s) · padrão de eco ativo · outro pode vir na quina`;
-    res.conf = Math.min(0.82, 0.55 + res.echoRate*0.4);
+    const tipo = res.echoTipoPredom || "QUINA";
+    res.echoMsg = `Mesa de eco · ${(res.echoRate*100).toFixed(0)}% dos empates vêm coladinhos · padrão predominante: ${tipo}`;
+    const ondePos = res.dist === 1 ? "DUPLO (back-to-back)" : res.dist === 2 ? "SANDWICH (cor entre dois empates)" : "na QUINA (próximo)";
+    res.msg = `Empate há ${res.dist} rodada(s) · outro pode vir ${ondePos}`;
+    res.conf = Math.min(0.85, 0.55 + res.echoRate*0.4 + (res.dist === 1 ? 0.05 : 0));
     return res;
   }
 
@@ -1005,12 +1018,14 @@ function confirmEntry(){
   ST.ciclo_sinal = a.signal;
   ST.ciclo_conf = a.conf;
   ST.ciclo_razao = a.reason;
-  ST.ciclo_tie = a.tie.active ? a.tie.payout : null;
+  ST.ciclo_tie = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
+  // SESSÃO INICIA AQUI · só termina ao clicar finalizar
+  ST.sessaoAtiva = true;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
-  if(a.tie.active) msg += ` + EMPATE ${a.tie.payout}`;
+  if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
   toast(msg, 2800);
   save(); renderRouter();
 }
@@ -1027,63 +1042,99 @@ function abortCiclo(){
   save(); renderRouter();
 }
 
+function hunterAtivo(a){
+  return a && a.hunter && (a.hunter.status === "ABERTA" || a.hunter.status === "QUENTE" || a.hunter.status === "ECO");
+}
+
 function addRound(r, sNum){
   const s = parseInt(sNum) || 0;
   ST.H.push({r, s});
 
-  // ── CICLO ──
+  // ── CICLO STATE MACHINE ──
+  // idle | entrada | aguarda_gale | gale
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
-    if(r === sig || r === "T"){
-      // GREEN na entrada (cor certa OU empate)
+    const aBefore = analyze(); // farejador antes do resultado novo já está no H, mas a regra é "estava ativo no momento da entrada/resultado"
+    if(r === sig){
+      // Cor bateu → GREEN
       ST.greens++;
-      if(r === "T"){
+      toast(`✅ GREEN · ${lbl(r)}`);
+      abortCiclo();
+    } else if(r === "T"){
+      // Regra dos empates: só conta se farejador estava ativo
+      if(ST.ciclo_tie || hunterAtivo(aBefore)){
         const pay = payoutDaSoma(s);
+        ST.greens++;
         if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
-        else toast(`✅ GREEN · EMPATE bateu!`);
+        else toast(`✅ GREEN · EMPATE pago ${pay}`);
+        abortCiclo();
       } else {
-        toast(`✅ GREEN · ${lbl(r)}`);
+        // Farejador inativo → empate é push, vida que segue
+        toast(`↻ Empate · push (sem alteração no placar)`, 2800);
+        abortCiclo();
+      }
+    } else {
+      // Cor errada → decidir gale
+      const a2 = analyze();
+      if(a2.signal && a2.signal !== "W"){
+        // Motor tem sinal claro AGORA → gale imediato
+        ST.ciclo = "gale";
+        ST.ciclo_gale_sinal = a2.signal;
+        ST.ciclo_gale_dec = (a2.signal === sig) ? "MANTER" : "INVERTER";
+        ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+        let gmsg = `⚡ GALE ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
+        if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+        toast(gmsg, 3500);
+      } else {
+        // Motor incerto → aguardar próximo sinal · será o GALE
+        ST.ciclo = "aguarda_gale";
+        ST.ciclo_gale_sinal = null;
+        ST.ciclo_gale_dec = "AGUARDAR";
+        ST.ciclo_gale_tie = null;
+        toast(`⏳ AGUARDAR · próximo sinal será o GALE`, 3500);
+      }
+      save(); renderRouter();
+    }
+  } else if(ST.ciclo === "aguarda_gale"){
+    // Observação: o usuário NÃO está apostando este round. Re-analisar.
+    const a2 = analyze();
+    if(a2.signal && a2.signal !== "W"){
+      // motor agora dá sinal claro → vira gale (próximo round será o resultado do gale)
+      ST.ciclo = "gale";
+      ST.ciclo_gale_sinal = a2.signal;
+      ST.ciclo_gale_dec = (a2.signal === ST.ciclo_sinal) ? "MANTER" : "INVERTER";
+      ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+      let gmsg = `⚡ ENTRAR no GALE · ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+      toast(gmsg, 3800);
+    } else {
+      toast(`⏳ Ainda aguardando · sinal não confirmou`, 2000);
+    }
+    save(); renderRouter();
+  } else if(ST.ciclo === "gale"){
+    const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    const aBefore = analyze();
+    if(r === galeSide){
+      ST.greens++;
+      toast(`✅ GREEN GALE · ${lbl(r)}`);
+      abortCiclo();
+    } else if(r === "T"){
+      if(ST.ciclo_gale_tie || hunterAtivo(aBefore)){
+        const pay = payoutDaSoma(s);
+        ST.greens++;
+        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
+        else toast(`✅ GREEN GALE · EMPATE pago ${pay}`);
+      } else {
+        toast(`↻ Empate gale · push (sem alteração no placar)`, 2800);
       }
       abortCiclo();
     } else {
-      // Entrada falhou → DECIDIR GALE
-      const a2 = analyze();
-      let galeSide, dec;
-      if(a2.signal && a2.signal !== "W"){
-        galeSide = a2.signal;
-        dec = (galeSide === sig) ? "MANTER" : "INVERTER";
-      } else {
-        galeSide = opos(sig);
-        dec = "AGUARDAR";
-      }
-      ST.ciclo = "gale";
-      ST.ciclo_gale_sinal = galeSide;
-      ST.ciclo_gale_dec = dec;
-      ST.ciclo_gale_tie = a2.tie.active ? a2.tie.payout : null;
-      let gmsg = dec === "AGUARDAR"
-        ? `⏳ GALE · AGUARDAR melhor momento · tendência ${lbl(galeSide)}`
-        : `⚡ GALE · ${dec} · ${lbl(galeSide)}`;
-      if(a2.tie.active) gmsg += ` + EMPATE ${a2.tie.payout}`;
-      toast(gmsg, 3400);
-      save(); renderRouter();
-    }
-  } else if(ST.ciclo === "gale"){
-    const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
-    if(r === galeSide || r === "T"){
-      ST.greens++;
-      if(r === "T"){
-        const pay = payoutDaSoma(s);
-        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
-        else toast(`✅ GREEN GALE · EMPATE bateu!`);
-      } else {
-        toast(`✅ GREEN GALE · ${lbl(r)}`);
-      }
-    } else {
       ST.reds++;
       toast(`❌ RED · entrada e gale falharam`);
+      abortCiclo();
     }
-    abortCiclo();
   } else {
+    // idle · só registra
     save(); renderRouter();
   }
 }
@@ -1111,14 +1162,11 @@ function finalizarSessao(){
   const total = ST.greens + ST.reds;
   const rate = total > 0 ? Math.round(100 * ST.greens / total) : 0;
   if(!confirm(`Finalizar sessão?\n\n✅ ${ST.greens} GREEN · ❌ ${ST.reds} RED · ${rate}% rate\n\n• Placar será zerado\n• Aprendizado, histórico e pesos serão mantidos\n• Sessão #${ST.sessoes + 1} iniciada`)) return;
-
-  // Copia JSON antes de zerar
   copyJSON();
-
-  // Zera somente placar
   ST.greens = 0;
   ST.reds = 0;
   ST.sessoes++;
+  ST.sessaoAtiva = false;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
   save();
@@ -1307,55 +1355,73 @@ function renderApp(){
       </div>`;
   }
 
-  // Entry section
+  // Entry section · redesign explícito para gale
   const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
   const proxSessao = (AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length) ? AUTH.config.sessoes : [];
+
+  // Helper para card colorido grande no estilo do sinal
+  function cardSinalGrande(titulo, lado, sub, tieInfo){
+    const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
+               lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
+               "rgba(245,158,11,.12),rgba(245,158,11,.04)";
+    const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
+    const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
+      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
+      ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
+      ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
+    </div>`;
+  }
+
   let entryHtml = "";
   if(ST.ciclo === "idle"){
     if(a.signal && a.signal !== "W"){
-      const tieExtra = a.tie.active ? ` + EMPATE ${a.tie.payout}` : "";
+      // Há sinal · botão de confirmar entrada
+      const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
       entryHtml = isAdmin()
-        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`
-        : `<div class="entry-card"><div class="entry-ttl">▶ SINAL CONFIRMADO</div><div class="entry-act">${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%${tieExtra}</div></div>`;
-    } else if(!bomMomento){
-      // Aviso de bom momento — só iniciamos sessão em mesa boa
-      entryHtml = `<div style="margin-top:10px;padding:14px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.25);border-radius:12px">
-        <div style="font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:6px">⏸ FORA DE SESSÃO</div>
-        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
-          Só começamos a sessão quando o app identifica um <strong style="color:var(--txt)">bom momento</strong> na mesa. Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
-          👇 Veja no rodapé o horário da <strong style="color:var(--cyan)">próxima sessão</strong>. Avisamos com <strong style="color:var(--txt)">30 min de antecedência</strong>.
+        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
+        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra);
+    } else if(!ST.sessaoAtiva && !bomMomento){
+      // FORA DE SESSÃO — só antes da primeira entrada
+      entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
+        <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
+        <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
+          Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
+          👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
         </div>
       </div>`;
     } else {
-      entryHtml = `<div class="wait-card"><div class="wait-act">⏳ Bom momento · aguardando padrão confirmar · ${a.reason}</div></div>`;
+      // Sessão ativa OU bom momento mas sem padrão ainda
+      entryHtml = `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar'}</div></div>`;
     }
   } else if(ST.ciclo === "entrada"){
-    const tieLine = ST.ciclo_tie
-      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_tie}</div>`
-      : "";
-    entryHtml = `<div class="entry-card">
-      <div class="entry-ttl">▶ ENTRADA ATIVA</div>
-      <div class="entry-act">Apostar em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
-      ${tieLine}
-      ${isAdmin()?`<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>`:''}
+    entryHtml = cardSinalGrande(
+      "▶ ENTRADA ATIVA",
+      ST.ciclo_sinal,
+      `${(ST.ciclo_conf*100).toFixed(0)}% confiança${isAdmin()?' · registre o resultado abaixo':''}`,
+      ST.ciclo_tie
+    );
+  } else if(ST.ciclo === "aguarda_gale"){
+    // Aguardando sinal claro para o gale
+    entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.3);border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDAR · PRÓXIMO SINAL SERÁ O GALE</div>
+      <div style="font-size:18px;font-weight:800;color:var(--txt2);font-family:var(--mono);margin-top:4px">Motor incerto · não entrar agora</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--txt3);font-family:var(--mono);line-height:1.5">
+        Entrada anterior foi <strong>${lbl(ST.ciclo_sinal)}</strong>. Aguarde o motor confirmar para o gale.<br/>${isAdmin()?'Registre as rodadas até o sinal aparecer.':''}
+      </div>
     </div>`;
   } else if(ST.ciclo === "gale"){
     const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
     const gDec = ST.ciclo_gale_dec || "INVERTER";
-    const decColor = gDec === "AGUARDAR" ? "var(--txt2)" : gDec === "MANTER" ? "var(--blue2)" : "var(--gold2)";
-    const decIcon = gDec === "AGUARDAR" ? "⏳" : gDec === "MANTER" ? "↻" : "⇄";
-    const tieLine = ST.ciclo_gale_tie
-      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_gale_tie}</div>`
-      : "";
-    const aviso = gDec === "AGUARDAR"
-      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou).${isAdmin()?' Registre o resultado quando entrar.':''}</div>`
-      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong>${isAdmin()?' · registre o resultado do gale ↓':''}</div>`;
-    entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.1),rgba(245,158,11,.03));border-color:rgba(245,158,11,.4)">
-      <div class="entry-ttl" style="color:${decColor}">${decIcon} GALE 1 · ${gDec}</div>
-      <div class="entry-act">Apostar em ${lbl(gSide)}</div>
-      ${tieLine}
-      ${aviso}
-    </div>`;
+    const sub = `Decisão: ${gDec} · entrada anterior foi ${lbl(ST.ciclo_sinal)}${isAdmin()?' · registre resultado':''}`;
+    entryHtml = cardSinalGrande(
+      `⚡ GALE · ENTRAR AGORA`,
+      gSide,
+      sub,
+      ST.ciclo_gale_tie
+    );
   }
 
   root.innerHTML = `
@@ -1609,26 +1675,8 @@ function renderApp(){
         <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>
 
-      <!-- JSON PANEL · somente admin -->
+      <!-- JSON E CALIBRAGEM AGORA NO PAINEL ADMIN -->
       ${isAdmin() ? `
-      <div class="sec-lbl">CALIBRAGEM · APRENDIZADO ADAPTATIVO</div>
-      <div class="card">
-        <div class="json-hdr" onclick="toggleJson()">
-          <div class="json-ttl">⊡ INJETAR / EXPORTAR JSON</div>
-          <div class="json-arr" style="${ST.jsonOpen?'transform:rotate(180deg)':''}">▼</div>
-        </div>
-        ${ST.jsonOpen ? `
-        <div class="json-body">
-          <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt}</textarea>
-          <div class="json-btns">
-            <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR</button>
-            <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
-          </div>
-          <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
-          ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
-        </div>` : ''}
-      </div>
-
       <!-- FINALIZAR SESSÃO -->
       <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-top:10px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
         ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
@@ -1640,17 +1688,48 @@ function renderApp(){
         <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
       </div>` : ''}
 
-      <!-- HORÁRIOS DE SESSÃO · maiores -->
-      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
-      <div class="sec-lbl" style="margin-top:16px">🕐 HORÁRIOS DAS SESSÕES AO VIVO</div>
-      <div class="card" style="padding:16px">
-        <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center">
-          ${AUTH.config.sessoes.map(t=>`<div style="padding:13px 22px;background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(34,197,94,.06));border:1px solid rgba(34,211,238,.35);border-radius:14px;font-family:var(--mono);font-size:20px;font-weight:800;color:var(--cyan);letter-spacing:1px">🕐 ${t}</div>`).join("")}
+      <!-- ESTADO DA MESA + HORÁRIOS DAS LIVES · em destaque pro assinante -->
+      ${a.heat ? `
+      <div class="sec-lbl" style="margin-top:18px;font-size:11px">📊 ESTADO DA MESA AGORA</div>
+      <div class="card" style="padding:18px;text-align:center;background:linear-gradient(135deg,${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.10),rgba(34,211,238,.04)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.08),rgba(34,197,94,.04)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.06),rgba(255,255,255,.02)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.08),rgba(239,68,68,.04)':
+        'rgba(239,68,68,.10),rgba(245,158,11,.04)'
+      })">
+        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:${
+          a.heat.state==='QUENTE'?'var(--green2)':
+          a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+          a.heat.state==='NEUTRA'?'var(--txt)':
+          a.heat.state==='FRIA'?'var(--gold2)':
+          'var(--red2)'
+        };letter-spacing:2px;margin-bottom:8px">
+          ${a.heat.state==='QUENTE'?'🔥':a.heat.state==='FAVORÁVEL'?'⚡':a.heat.state==='NEUTRA'?'○':a.heat.state==='FRIA'?'❄':'🧊'} ${a.heat.state}
         </div>
-        <div style="margin-top:12px;text-align:center;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">Avisamos com <strong style="color:var(--txt2)">30 min de antecedência</strong>. A sessão só inicia se a mesa estiver em bom momento.</div>
+        <div style="font-size:14px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          ${a.heat.state==='QUENTE'?'Mesa muito previsível · operamos com tranquilidade':
+            a.heat.state==='FAVORÁVEL'?'Mesa boa · operamos com critério':
+            a.heat.state==='NEUTRA'?'Mesa sem direção · só com forte confirmação':
+            a.heat.state==='FRIA'?'Mesa caótica · NÃO operamos para evitar reds':
+            'Mesa congelada · BLOQUEADA · aguardar virada'}
+        </div>
+        ${ST.sessaoAtiva?`<div style="margin-top:12px;padding:8px 14px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:9px;display:inline-block;font-size:12px;color:var(--green2);font-family:var(--mono);font-weight:700">▶ SESSÃO ATIVA</div>`:''}
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v6.8 · TESTE 3 DIAS · MÁQUINA DE GREEN · SYNC</div>
+      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
+      <div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div>
+      <div class="card" style="padding:18px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+          ${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
+        </div>
+        <div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>
+          A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.
+        </div>
+      </div>` : ''}
+
+      <div class="credit">BAC BRU · v6.9 · MÁQUINA DE GREEN PERFEITA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
@@ -2090,6 +2169,18 @@ function renderAdminPanel(){
         </div>
         <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);line-height:1.5">A nova admin abre o app, toca 5× na logo e entra com essa senha. O dispositivo dela será reconhecido automaticamente.</div>
       </div>
+    </div>
+
+    <div class="sec-lbl">CALIBRAGEM · APLICAR / COPIAR JSON</div>
+    <div class="card">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5;margin-bottom:8px">Cole aqui o JSON exportado da última sessão para retomar o aprendizado, ou copie o JSON atual para guardar.</div>
+      <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt||""}</textarea>
+      <div class="json-btns">
+        <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR JSON</button>
+        <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
+      </div>
+      <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
+      ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
     </div>
 
     <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
