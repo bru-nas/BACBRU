@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.5 · ASSINATURAS · CRITERIOUS</title>
+<title>BAC BRU v6.7 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -26,6 +26,12 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pagaPop{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.15);opacity:1}60%{transform:scale(.95)}100%{transform:scale(1);opacity:1}}
+@keyframes fireGlow{0%,100%{text-shadow:0 0 20px #f59e0b,0 0 40px #ef4444}50%{text-shadow:0 0 40px #fbbf24,0 0 80px #f59e0b}}
+.paga-overlay{position:fixed;inset:0;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92));z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:slideIn .2s}
+.paga-big{font-size:64px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px}
+.paga-x{font-size:88px;font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:pagaPop .6s ease;margin-top:8px}
+.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s}
 .tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
 .app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh}
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
@@ -459,7 +465,8 @@ function tieHunter(H, heatScore){
   const res = {
     status:"DADOS", conf:0, msg:"Coletando histórico...",
     dist:0, avgGap:0, maxGap:0, ties15:0, ties30:0,
-    payoutProvavel:null, ultimosPay:[], cluster:false, atrasado:false
+    payoutProvavel:null, ultimosPay:[], cluster:false, atrasado:false,
+    echo:false, echoRate:0, echoMsg:""
   };
   if(H.length < 12) return res;
 
@@ -472,6 +479,14 @@ function tieHunter(H, heatScore){
   for(let i=1;i<tieIdx.length;i++) gaps.push(tieIdx[i]-tieIdx[i-1]);
   res.avgGap = gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : 12;
   res.maxGap = gaps.length ? Math.max(...gaps) : 0;
+
+  // ── PADRÃO DE ECO · empates que vêm na quina um do outro ──
+  // Quantos % dos empates vieram a ≤3 rodadas do empate anterior?
+  if(gaps.length >= 2){
+    const echoGaps = gaps.filter(g=>g<=3).length;
+    res.echoRate = echoGaps / gaps.length;
+    res.echo = res.echoRate >= 0.30; // 30%+ dos empates ecoam → mesa de eco
+  }
 
   // distância desde o último empate
   const lastTie = tieIdx.length ? tieIdx[tieIdx.length-1] : -1;
@@ -487,8 +502,6 @@ function tieHunter(H, heatScore){
   res.ultimosPay = tieIdx.slice(-5).map(i=>({s:H[i].s, pay:payoutDaSoma(H[i].s)}));
 
   // ── Previsão de payout pela soma recente ──
-  // Se as somas vencedoras recentes estão indo a extremos (2,3,10,11,12),
-  // um empate que vier tende a cair em soma alta de pagamento.
   const col = H.filter(x=>x.r!=="T");
   const last6sum = last(col,6).map(x=>x.s||0).filter(x=>x>0);
   const avg6 = last6sum.length ? last6sum.reduce((a,b)=>a+b,0)/last6sum.length : 7;
@@ -501,17 +514,20 @@ function tieHunter(H, heatScore){
     res.payoutProvavel = "4x";
   }
 
-  // ── Estado da janela ──
-  // PASSOU: cluster recente (2+ ties nas últimas 5) → janela se esgotou
-  // QUENTE: muito atrasado (dist >= 1.4× média) → empate iminente
-  // ABERTA: atrasado (dist >= média) e há ties no histórico recente
-  // + mesa fria/congelada reforça (quando rouba, o empate bom vem)
-  // FECHADA: ainda cedo
   res.cluster = ties5 >= 2 || ties8 >= 3;
   res.atrasado = res.dist >= res.avgGap;
-
   const mesaFria = heatScore !== undefined && heatScore < 48;
 
+  // ── ECO ATIVO: empate há 1-3 rodadas + mesa que ecoa → outro empate na quina ──
+  if(res.echo && res.dist >= 1 && res.dist <= 3 && ties5 < 3){
+    res.status = "ECO";
+    res.echoMsg = `Mesa de eco (${(res.echoRate*100).toFixed(0)}% dos empates vêm coladinhos)`;
+    res.msg = `Empate há ${res.dist} rodada(s) · padrão de eco ativo · outro pode vir na quina`;
+    res.conf = Math.min(0.82, 0.55 + res.echoRate*0.4);
+    return res;
+  }
+
+  // ── Estados normais ──
   if(res.cluster){
     res.status = "PASSOU";
     res.msg = `Cluster recente (${ties8} empates/8 rodadas) · janela se esgotou · NÃO perseguir`;
@@ -527,7 +543,6 @@ function tieHunter(H, heatScore){
     res.conf = Math.min(0.75, 0.45 + (res.dist/res.avgGap - 1)*0.4);
     if(mesaFria){ res.conf = Math.min(0.85, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
   } else if(mesaFria && res.ties15 >= 2){
-    // mesa roubando + empates aparecendo = zona de empate
     res.status = "ABERTA";
     res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de empate ativa`;
     res.conf = 0.55;
@@ -913,7 +928,7 @@ function analyze(){
   const hunter = tieHunter(ST.H, heat);
   out.hunter = hunter;
   // Atualiza o tie.active com base no farejador (mais inteligente)
-  out.tie.active = (hunter.status === "ABERTA" || hunter.status === "QUENTE");
+  out.tie.active = (hunter.status === "ABERTA" || hunter.status === "QUENTE" || hunter.status === "ECO");
   out.tie.hunterStatus = hunter.status;
   out.tie.hunterConf = hunter.conf;
 
@@ -1022,18 +1037,22 @@ function addRound(r, sNum){
     if(r === sig || r === "T"){
       // GREEN na entrada (cor certa OU empate)
       ST.greens++;
-      toast(r === "T" ? `✅ GREEN · EMPATE bateu!` : `✅ GREEN · ${lbl(r)}`);
+      if(r === "T"){
+        const pay = payoutDaSoma(s);
+        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
+        else toast(`✅ GREEN · EMPATE bateu!`);
+      } else {
+        toast(`✅ GREEN · ${lbl(r)}`);
+      }
       abortCiclo();
     } else {
-      // Entrada falhou → DECIDIR GALE (analisar APÓS o novo resultado já registrado)
+      // Entrada falhou → DECIDIR GALE
       const a2 = analyze();
       let galeSide, dec;
       if(a2.signal && a2.signal !== "W"){
-        // motor tem sinal claro
         galeSide = a2.signal;
         dec = (galeSide === sig) ? "MANTER" : "INVERTER";
       } else {
-        // motor incerto → AGUARDAR mas fallback inverte (padrão mudou)
         galeSide = opos(sig);
         dec = "AGUARDAR";
       }
@@ -1049,11 +1068,16 @@ function addRound(r, sNum){
       save(); renderRouter();
     }
   } else if(ST.ciclo === "gale"){
-    // Resultado do GALE — CONTABILIZA SEMPRE
     const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
     if(r === galeSide || r === "T"){
       ST.greens++;
-      toast(r === "T" ? `✅ GREEN GALE · EMPATE bateu!` : `✅ GREEN GALE · ${lbl(r)}`);
+      if(r === "T"){
+        const pay = payoutDaSoma(s);
+        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
+        else toast(`✅ GREEN GALE · EMPATE bateu!`);
+      } else {
+        toast(`✅ GREEN GALE · ${lbl(r)}`);
+      }
     } else {
       ST.reds++;
       toast(`❌ RED · entrada e gale falharam`);
@@ -1062,6 +1086,13 @@ function addRound(r, sNum){
   } else {
     save(); renderRouter();
   }
+}
+
+// Celebração especial para empate de alto pagamento
+function celebraPaga(pay){
+  ST.celebra = pay;
+  toast(`🔥 PAGA ${pay} 🔥`, 4500);
+  setTimeout(()=>{ ST.celebra = null; renderRouter(); }, 4500);
 }
 
 function undo(){
@@ -1239,7 +1270,7 @@ function renderApp(){
 
   // Tie pays
   const tieHi = a.tie.payout;
-  const hunterOpen = a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE');
+  const hunterOpen = a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE' || a.hunter.status==='ECO');
   const provavel = a.hunter ? a.hunter.payoutProvavel : null;
   const tieRows = [
     ["88x","2,12",a.tie.probs["88x_2_12"]],
@@ -1265,9 +1296,10 @@ function renderApp(){
 
   // Tie badge junto da entrada — dirigido pelo farejador
   let tieBadge = "";
-  if(a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE')){
+  if(a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE' || a.hunter.status==='ECO')){
+    const lbl2 = a.hunter.status==='QUENTE'?'IMINENTE':a.hunter.status==='ECO'?'NA QUINA':'PRÓXIMO';
     tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
-        🐕 FAREJADOR: EMPATE ${a.hunter.status==='QUENTE'?'IMINENTE':'PRÓXIMO'} · ${a.hunter.payoutProvavel||'4x'}
+        🐕 FAREJADOR: EMPATE ${lbl2} · ${a.hunter.payoutProvavel||'4x'}
       </div>`;
   } else if(a.hunter && a.hunter.status==='PASSOU'){
     tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:9px;font-size:11px;color:var(--red2);font-family:var(--mono)">
@@ -1276,13 +1308,26 @@ function renderApp(){
   }
 
   // Entry section
+  const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
+  const proxSessao = (AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length) ? AUTH.config.sessoes : [];
   let entryHtml = "";
   if(ST.ciclo === "idle"){
     if(a.signal && a.signal !== "W"){
       const tieExtra = a.tie.active ? ` + EMPATE ${a.tie.payout}` : "";
-      entryHtml = `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`;
+      entryHtml = isAdmin()
+        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`
+        : `<div class="entry-card"><div class="entry-ttl">▶ SINAL CONFIRMADO</div><div class="entry-act">${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%${tieExtra}</div></div>`;
+    } else if(!bomMomento){
+      // Aviso de bom momento — só iniciamos sessão em mesa boa
+      entryHtml = `<div style="margin-top:10px;padding:14px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.25);border-radius:12px">
+        <div style="font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:6px">⏸ FORA DE SESSÃO</div>
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          Só começamos a sessão quando o app identifica um <strong style="color:var(--txt)">bom momento</strong> na mesa. Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
+          👇 Veja no rodapé o horário da <strong style="color:var(--cyan)">próxima sessão</strong>. Avisamos com <strong style="color:var(--txt)">30 min de antecedência</strong>.
+        </div>
+      </div>`;
     } else {
-      entryHtml = `<div class="wait-card"><div class="wait-act">⏳ AGUARDA · ${a.reason}</div></div>`;
+      entryHtml = `<div class="wait-card"><div class="wait-act">⏳ Bom momento · aguardando padrão confirmar · ${a.reason}</div></div>`;
     }
   } else if(ST.ciclo === "entrada"){
     const tieLine = ST.ciclo_tie
@@ -1292,7 +1337,7 @@ function renderApp(){
       <div class="entry-ttl">▶ ENTRADA ATIVA</div>
       <div class="entry-act">Apostar em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
       ${tieLine}
-      <div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>
+      ${isAdmin()?`<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>`:''}
     </div>`;
   } else if(ST.ciclo === "gale"){
     const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
@@ -1303,8 +1348,8 @@ function renderApp(){
       ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_gale_tie}</div>`
       : "";
     const aviso = gDec === "AGUARDAR"
-      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou). Registre o resultado quando entrar.</div>`
-      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong> · registre o resultado do gale ↓</div>`;
+      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou).${isAdmin()?' Registre o resultado quando entrar.':''}</div>`
+      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong>${isAdmin()?' · registre o resultado do gale ↓':''}</div>`;
     entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.1),rgba(245,158,11,.03));border-color:rgba(245,158,11,.4)">
       <div class="entry-ttl" style="color:${decColor}">${decIcon} GALE 1 · ${gDec}</div>
       <div class="entry-act">Apostar em ${lbl(gSide)}</div>
@@ -1326,12 +1371,21 @@ function renderApp(){
         </div>
       </div>
 
-      <div class="stats-bar">
-        <div class="stat"><div class="stat-v g">${ST.greens}</div><div class="stat-l">GREEN</div></div>
-        <div class="stat"><div class="stat-v r">${ST.reds}</div><div class="stat-l">RED</div></div>
-        <div class="stat"><div class="stat-v y">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
+      <div class="stats-bar" style="padding:14px 12px">
+        <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
+        <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
+        <div class="stat" style="flex:1.3"><div class="stat-v y" style="font-size:30px">${rate}%</div><div class="stat-l">RATE</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--purple);font-size:24px">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
       </div>
+      ${(() => {
+        const rec = AUTH.key && AUTH.keys[AUTH.key];
+        if(rec && rec.tipo === "teste" && rec.expiraEm){
+          const dias = Math.max(0, Math.ceil((rec.expiraEm - Date.now())/(24*60*60*1000)));
+          return `<div style="margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(245,158,11,.05));border:1px solid rgba(167,139,250,.25);border-radius:10px;text-align:center;font-size:11px;color:var(--purple);font-family:var(--mono)">🎁 Período de teste · <strong>${dias} dia(s)</strong> restante(s) · assine para continuar</div>`;
+        }
+        return "";
+      })()}
+      ${ST.greens+ST.reds>0?`<div style="margin:-4px 0 10px;text-align:center;font-size:11px;font-family:var(--mono);color:var(--txt3)">placar da sessão: <strong style="color:var(--green2)">${ST.greens}W</strong> · <strong style="color:var(--red2)">${ST.reds}L</strong> · saldo líquido (1 red = 3 green): <strong style="color:${ST.greens-ST.reds*3>=0?'var(--green2)':'var(--red2)'}">${ST.greens-ST.reds*3>=0?'+':''}${ST.greens-ST.reds*3}</strong></div>`:''}
 
       <!-- TABLE HEAT STATUS -->
       ${a.heat ? `
@@ -1424,7 +1478,8 @@ function renderApp(){
         ${entryHtml}
       </div>
 
-      <!-- INPUT -->
+      <!-- INPUT · somente admin alimenta -->
+      ${isAdmin() ? `
       <div class="sec-lbl">REGISTRAR RODADA</div>
       <div class="card">
         <div class="sum-row">
@@ -1436,7 +1491,10 @@ function renderApp(){
           <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
           <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
         </div>
-      </div>
+      </div>` : `
+      <div class="card" style="text-align:center;padding:12px">
+        <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">📡 MODO ESPECTADOR · resultados ao vivo</div>
+      </div>`}
 
       <!-- PADRÕES DETECTADOS -->
       <div class="sec-lbl">PADRÕES DETECTADOS · ${a.patterns.length} ATIVOS</div>
@@ -1498,11 +1556,13 @@ function renderApp(){
       <div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
       <div class="card" style="background:linear-gradient(135deg,${
         a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.12),rgba(239,68,68,.05)' :
+        a.hunter && a.hunter.status==='ECO' ? 'rgba(167,139,250,.12),rgba(245,158,11,.05)' :
         a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.08),rgba(34,211,238,.03)' :
         a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.06),rgba(0,0,0,.2)' :
         'rgba(148,163,184,.04),rgba(0,0,0,.2)'
       });border-color:${
         a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.45)' :
+        a.hunter && a.hunter.status==='ECO' ? 'rgba(167,139,250,.45)' :
         a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.3)' :
         a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.3)' :
         'var(--border)'
@@ -1511,15 +1571,17 @@ function renderApp(){
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:${
             a.hunter.status==='QUENTE' ? 'var(--gold2)' :
+            a.hunter.status==='ECO' ? 'var(--purple)' :
             a.hunter.status==='ABERTA' ? 'var(--gold2)' :
             a.hunter.status==='PASSOU' ? 'var(--red2)' :
             'var(--txt2)'
           }">
-            ${a.hunter.status==='QUENTE'?'🔥 QUENTE':a.hunter.status==='ABERTA'?'🟢 JANELA ABERTA':a.hunter.status==='PASSOU'?'🛑 PASSOU':a.hunter.status==='FECHADA'?'⏳ FECHADA':'○ COLETANDO'}
+            ${a.hunter.status==='QUENTE'?'🔥 QUENTE':a.hunter.status==='ECO'?'🔁 ECO · QUINA':a.hunter.status==='ABERTA'?'🟢 JANELA ABERTA':a.hunter.status==='PASSOU'?'🛑 PASSOU':a.hunter.status==='FECHADA'?'⏳ FECHADA':'○ COLETANDO'}
           </div>
           <div style="font-size:12px;font-family:var(--mono);color:var(--txt2)">${(a.hunter.conf*100).toFixed(0)}%</div>
         </div>
         <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6;margin-bottom:10px">${a.hunter.msg}</div>
+        ${a.hunter.echo && a.hunter.status!=='ECO' ? `<div style="font-size:10px;color:var(--purple);font-family:var(--mono);margin-bottom:8px">🔁 Mesa de eco detectada · ${(a.hunter.echoRate*100).toFixed(0)}% dos empates vêm na quina</div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
           <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
             <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--cyan)">${a.hunter.dist}</div>
@@ -1534,7 +1596,7 @@ function renderApp(){
             <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">EM 30</div>
           </div>
         </div>
-        ${(a.hunter.status==='ABERTA'||a.hunter.status==='QUENTE') ? `
+        ${(a.hunter.status==='ABERTA'||a.hunter.status==='QUENTE'||a.hunter.status==='ECO') ? `
         <div style="padding:9px 11px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:11px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
           💰 Payout provável: <strong>${a.hunter.payoutProvavel||'4x'}</strong> · soma média recente: ${a.sumAvg.toFixed(1)}<br/>
           <span style="font-size:10px;color:var(--txt2)">Apostar no empate agora tem valor de bônus</span>
@@ -1547,7 +1609,8 @@ function renderApp(){
         <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>
 
-      <!-- JSON PANEL -->
+      <!-- JSON PANEL · somente admin -->
+      ${isAdmin() ? `
       <div class="sec-lbl">CALIBRAGEM · APRENDIZADO ADAPTATIVO</div>
       <div class="card">
         <div class="json-hdr" onclick="toggleJson()">
@@ -1575,20 +1638,26 @@ function renderApp(){
       <div class="foot-btns">
         <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
         <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
-      </div>
-
-      <!-- HORÁRIOS DE SESSÃO -->
-      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
-      <div class="sec-lbl" style="margin-top:14px">HORÁRIOS DE SESSÃO</div>
-      <div class="card" style="padding:12px">
-        <div style="display:flex;flex-wrap:wrap;gap:7px">
-          ${AUTH.config.sessoes.map(t=>`<div style="padding:7px 13px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);border-radius:20px;font-family:var(--mono);font-size:12px;color:var(--cyan)">🕐 ${t}</div>`).join("")}
-        </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v6.6 · FAREJADOR DE EMPATES · ASSINATURAS · SYNC</div>
+      <!-- HORÁRIOS DE SESSÃO · maiores -->
+      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
+      <div class="sec-lbl" style="margin-top:16px">🕐 HORÁRIOS DAS SESSÕES AO VIVO</div>
+      <div class="card" style="padding:16px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center">
+          ${AUTH.config.sessoes.map(t=>`<div style="padding:13px 22px;background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(34,197,94,.06));border:1px solid rgba(34,211,238,.35);border-radius:14px;font-family:var(--mono);font-size:20px;font-weight:800;color:var(--cyan);letter-spacing:1px">🕐 ${t}</div>`).join("")}
+        </div>
+        <div style="margin-top:12px;text-align:center;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">Avisamos com <strong style="color:var(--txt2)">30 min de antecedência</strong>. A sessão só inicia se a mesa estiver em bom momento.</div>
+      </div>` : ''}
+
+      <div class="credit">BAC BRU · v6.8 · TESTE 3 DIAS · MÁQUINA DE GREEN · SYNC</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
+      ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
+        <div class="paga-big">🔥 PAGA 🔥</div>
+        <div class="paga-x">${ST.celebra}</div>
+        <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+      </div>` : ''}
     </div>
   `;
 
@@ -1611,13 +1680,15 @@ const AUTH = {
   key: localStorage.getItem("bacbru_key") || "",
   adminToken: localStorage.getItem("bacbru_admin") || "",
   keys: {},          // keys carregadas do firebase
-  config: { sessoes: [], adminHash: null },
+  config: { sessoes: [], adminHash: null, admins: {} },
   msg: "",
   keyInput: "",
   pwInput: "",
   newKeyName: "",
   newKeyTipo: "mensal",
   newSessao: "",
+  newAdminNome: "",
+  newAdminPw: "",
   secretCount: 0,
   secretTimer: null
 };
@@ -1633,7 +1704,8 @@ function genKey(tipo){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let k = "";
   for(let i=0;i<6;i++) k += chars[Math.floor(Math.random()*chars.length)];
-  return (tipo === "vitalicia" ? "BRU-V-" : "BRU-M-") + k;
+  const prefix = tipo === "vitalicia" ? "BRU-V-" : tipo === "teste" ? "BRU-T-" : "BRU-M-";
+  return prefix + k;
 }
 
 function keyIsValid(rec){
@@ -1644,11 +1716,12 @@ function keyIsValid(rec){
 }
 
 function initAuth(){
-  // Carrega config (sessões + adminHash) e chaves
+  // Carrega config (sessões + admins) e chaves
   db.ref("config").on("value", s => {
     const c = s.val() || {};
     AUTH.config.sessoes = c.sessoes || [];
-    AUTH.config.adminHash = c.adminHash || null;
+    AUTH.config.adminHash = c.adminHash || null; // master (compatibilidade)
+    AUTH.config.admins = c.admins || {};         // { hash: {nome, master} }
     routeAuth();
   });
   db.ref("keys").on("value", s => {
@@ -1657,9 +1730,17 @@ function initAuth(){
   });
 }
 
+// verifica se um hash é admin (master antigo OU lista de admins)
+function hashIsAdmin(hash){
+  if(!hash) return false;
+  if(AUTH.config.adminHash && hash === AUTH.config.adminHash) return true;
+  if(AUTH.config.admins && AUTH.config.admins[hash]) return true;
+  return false;
+}
+
 function routeAuth(){
   // Admin reconhecido pelo dispositivo?
-  if(AUTH.adminToken && AUTH.config.adminHash && AUTH.adminToken === AUTH.config.adminHash){
+  if(AUTH.adminToken && hashIsAdmin(AUTH.adminToken)){
     if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
   } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key])){
     if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
@@ -1670,7 +1751,7 @@ function routeAuth(){
 }
 
 function isAdmin(){
-  return AUTH.adminToken && AUTH.config.adminHash && AUTH.adminToken === AUTH.config.adminHash;
+  return AUTH.adminToken && hashIsAdmin(AUTH.adminToken);
 }
 
 // ── Ações de acesso ──
@@ -1717,21 +1798,19 @@ window.loginAdmin = function(){
   const pw = (AUTH.pwInput||"").trim();
   if(!pw){ AUTH.msg = "Digite a senha-mestra"; renderRouter(); return; }
   const hash = simpleHash(pw);
-  if(!AUTH.config.adminHash){
-    // primeira configuração — define a senha-mestra
+  const semAdmins = !AUTH.config.adminHash && (!AUTH.config.admins || Object.keys(AUTH.config.admins).length === 0);
+  if(semAdmins){
+    // primeira configuração — define o admin-mestre
     db.ref("config/adminHash").set(hash);
+    db.ref("config/admins/" + hash).set({ nome: "Admin Master", master: true, criadoEm: Date.now() });
     AUTH.adminToken = hash;
     localStorage.setItem("bacbru_admin", hash);
-    AUTH.msg = "";
-    AUTH.pwInput = "";
-    AUTH.view = "admin";
+    AUTH.msg = ""; AUTH.pwInput = ""; AUTH.view = "admin";
     renderRouter();
-  } else if(hash === AUTH.config.adminHash){
+  } else if(hashIsAdmin(hash)){
     AUTH.adminToken = hash;
     localStorage.setItem("bacbru_admin", hash);
-    AUTH.msg = "";
-    AUTH.pwInput = "";
-    AUTH.view = "admin";
+    AUTH.msg = ""; AUTH.pwInput = ""; AUTH.view = "admin";
     renderRouter();
   } else {
     AUTH.msg = "Senha incorreta";
@@ -1739,21 +1818,67 @@ window.loginAdmin = function(){
   }
 };
 
+// Criar/remover admins adicionais
+window.criarAdmin = function(){
+  const nome = (AUTH.newAdminNome||"").trim() || "Admin";
+  const pw = (AUTH.newAdminPw||"").trim();
+  if(pw.length < 4){ AUTH.msg = "Senha do admin precisa de 4+ caracteres"; renderRouter(); return; }
+  const hash = simpleHash(pw);
+  db.ref("config/admins/" + hash).set({ nome, master: false, criadoEm: Date.now() });
+  AUTH.newAdminNome = ""; AUTH.newAdminPw = "";
+  AUTH.msg = "✓ Admin criada: " + nome;
+  renderRouter();
+};
+
+window.removerAdmin = function(hash){
+  const rec = AUTH.config.admins[hash];
+  if(rec && rec.master){ alert("Não é possível remover o admin master."); return; }
+  if(!confirm("Remover este admin?")) return;
+  db.ref("config/admins/" + hash).remove();
+};
+
 window.criarChave = function(){
   const nome = (AUTH.newKeyName||"").trim() || "sem nome";
   const tipo = AUTH.newKeyTipo;
   const k = genKey(tipo);
+  const dur = tipo === "teste" ? 3*24*60*60*1000 : 30*24*60*60*1000;
   const rec = {
     ativo: true,
     tipo,
     nome,
     criadoEm: Date.now(),
-    expiraEm: tipo === "mensal" ? Date.now() + 30*24*60*60*1000 : null
+    expiraEm: tipo === "vitalicia" ? null : Date.now() + dur
   };
   db.ref("keys/" + k).set(rec);
   AUTH.newKeyName = "";
   AUTH.msg = "✓ Chave criada: " + k;
   renderRouter();
+};
+
+// Autoatendimento: teste grátis de 3 dias (1 por dispositivo, controlado no Firebase)
+function getDeviceId(){
+  let id = localStorage.getItem("bacbru_dev");
+  if(!id){ id = "dev_" + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("bacbru_dev", id); }
+  return id;
+}
+window.iniciarTeste = function(){
+  const devId = getDeviceId();
+  db.ref("trials/" + devId).once("value").then(snap => {
+    if(snap.val()){
+      AUTH.msg = "Teste grátis já utilizado neste dispositivo";
+      renderRouter();
+      return;
+    }
+    const k = genKey("teste");
+    const rec = { ativo:true, tipo:"teste", nome:"Teste 3 dias", criadoEm:Date.now(), expiraEm: Date.now() + 3*24*60*60*1000 };
+    db.ref("keys/" + k).set(rec);
+    db.ref("trials/" + devId).set({ key:k, criadoEm:Date.now() });
+    AUTH.key = k;
+    localStorage.setItem("bacbru_key", k);
+    AUTH.msg = "";
+    AUTH.view = "app";
+    renderRouter();
+  }).catch(()=>{ AUTH.msg = "Erro ao iniciar teste · tente novamente"; renderRouter(); });
 };
 
 window.toggleChave = function(k){
@@ -1854,12 +1979,19 @@ function renderLock(){
     <input id="keyInput" placeholder="DIGITE SUA CHAVE" value="${AUTH.keyInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none;text-transform:uppercase"/>
     ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono)">${AUTH.msg}</div>` : ""}
     <button onclick="tentarChave()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,211,238,.08));border:1px solid rgba(34,197,94,.3);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">▶ ENTRAR</button>
+    <div style="display:flex;align-items:center;gap:10px;width:100%;margin:18px 0 4px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:9px;color:var(--txt4);font-family:var(--mono);letter-spacing:2px">OU</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <button onclick="iniciarTeste()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(245,158,11,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">🎁 TESTAR GRÁTIS · 3 DIAS</button>
+    <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center">acesso completo por 3 dias · 1 por dispositivo</div>
     ${AUTH.secretCount > 0 && AUTH.secretCount < 5 ? `<div style="margin-top:18px;font-size:9px;color:var(--txt4);font-family:var(--mono)">${'●'.repeat(AUTH.secretCount)}${'○'.repeat(5-AUTH.secretCount)}</div>` : ""}
   </div>`;
 }
 
 function renderAdminLogin(){
-  const first = !AUTH.config.adminHash;
+  const first = !AUTH.config.adminHash && (!AUTH.config.admins || Object.keys(AUTH.config.admins).length === 0);
   return `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:420px;margin:0 auto">
     <div style="display:flex;gap:10px;margin-bottom:18px">${diceSVG("blue",6)}${diceSVG("red",6)}</div>
     <div class="tg" style="font-size:24px;margin-bottom:6px">PAINEL ADMIN</div>
@@ -1879,16 +2011,17 @@ function renderAdminPanel(){
     const valid = keyIsValid(r);
     const exp = r.tipo === "vitalicia" ? "vitalícia" :
       (r.expiraEm ? new Date(r.expiraEm).toLocaleDateString("pt-BR") : "—");
-    const dias = r.tipo === "mensal" && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
+    const dias = (r.tipo === "mensal" || r.tipo === "teste") && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
+    const tipoLabel = r.tipo==='vitalicia'?'♾ VITALÍCIA':r.tipo==='teste'?'🎁 TESTE 3D':'📅 MENSAL';
     return `<div style="padding:11px;background:rgba(0,0,0,.3);border:1px solid ${valid?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;margin-bottom:7px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${valid?'var(--green2)':'var(--red2)'}">${k}</div>
-        <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${r.tipo==='vitalicia'?'♾ VITALÍCIA':'📅 MENSAL'}</div>
+        <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
       </div>
       <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
-        ${r.tipo==='mensal'?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
+        ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
         <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
       </div>
     </div>`;
@@ -1899,6 +2032,13 @@ function renderAdminPanel(){
       <span style="font-family:var(--mono);font-size:13px;color:var(--cyan)">🕐 ${t}</span>
       <button onclick="removerSessao('${t}')" style="padding:4px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:var(--red2);font-family:var(--mono);font-size:9px;cursor:pointer">×</button>
     </div>`).join("") : `<div style="color:var(--txt3);font-size:10px;font-family:var(--mono);padding:8px">nenhum horário definido</div>`;
+
+  const adminsList = Object.entries(AUTH.config.admins || {});
+  const adminRows = adminsList.length ? adminsList.map(([hash,r])=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:12px;color:${r.master?'var(--gold2)':'var(--purple)'}">${r.master?'👑':'🛡'} ${r.nome||'Admin'}</span>
+      ${r.master?`<span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">MASTER</span>`:`<button onclick="removerAdmin('${hash}')" style="padding:4px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:var(--red2);font-family:var(--mono);font-size:9px;cursor:pointer">remover</button>`}
+    </div>`).join("") : `<div style="color:var(--txt3);font-size:10px;font-family:var(--mono);padding:8px">nenhuma admin além de você</div>`;
 
   return `<div class="app" style="padding:18px 14px 60px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
@@ -1918,9 +2058,10 @@ function renderAdminPanel(){
     <div class="sec-lbl">CRIAR NOVA CHAVE</div>
     <div class="card">
       <input id="newKeyName" placeholder="Nome do assinante" value="${AUTH.newKeyName}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">
-        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:11px;letter-spacing:1px;cursor:pointer">📅 MENSAL</button>
-        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:11px;letter-spacing:1px;cursor:pointer">♾ VITALÍCIA</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+        <button onclick="window.setTipo('teste')" style="padding:11px 0;background:${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='teste'?'var(--gold2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">🎁 3 DIAS</button>
+        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">📅 MENSAL</button>
+        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">♾ VITAL.</button>
       </div>
       <button onclick="criarChave()" style="width:100%;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,211,238,.06));border:1px solid rgba(34,197,94,.3);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">+ GERAR CHAVE</button>
       ${AUTH.msg ? `<div style="margin-top:10px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono);text-align:center">${AUTH.msg}</div>` : ""}
@@ -1935,6 +2076,19 @@ function renderAdminPanel(){
       <div style="display:flex;gap:7px;margin-top:8px">
         <input id="newSessao" placeholder="HH:MM (ex: 20:00)" value="${AUTH.newSessao}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
         <button onclick="addSessao()" style="padding:11px 18px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);border-radius:9px;color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer">+</button>
+      </div>
+    </div>
+
+    <div class="sec-lbl">ADMINISTRADORES</div>
+    <div class="card">
+      ${adminRows}
+      <div style="margin-top:8px">
+        <input id="newAdminNome" placeholder="Nome da nova admin" value="${AUTH.newAdminNome}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:7px"/>
+        <div style="display:flex;gap:7px">
+          <input id="newAdminPw" type="text" placeholder="Senha da admin" value="${AUTH.newAdminPw}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
+          <button onclick="criarAdmin()" style="padding:11px 16px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:9px;color:var(--purple);font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer">+ ADMIN</button>
+        </div>
+        <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);line-height:1.5">A nova admin abre o app, toca 5× na logo e entra com essa senha. O dispositivo dela será reconhecido automaticamente.</div>
       </div>
     </div>
 
@@ -1957,6 +2111,8 @@ function bindAuthInputs(){
   bind("pwInput", "pwInput", false);
   bind("newKeyName", "newKeyName", false);
   bind("newSessao", "newSessao", false);
+  bind("newAdminNome", "newAdminNome", false);
+  bind("newAdminPw", "newAdminPw", false);
 }
 
 window.reg = function(r){
@@ -1974,6 +2130,7 @@ window.finalizarSessao = finalizarSessao;
 window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; renderApp(); };
 window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
+window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
 
 renderRouter();
 initFirebaseSync();
