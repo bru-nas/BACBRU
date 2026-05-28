@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.1 · NEURAL FUSION · SYNC</title>
+<title>BAC BRU v6.2 · CRITERIOUS · HEAT-AWARE</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -574,7 +574,6 @@ function analyze(){
     else if(byBet[side].length >= 2) conf += W.boost_conv2;
     // Alinhamento road
     if(roadHint && side !== "T"){
-      // se road diz CONT e este lado é o último, boost
       const lastSide = col.length ? col[col.length-1].r : null;
       if(roadHint === "CONT" && side === lastSide) conf += W.boost_road_align;
       if(roadHint === "MUDA" && side !== lastSide) conf += W.boost_road_align;
@@ -590,23 +589,121 @@ function analyze(){
   }
   out.convergence = bestSide ? byBet[bestSide].length : 0;
 
-  // ── DECISÃO FINAL ──
+  // Contradição: padrões apontando para P E B ao mesmo tempo
+  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0;
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ── TABLE HEAT · momento da mesa ──
+  // ════════════════════════════════════════════════════════════════════════
+  let heat = 50;
+  const heatReasons = [];
+
+  // [1] Estabilidade das somas
+  if(out.sumDelta > 0 && out.sumDelta < 1.0){ heat += 10; heatReasons.push("somas muito estáveis"); }
+  else if(out.sumDelta < 1.5){ heat += 6; heatReasons.push("somas estáveis"); }
+  else if(out.sumDelta > 3.5){ heat -= 12; heatReasons.push("somas muito voláteis"); }
+  else if(out.sumDelta > 2.5){ heat -= 6; heatReasons.push("somas voláteis"); }
+
+  // [2] Estradas derivadas (5 gráficos: Bead, Big, BigEye, Small, Cockroach)
+  const trends2 = [tBeb.trend, tSm.trend, tCp.trend];
+  const stableCt2 = trends2.filter(t=>t==="STABLE").length;
+  const volatileCt2 = trends2.filter(t=>t==="VOLATILE").length;
+  if(stableCt2 === 3){ heat += 18; heatReasons.push("3 estradas estáveis"); }
+  else if(stableCt2 === 2){ heat += 10; heatReasons.push("2 estradas estáveis"); }
+  if(volatileCt2 === 3){ heat -= 18; heatReasons.push("3 estradas voláteis"); }
+  else if(volatileCt2 === 2){ heat -= 10; heatReasons.push("2 estradas voláteis"); }
+
+  // [3] Convergência de padrões
+  if(out.convergence >= 3){ heat += 15; heatReasons.push("3+ padrões convergem"); }
+  else if(out.convergence === 2){ heat += 8; heatReasons.push("2 padrões convergem"); }
+
+  // [4] Contradição entre padrões
+  if(out.contradiction){ heat -= 12; heatReasons.push("padrões contraditórios"); }
+
+  // [5] Dominância
+  if(out.dominancia !== "BALANCEADO"){ heat += 5; heatReasons.push(`dom. ${out.dominancia}`); }
+
+  // [6] Cluster de Tie (ruim · mesa caótica)
+  if(ties15 >= 3){ heat -= 10; heatReasons.push("cluster Tie"); }
+
+  // [7] Exaustão
+  if(out.exaustao){ heat -= 20; heatReasons.push("streak exaustão"); }
+
+  // [8] Big Road clean signals
+  if(big.length >= 3){
+    // colunas longas e consistentes = bom momento
+    const lastCols = big.slice(-4);
+    const avgColLen = lastCols.reduce((s,c)=>s+(c?c.length:0),0)/lastCols.length;
+    if(avgColLen >= 2.5 && avgColLen <= 3.5){ heat += 6; heatReasons.push("colunas regulares"); }
+    if(avgColLen > 4.5){ heat -= 4; heatReasons.push("colunas longas (instável)"); }
+  }
+
+  // [9] Alternância pura PP (excelente)
+  if(patterns.some(p=>p.name==="PP5")){ heat += 10; heatReasons.push("PP5 ativo"); }
+
+  // [10] Bead Road · zigzag caótico de somas
+  const last8s = last(col,8).map(x=>x.s||0).filter(x=>x>0);
+  if(last8s.length >= 6){
+    let crossings = 0;
+    for(let i=1;i<last8s.length;i++){
+      if((last8s[i]>=8 && last8s[i-1]<8) || (last8s[i]<8 && last8s[i-1]>=8)) crossings++;
+    }
+    if(crossings >= 5){ heat -= 6; heatReasons.push("somas caóticas"); }
+  }
+
+  heat = Math.max(0, Math.min(100, heat));
+
+  // Determinar estado da mesa e threshold dinâmico
+  let tableState, dynThreshold, requireConvergence;
+  if(heat >= 75){
+    tableState = "QUENTE";
+    dynThreshold = 0.62;
+    requireConvergence = false;
+  } else if(heat >= 60){
+    tableState = "FAVORÁVEL";
+    dynThreshold = 0.68;
+    requireConvergence = false;
+  } else if(heat >= 45){
+    tableState = "NEUTRA";
+    dynThreshold = 0.75;
+    requireConvergence = false;
+  } else if(heat >= 30){
+    tableState = "FRIA";
+    dynThreshold = 0.82;
+    requireConvergence = true; // exige 2+ padrões
+  } else {
+    tableState = "CONGELADA";
+    dynThreshold = 0.88;
+    requireConvergence = true;
+  }
+
+  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence };
+
+  // ── DECISÃO FINAL · COM HEAT ──
   if(out.exaustao){
     out.signal = "W";
     out.reason = `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
     out.conf = 0;
-  } else if(bestSide && bestConf >= W.min_conf){
+  } else if(out.contradiction && tableState !== "QUENTE"){
+    // contradição em mesa não-quente → aguardar
+    out.signal = "W";
+    out.reason = `Padrões contraditórios em mesa ${tableState} · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && bestConf >= dynThreshold &&
+            (!requireConvergence || byBet[bestSide].length >= 2)){
     out.signal = bestSide;
     out.conf = bestConf;
     out.reason = bestReason;
-    if(roadHint){
-      out.reason += ` · roads:${roadHint}`;
-    }
+    if(roadHint){ out.reason += ` · roads:${roadHint}`; }
   } else {
     out.signal = "W";
-    out.reason = bestSide
-      ? `Conf ${(bestConf*100).toFixed(0)}% abaixo do mínimo ${(W.min_conf*100).toFixed(0)}%`
-      : "Sem padrão dominante detectado";
+    if(bestSide && requireConvergence && byBet[bestSide].length < 2){
+      out.reason = `Mesa ${tableState} exige 2+ padrões convergentes · só ${byBet[bestSide].length} detectado`;
+    } else if(bestSide){
+      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín mesa ${tableState} ${(dynThreshold*100).toFixed(0)}%`;
+    } else {
+      out.reason = `Mesa ${tableState} · sem padrão dominante`;
+    }
     out.conf = bestConf;
   }
 
@@ -914,6 +1011,49 @@ function render(){
         <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
       </div>
 
+      <!-- TABLE HEAT STATUS -->
+      ${a.heat ? `
+      <div class="card" style="background:linear-gradient(135deg,${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.10),rgba(34,211,238,.05)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.08),rgba(34,197,94,.04)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.06),rgba(255,255,255,.02)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.06),rgba(239,68,68,.03)':
+        'rgba(239,68,68,.10),rgba(245,158,11,.04)'
+      });border-color:${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.4)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.3)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.2)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.3)':
+        'rgba(239,68,68,.4)'
+      }">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:9px;color:var(--txt3);letter-spacing:3px;font-family:var(--mono)">STATUS DA MESA</div>
+          <div style="font-size:11px;font-family:var(--mono);color:${
+            a.heat.state==='QUENTE'?'var(--green2)':
+            a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+            a.heat.state==='NEUTRA'?'var(--txt2)':
+            a.heat.state==='FRIA'?'var(--gold2)':
+            'var(--red2)'
+          };font-weight:700;letter-spacing:1px">
+            ${a.heat.state==='QUENTE'?'🔥':a.heat.state==='FAVORÁVEL'?'⚡':a.heat.state==='NEUTRA'?'○':a.heat.state==='FRIA'?'❄':'🧊'} ${a.heat.state}
+          </div>
+        </div>
+        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${
+          a.heat.state==='QUENTE'?'var(--green2)':
+          a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+          a.heat.state==='NEUTRA'?'var(--txt)':
+          a.heat.state==='FRIA'?'var(--gold2)':
+          'var(--red2)'
+        };margin-bottom:6px">${a.heat.score}/100</div>
+        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;margin-bottom:10px">
+          <div style="width:${a.heat.score}%;height:100%;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 30%,#94a3b8 50%,#22d3ee 70%,#22c55e 100%);transition:width .4s"></div>
+        </div>
+        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          <strong style="color:var(--txt)">Critério ativo:</strong> conf mín ${(a.heat.threshold*100).toFixed(0)}%${a.heat.requireConvergence?' · exige 2+ padrões':''}<br/>
+          <span style="color:var(--txt3)">${a.heat.reasons.length ? a.heat.reasons.slice(0,4).join(' · ') : 'mesa em análise inicial'}</span>
+        </div>
+      </div>` : ''}
+
       <!-- SIGNAL CARD -->
       <div class="card signal-card">
         <div class="sig-status">
@@ -1044,7 +1184,7 @@ function render(){
         <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
       </div>
 
-      <div class="credit">BAC BRU · v6.1 · FIREBASE SYNC · sala-1 · 15 PADRÕES · 4 GRÁFICOS</div>
+      <div class="credit">BAC BRU · v6.2 · CRITERIOUS MODE · HEAT-AWARE · 5 GRÁFICOS</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
     </div>
