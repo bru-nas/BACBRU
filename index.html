@@ -1048,36 +1048,49 @@ function hunterAtivo(a){
 
 function addRound(r, sNum){
   const s = parseInt(sNum) || 0;
+  // ANALISAR ANTES de adicionar — para saber estado do farejador no momento da rodada
+  // (se eu analiso depois, o dist vira 0 e o farejador muda de estado, perdendo o "ativo")
+  const aBefore = analyze();
+  const hunterAntes = hunterAtivo(aBefore);
   ST.H.push({r, s});
 
-  // ── CICLO STATE MACHINE ──
-  // idle | entrada | aguarda_gale | gale
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPATE · farejador ativo = GREEN sempre (aposta independente da cor)
+  // ════════════════════════════════════════════════════════════════════════
+  if(r === "T"){
+    if(hunterAntes){
+      const pay = payoutDaSoma(s);
+      ST.greens++;
+      if(["10x","25x","88x"].includes(pay)){
+        celebraPaga(pay);
+      } else {
+        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
+      }
+      // Se havia ciclo de cor rolando, ele encerra junto (cor é push, empate green)
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
+      else { save(); renderRouter(); }
+    } else {
+      // Farejador inativo → push, vida que segue
+      toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
+      else { save(); renderRouter(); }
+    }
+    return;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // COR (P ou B) · CICLO STATE MACHINE: idle | entrada | aguarda_gale | gale
+  // ════════════════════════════════════════════════════════════════════════
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
-    const aBefore = analyze(); // farejador antes do resultado novo já está no H, mas a regra é "estava ativo no momento da entrada/resultado"
     if(r === sig){
-      // Cor bateu → GREEN
       ST.greens++;
       toast(`✅ GREEN · ${lbl(r)}`);
       abortCiclo();
-    } else if(r === "T"){
-      // Regra dos empates: só conta se farejador estava ativo
-      if(ST.ciclo_tie || hunterAtivo(aBefore)){
-        const pay = payoutDaSoma(s);
-        ST.greens++;
-        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
-        else toast(`✅ GREEN · EMPATE pago ${pay}`);
-        abortCiclo();
-      } else {
-        // Farejador inativo → empate é push, vida que segue
-        toast(`↻ Empate · push (sem alteração no placar)`, 2800);
-        abortCiclo();
-      }
     } else {
       // Cor errada → decidir gale
       const a2 = analyze();
       if(a2.signal && a2.signal !== "W"){
-        // Motor tem sinal claro AGORA → gale imediato
         ST.ciclo = "gale";
         ST.ciclo_gale_sinal = a2.signal;
         ST.ciclo_gale_dec = (a2.signal === sig) ? "MANTER" : "INVERTER";
@@ -1086,7 +1099,6 @@ function addRound(r, sNum){
         if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
         toast(gmsg, 3500);
       } else {
-        // Motor incerto → aguardar próximo sinal · será o GALE
         ST.ciclo = "aguarda_gale";
         ST.ciclo_gale_sinal = null;
         ST.ciclo_gale_dec = "AGUARDAR";
@@ -1096,10 +1108,8 @@ function addRound(r, sNum){
       save(); renderRouter();
     }
   } else if(ST.ciclo === "aguarda_gale"){
-    // Observação: o usuário NÃO está apostando este round. Re-analisar.
     const a2 = analyze();
     if(a2.signal && a2.signal !== "W"){
-      // motor agora dá sinal claro → vira gale (próximo round será o resultado do gale)
       ST.ciclo = "gale";
       ST.ciclo_gale_sinal = a2.signal;
       ST.ciclo_gale_dec = (a2.signal === ST.ciclo_sinal) ? "MANTER" : "INVERTER";
@@ -1113,20 +1123,9 @@ function addRound(r, sNum){
     save(); renderRouter();
   } else if(ST.ciclo === "gale"){
     const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
-    const aBefore = analyze();
     if(r === galeSide){
       ST.greens++;
       toast(`✅ GREEN GALE · ${lbl(r)}`);
-      abortCiclo();
-    } else if(r === "T"){
-      if(ST.ciclo_gale_tie || hunterAtivo(aBefore)){
-        const pay = payoutDaSoma(s);
-        ST.greens++;
-        if(["10x","25x","88x"].includes(pay)){ celebraPaga(pay); }
-        else toast(`✅ GREEN GALE · EMPATE pago ${pay}`);
-      } else {
-        toast(`↻ Empate gale · push (sem alteração no placar)`, 2800);
-      }
       abortCiclo();
     } else {
       ST.reds++;
@@ -1134,7 +1133,7 @@ function addRound(r, sNum){
       abortCiclo();
     }
   } else {
-    // idle · só registra
+    // idle · cor sem entrada confirmada → só registra
     save(); renderRouter();
   }
 }
