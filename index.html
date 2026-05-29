@@ -1483,7 +1483,6 @@ function renderApp(){
         }
         return "";
       })()}
-      ${ST.greens+ST.reds>0?`<div style="margin:-4px 0 10px;text-align:center;font-size:11px;font-family:var(--mono);color:var(--txt3)">placar da sessão: <strong style="color:var(--green2)">${ST.greens}W</strong> · <strong style="color:var(--red2)">${ST.reds}L</strong> · saldo líquido (1 red = 3 green): <strong style="color:${ST.greens-ST.reds*3>=0?'var(--green2)':'var(--red2)'}">${ST.greens-ST.reds*3>=0?'+':''}${ST.greens-ST.reds*3}</strong></div>`:''}
 
       <!-- TABLE HEAT STATUS -->
       ${a.heat ? `
@@ -1519,89 +1518,24 @@ function renderApp(){
           a.heat.state==='FRIA'?'var(--gold2)':
           'var(--red2)'
         };margin-bottom:6px">${a.heat.score}/100</div>
-        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;margin-bottom:10px">
+        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden">
           <div style="width:${a.heat.score}%;height:100%;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 30%,#94a3b8 50%,#22d3ee 70%,#22c55e 100%);transition:width .4s"></div>
         </div>
-        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
-          <strong style="color:var(--txt)">Critério ativo:</strong> conf mín ${(a.heat.threshold*100).toFixed(0)}%${a.heat.requireConvergence?' · exige 2+ padrões':''}<br/>
-          <span style="color:var(--txt3)">${a.heat.reasons.length ? a.heat.reasons.slice(0,4).join(' · ') : 'mesa em análise inicial'}</span>
-        </div>
-      </div>` : ''}
-
-      <!-- STREAK PROFILE · anti-armadilha -->
-      ${a.profile && a.streakLen >= 2 ? `
-      <div class="card" style="background:rgba(0,0,0,.25);padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:9px;color:var(--txt3);letter-spacing:2px;font-family:var(--mono)">PERFIL DE QUEBRA DA MESA</div>
-          <div style="font-size:11px;font-family:var(--mono);font-weight:700;color:${
-            a.streakLen >= a.profile.p90 ? 'var(--red2)' :
-            a.streakLen >= a.profile.p75 ? 'var(--gold2)' :
-            a.streakLen < a.profile.p50 ? 'var(--blue2)' : 'var(--txt2)'
-          }">streak ${a.streakLen} ${lbl(a.streakSide)}</div>
-        </div>
-        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-          Mesa quebra em média: <strong style="color:var(--txt)">${a.profile.avg.toFixed(1)}</strong> · máx histórico: <strong style="color:var(--txt)">${a.profile.max}</strong><br/>
-          Prob. quebrar agora: <strong style="color:${a.profile.breakProbAt(a.streakLen)>=0.5?'var(--gold2)':'var(--txt2)'}">${(a.profile.breakProbAt(a.streakLen)*100).toFixed(0)}%</strong> · zona segura quebra: <strong style="color:var(--txt)">≥${a.profile.p75}</strong><br/>
-          <span style="color:${
-            a.streakLen >= a.profile.p90 ? 'var(--red2)' :
-            a.streakLen >= a.profile.p75 ? 'var(--gold2)' :
-            a.streakLen < a.profile.p50 ? 'var(--blue2)' : 'var(--txt3)'
-          }">${
-            a.streakLen >= a.profile.p90 ? '🛑 zona de perigo · aguardar confirmação' :
-            a.streakLen >= a.profile.p75 ? '⚡ zona de quebra · favorável virar' :
-            a.streakLen < a.profile.p50 ? '↻ ainda curto · favorece continuação' :
-            '○ zona neutra'
-          }</span>
-        </div>
-        ${a.regimeFatigado ? `<div style="margin-top:8px;padding:7px 10px;background:rgba(239,68,68,.1);border-radius:7px;font-size:10px;color:var(--red2);font-family:var(--mono)">🛑 ${a.regimeMotivo}</div>` : ''}
       </div>` : ''}
 
       <!-- SIGNAL CARD -->
       <div class="card signal-card">
-        <div class="sig-status">
-          ${a.convergence >= 2 ? `<span class="conv-badge">⚡ CONVERGÊNCIA ${a.convergence}</span>` : ""}
-          ${a.derivedAlign >= 2 ? `<span class="conv-badge">📊 ROADS ALINHADAS</span>` : ""}
-          MOTOR NEURAL · ${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}
-        </div>
+        <div class="sig-status">${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}</div>
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
-        <div class="sig-reason">${a.reason}</div>
         <div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
         <div class="conf-txt">
           <span>CONFIANÇA</span>
-          <span>${(a.conf*100).toFixed(0)}% · mín ${a.heat?(a.heat.threshold*100).toFixed(0):(ST.weights.min_conf*100).toFixed(0)}%</span>
+          <span>${(a.conf*100).toFixed(0)}%</span>
         </div>
         ${entryHtml}
-      </div>
-
-      <!-- INPUT · somente admin alimenta -->
-      ${isAdmin() ? `
-      <div class="sec-lbl">REGISTRAR RODADA</div>
-      <div class="card">
-        <div class="sum-row">
-          <input id="soma" class="sum-inp" type="number" placeholder="SOMA (ex: 8)" value="${ST.somaIn}"/>
-          <div class="sum-lbl">DADOS</div>
-        </div>
-        <div class="input-row" style="margin-top:8px">
-          <button class="btn btn-p" onclick="reg('P')">AZUL · P</button>
-          <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
-          <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
-        </div>
-      </div>` : `
-      <div class="card" style="text-align:center;padding:12px">
-        <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">📡 MODO ESPECTADOR · resultados ao vivo</div>
-      </div>`}
-
-      <!-- PADRÕES DETECTADOS -->
-      <div class="sec-lbl">PADRÕES DETECTADOS · ${a.patterns.length} ATIVOS</div>
-      <div class="card">
-        <div class="pat-list">${patHtml}</div>
-        <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.6">
-          ${a.padrao}<br/>
-          Soma méd: <strong style="color:var(--txt2)">${a.sumAvg.toFixed(1)}</strong> · Δsoma: <strong style="color:var(--txt2)">${a.sumDelta.toFixed(2)}</strong>
-        </div>
       </div>
 
       <!-- BEAD ROAD NUMÉRICO -->
@@ -1707,19 +1641,6 @@ function renderApp(){
         <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>
 
-      <!-- JSON E CALIBRAGEM AGORA NO PAINEL ADMIN -->
-      ${isAdmin() ? `
-      <!-- FINALIZAR SESSÃO -->
-      <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-top:10px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
-        ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
-      </button>
-
-      <!-- FOOTER -->
-      <div class="foot-btns">
-        <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
-        <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
-      </div>` : ''}
-
       <!-- ESTADO DA MESA + HORÁRIOS DAS LIVES · em destaque pro assinante -->
       ${a.heat ? `
       <div class="sec-lbl" style="margin-top:18px;font-size:11px">📊 ESTADO DA MESA AGORA</div>
@@ -1761,7 +1682,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v6.9.1 · FIX EMPATE · build ${new Date().toISOString().slice(0,16)}</div>
+      <div class="credit">BAC BRU · v7.0 · APP PÚBLICO LIMPO · OPERAÇÃO NO ADMIN</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
@@ -2118,6 +2039,24 @@ function renderAdminLogin(){
 function renderAdminPanel(){
   const keys = Object.entries(AUTH.keys).sort((a,b)=>(b[1].criadoEm||0)-(a[1].criadoEm||0));
   const ativas = keys.filter(([k,r])=>keyIsValid(r)).length;
+  const a = analyze();
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
+  const sigInfo = a.signal === "P" ? {txt:"AZUL · P", color:"var(--blue2)", bg:"rgba(59,130,246,.12)"}
+                : a.signal === "B" ? {txt:"VERMELHO · B", color:"var(--red2)", bg:"rgba(239,68,68,.12)"}
+                : a.signal === "T" ? {txt:"EMPATE", color:"var(--gold2)", bg:"rgba(245,158,11,.12)"}
+                : {txt:"AGUARDA", color:"var(--txt3)", bg:"rgba(148,163,184,.06)"};
+  const cicloLabel = ST.ciclo === "entrada" ? `ENTRADA · ${lbl(ST.ciclo_sinal)}`
+                   : ST.ciclo === "gale" ? `GALE · ${lbl(ST.ciclo_gale_sinal||opos(ST.ciclo_sinal))} (${ST.ciclo_gale_dec||'INVERTER'})`
+                   : ST.ciclo === "aguarda_gale" ? "AGUARDANDO SINAL DO GALE"
+                   : "—";
+  const hunterTxt = a.hunter ? (
+    a.hunter.status === "QUENTE" ? "🔥 QUENTE" :
+    a.hunter.status === "ECO" ? "🔁 ECO" :
+    a.hunter.status === "ABERTA" ? "🟢 ABERTA" :
+    a.hunter.status === "PASSOU" ? "🛑 PASSOU" :
+    a.hunter.status === "FECHADA" ? "⏳ FECHADA" : "○ analisando"
+  ) : "—";
   const keyRows = keys.length ? keys.map(([k,r])=>{
     const valid = keyIsValid(r);
     const exp = r.tipo === "vitalicia" ? "vitalícia" :
@@ -2165,6 +2104,65 @@ function renderAdminPanel(){
       <div class="stat"><div class="stat-v" style="color:var(--purple)">${keys.length}</div><div class="stat-l">TOTAL</div></div>
       <div class="stat"><div class="stat-v y">${AUTH.config.sessoes.length}</div><div class="stat-l">SESSÕES</div></div>
     </div>
+
+    <!-- ════════ OPERAÇÃO: SINAL + REGISTRO + CONTROLES ════════ -->
+    <div class="sec-lbl">OPERAÇÃO · SINAL AO VIVO</div>
+    <div class="card" style="padding:14px;background:linear-gradient(135deg,${sigInfo.bg},rgba(0,0,0,.2))">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">SINAL</div>
+          <div style="font-size:24px;font-weight:900;font-family:var(--mono);color:${sigInfo.color};letter-spacing:2px">${sigInfo.txt}</div>
+          <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-top:3px">${(a.conf*100).toFixed(0)}% confiança</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">MESA</div>
+          <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:${
+            a.heat&&a.heat.state==='QUENTE'?'var(--green2)':
+            a.heat&&a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+            a.heat&&a.heat.state==='NEUTRA'?'var(--txt)':
+            a.heat&&a.heat.state==='FRIA'?'var(--gold2)':
+            a.heat?'var(--red2)':'var(--txt3)'
+          }">${a.heat?a.heat.state:'—'}</div>
+          <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-top:3px">${hunterTxt}</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.5">
+        ${a.reason || 'aguardando dados'}
+      </div>
+      ${ST.ciclo !== "idle" ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:8px;font-size:11px;color:var(--purple);font-family:var(--mono);font-weight:700;text-align:center">▶ CICLO: ${cicloLabel}</div>` : ''}
+      ${ST.ciclo === "idle" && a.signal !== "W" ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:14px 0" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}</button>` : ''}
+    </div>
+
+    <!-- STATS DE GREEN/RED -->
+    <div class="stats-bar" style="padding:12px">
+      <div class="stat"><div class="stat-v g" style="font-size:22px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
+      <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
+      <div class="stat"><div class="stat-v y" style="font-size:24px">${rate}%</div><div class="stat-l">RATE</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--purple);font-size:22px">${ST.H.length}</div><div class="stat-l">ROUNDS</div></div>
+    </div>
+
+    <!-- REGISTRAR RODADA -->
+    <div class="sec-lbl">REGISTRAR RODADA</div>
+    <div class="card">
+      <div class="sum-row">
+        <input id="soma" class="sum-inp" type="number" placeholder="SOMA (ex: 8)" value="${ST.somaIn}"/>
+        <div class="sum-lbl">DADOS</div>
+      </div>
+      <div class="input-row" style="margin-top:8px">
+        <button class="btn btn-p" onclick="reg('P')">AZUL · P</button>
+        <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
+        <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
+      </div>
+      <div class="foot-btns" style="margin-top:8px">
+        <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
+        <button class="util-btn" onclick="reset()">◌ ZERAR HISTÓRICO</button>
+      </div>
+    </div>
+
+    <!-- FINALIZAR SESSÃO -->
+    <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-bottom:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
+      ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
+    </button>
 
     <div class="sec-lbl">CRIAR NOVA CHAVE</div>
     <div class="card">
