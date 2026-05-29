@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.2 · CRITERIOUS · HEAT-AWARE</title>
+<title>BAC BRU v6.7 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -26,6 +26,12 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pagaPop{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.15);opacity:1}60%{transform:scale(.95)}100%{transform:scale(1);opacity:1}}
+@keyframes fireGlow{0%,100%{text-shadow:0 0 20px #f59e0b,0 0 40px #ef4444}50%{text-shadow:0 0 40px #fbbf24,0 0 80px #f59e0b}}
+.paga-overlay{position:fixed;inset:0;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92));z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:slideIn .2s}
+.paga-big{font-size:64px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px}
+.paga-x{font-size:88px;font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:pagaPop .6s ease;margin-top:8px}
+.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s}
 .tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
 .app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh}
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
@@ -183,7 +189,7 @@ const DEFAULT_WEIGHTS = {
 // ════════════════════════════════════════════════════════════════════════════
 const ST = {
   H: [],
-  greens: 0, reds: 0,
+  greens: 0, reds: 0, bonus: 0,
   weights: {...DEFAULT_WEIGHTS},
   deltaAcum: {}, countAcum: {},
   sessoes: 0,
@@ -209,7 +215,7 @@ try{
 
 function save(){
   try{
-    const {toast,toastT,jsonOpen,viewOpen,injTxt,somaIn,...keep} = ST;
+    const {toast,toastT,jsonOpen,viewOpen,injTxt,somaIn,undoStack,avisoVisto,metaAviso,...keep} = ST;
     localStorage.setItem("bacbru_v6", JSON.stringify(keep));
   }catch(e){}
   // push to Firebase
@@ -222,6 +228,7 @@ function pushToFirebase(){
     H: ST.H,
     greens: ST.greens,
     reds: ST.reds,
+    bonus: ST.bonus || 0,
     weights: ST.weights,
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
@@ -234,11 +241,13 @@ function pushToFirebase(){
     ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
     ciclo_gale_dec: ST.ciclo_gale_dec || null,
     ciclo_gale_tie: ST.ciclo_gale_tie || null,
+    ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
+    sessaoAtiva: !!ST.sessaoAtiva,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
     SYNC_STATUS = "OFFLINE";
-    render();
+    renderRouter();
   });
 }
 
@@ -251,7 +260,7 @@ function initFirebaseSync(){
     } else {
       SYNC_STATUS = "OFFLINE";
     }
-    render();
+    renderRouter();
   });
   // Real-time listener
   ROOM_REF.on("value", snap => {
@@ -261,6 +270,7 @@ function initFirebaseSync(){
     if(Array.isArray(data.H)) ST.H = data.H;
     if(typeof data.greens === "number") ST.greens = data.greens;
     if(typeof data.reds === "number") ST.reds = data.reds;
+    if(typeof data.bonus === "number") ST.bonus = data.bonus;
     if(data.weights) ST.weights = {...DEFAULT_WEIGHTS, ...data.weights};
     if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
     if(data.countAcum) ST.countAcum = data.countAcum;
@@ -273,19 +283,21 @@ function initFirebaseSync(){
     ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
+    ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
+    ST.sessaoAtiva = !!data.sessaoAtiva;
     SUPPRESS_PUSH = false;
-    render();
+    renderRouter();
   }, err => {
     SYNC_STATUS = "OFFLINE";
-    render();
+    renderRouter();
   });
 }
 
 function toast(msg, dur=2200){
   ST.toast = msg;
   clearTimeout(ST.toastT);
-  ST.toastT = setTimeout(()=>{ST.toast="";render();}, dur);
-  render();
+  ST.toastT = setTimeout(()=>{ST.toast="";renderRouter();}, dur);
+  renderRouter();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -384,6 +396,180 @@ function trendRoad(rd){
   if(R >= 4) return {trend:"STABLE", strength:R/last5.length};
   if(B >= 4) return {trend:"VOLATILE", strength:B/last5.length};
   return {trend:"MIX", strength:0.5};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PERFIL HISTÓRICO DE STREAKS · anti-armadilha
+// Analisa todos os streaks do histórico para saber QUANDO a mesa costuma quebrar
+// ════════════════════════════════════════════════════════════════════════════
+function streakProfile(col){
+  if(col.length < 8) return null;
+  const runs = [];
+  let cur = 1;
+  for(let i=1;i<col.length;i++){
+    if(col[i].r === col[i-1].r) cur++;
+    else { runs.push(cur); cur = 1; }
+  }
+  runs.push(cur); // último run em aberto
+  const closed = runs.slice(0, -1); // runs finalizados (sabemos onde quebraram)
+  if(closed.length < 4) return null;
+  const sorted = [...closed].sort((a,b)=>a-b);
+  const avg = closed.reduce((a,b)=>a+b,0)/closed.length;
+  const max = Math.max(...closed);
+  const p = q => sorted[Math.min(sorted.length-1, Math.floor(sorted.length*q))];
+  // Distribuição de sobrevivência: dado streak chegou a L, qual % continuou?
+  // P(quebra | comprimento atual = L) = (runs que terminaram em L) / (runs que chegaram a L)
+  function breakProbAt(L){
+    const reached = closed.filter(r=>r>=L).length;
+    const broke = closed.filter(r=>r===L).length;
+    if(reached === 0) return 0.5;
+    return broke / reached;
+  }
+  return {
+    runs: closed, avg, max,
+    p50: p(0.50), p75: p(0.75), p90: p(0.90),
+    count: closed.length, breakProbAt
+  };
+}
+
+// Fadiga de padrão: conta quantas vezes seguidas o MESMO regime se repetiu
+// (ex.: alternância pura prolongada, ou blocos 2x2 repetidos)
+function patternFatigue(col){
+  if(col.length < 6) return {regime:"N", repeats:0, fatigued:false};
+  const lastN = last(col, 12).map(x=>x.r);
+  // detectar regime de alternância
+  let altRun = 1;
+  for(let i=lastN.length-1;i>0;i--){
+    if(lastN[i] !== lastN[i-1]) altRun++;
+    else break;
+  }
+  // detectar regime de blocos 2x2
+  let blockRun = 0;
+  const r = lastN;
+  for(let i=r.length-1;i>=3;i-=2){
+    if(r[i]===r[i-1] && r[i-2]===r[i-3] && r[i]!==r[i-2]) blockRun++;
+    else break;
+  }
+  if(altRun >= 6) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 8};
+  if(blockRun >= 3) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 4};
+  return {regime:"MISTO", repeats:0, fatigued:false};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FAREJADOR DE EMPATES · estuda TODO o histórico de ties
+// Detecta janela de empate ABERTA / QUENTE / FECHADA / PASSOU
+// ════════════════════════════════════════════════════════════════════════════
+function payoutDaSoma(s){
+  if(s===2||s===12) return "88x";
+  if(s===3||s===11) return "25x";
+  if(s===4||s===10) return "10x";
+  if(s===5||s===9) return "6x";
+  return "4x"; // 6,7,8
+}
+
+function tieHunter(H, heatScore){
+  const res = {
+    status:"DADOS", conf:0, msg:"Coletando histórico...",
+    dist:0, avgGap:0, maxGap:0, ties15:0, ties30:0,
+    payoutProvavel:null, ultimosPay:[], cluster:false, atrasado:false,
+    echo:false, echoRate:0, echoMsg:""
+  };
+  if(H.length < 12) return res;
+
+  // índices de todos os empates
+  const tieIdx = [];
+  H.forEach((x,i)=>{ if(x.r==="T") tieIdx.push(i); });
+
+  // gaps entre empates
+  const gaps = [];
+  for(let i=1;i<tieIdx.length;i++) gaps.push(tieIdx[i]-tieIdx[i-1]);
+  res.avgGap = gaps.length ? gaps.reduce((a,b)=>a+b,0)/gaps.length : 12;
+  res.maxGap = gaps.length ? Math.max(...gaps) : 0;
+
+  // ── PADRÃO DE ECO · empates que vêm na quina um do outro ──
+  // Quantos % dos empates vieram a ≤3 rodadas do empate anterior?
+  // Classificações: DUPLO (gap=1) · SANDWICH (gap=2) · QUINA (gap=3)
+  res.echoTipos = { duplo:0, sandwich:0, quina:0 };
+  if(gaps.length >= 2){
+    res.echoTipos.duplo = gaps.filter(g=>g===1).length;
+    res.echoTipos.sandwich = gaps.filter(g=>g===2).length;
+    res.echoTipos.quina = gaps.filter(g=>g===3).length;
+    const echoGaps = res.echoTipos.duplo + res.echoTipos.sandwich + res.echoTipos.quina;
+    res.echoRate = echoGaps / gaps.length;
+    res.echo = res.echoRate >= 0.30;
+    // tipo predominante
+    const tipos = res.echoTipos;
+    res.echoTipoPredom = tipos.duplo >= tipos.sandwich && tipos.duplo >= tipos.quina ? "DUPLO"
+                       : tipos.sandwich >= tipos.quina ? "SANDWICH" : "QUINA";
+  }
+
+  // distância desde o último empate
+  const lastTie = tieIdx.length ? tieIdx[tieIdx.length-1] : -1;
+  res.dist = lastTie >= 0 ? (H.length - 1 - lastTie) : H.length;
+
+  // densidades
+  res.ties15 = last(H,15).filter(x=>x.r==="T").length;
+  res.ties30 = last(H,30).filter(x=>x.r==="T").length;
+  const ties5 = last(H,5).filter(x=>x.r==="T").length;
+  const ties8 = last(H,8).filter(x=>x.r==="T").length;
+
+  // payouts dos últimos empates
+  res.ultimosPay = tieIdx.slice(-5).map(i=>({s:H[i].s, pay:payoutDaSoma(H[i].s)}));
+
+  // ── Previsão de payout pela soma recente ──
+  const col = H.filter(x=>x.r!=="T");
+  const last6sum = last(col,6).map(x=>x.s||0).filter(x=>x>0);
+  const avg6 = last6sum.length ? last6sum.reduce((a,b)=>a+b,0)/last6sum.length : 7;
+  const extremos = last6sum.filter(s=>s<=4 || s>=10).length;
+  if(extremos >= 3){
+    res.payoutProvavel = avg6 <= 4.5 || avg6 >= 10.5 ? "25x-88x" : "10x";
+  } else if(avg6 <= 5.5 || avg6 >= 9.5){
+    res.payoutProvavel = "6x-10x";
+  } else {
+    res.payoutProvavel = "4x";
+  }
+
+  res.cluster = ties5 >= 2 || ties8 >= 3;
+  res.atrasado = res.dist >= res.avgGap;
+  const mesaFria = heatScore !== undefined && heatScore < 48;
+
+  // ── ECO ATIVO: empate há 1-3 rodadas + mesa que ecoa → outro empate na quina ──
+  if(res.echo && res.dist >= 1 && res.dist <= 3 && ties5 < 3){
+    res.status = "ECO";
+    const tipo = res.echoTipoPredom || "QUINA";
+    res.echoMsg = `Mesa de eco · ${(res.echoRate*100).toFixed(0)}% dos empates vêm coladinhos · padrão predominante: ${tipo}`;
+    const ondePos = res.dist === 1 ? "DUPLO (back-to-back)" : res.dist === 2 ? "SANDWICH (cor entre dois empates)" : "na QUINA (próximo)";
+    res.msg = `Empate há ${res.dist} rodada(s) · outro pode vir ${ondePos}`;
+    res.conf = Math.min(0.85, 0.55 + res.echoRate*0.4 + (res.dist === 1 ? 0.05 : 0));
+    return res;
+  }
+
+  // ── Estados normais ──
+  if(res.cluster){
+    res.status = "PASSOU";
+    res.msg = `Cluster recente (${ties8} empates/8 rodadas) · janela se esgotou · NÃO perseguir`;
+    res.conf = 0;
+  } else if(res.dist >= res.avgGap*1.4 && res.ties30 >= 1){
+    res.status = "QUENTE";
+    res.msg = `Empate MUITO atrasado (${res.dist} rodadas · média ${res.avgGap.toFixed(0)}) · iminente`;
+    res.conf = Math.min(0.85, 0.6 + (res.dist/res.avgGap - 1.4)*0.3);
+    if(mesaFria){ res.conf = Math.min(0.9, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
+  } else if(res.atrasado && res.ties30 >= 1){
+    res.status = "ABERTA";
+    res.msg = `Empate atrasado (${res.dist}/${res.avgGap.toFixed(0)} rodadas) · janela aberta`;
+    res.conf = Math.min(0.75, 0.45 + (res.dist/res.avgGap - 1)*0.4);
+    if(mesaFria){ res.conf = Math.min(0.85, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
+  } else if(mesaFria && res.ties15 >= 2){
+    res.status = "ABERTA";
+    res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de empate ativa`;
+    res.conf = 0.55;
+  } else {
+    res.status = "FECHADA";
+    res.msg = `Cedo para empate · ${res.dist}/${res.avgGap.toFixed(0)} rodadas desde o último`;
+    res.conf = Math.max(0.1, res.dist/res.avgGap * 0.3);
+  }
+
+  return res;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -496,19 +682,70 @@ function analyze(){
     }
   }
 
-  // STREAK
+  // ════════════════════════════════════════════════════════════════════════
+  // STREAK · com PERFIL HISTÓRICO (anti-armadilha)
+  // ════════════════════════════════════════════════════════════════════════
   const st = streak(col);
+  const prof = streakProfile(col);
+  out.streakLen = st.len;
+  out.streakSide = st.side;
+  out.profile = prof;
+
+  // Zona estatística de quebra: quando a mesa COSTUMA quebrar
+  let breakZone = null, breakProb = 0.5, premature = false, danger = false;
+  if(prof && st.len >= 2){
+    breakProb = prof.breakProbAt(st.len);
+    // streak ainda curto (abaixo da mediana histórica) → quebra é PREMATURA
+    premature = st.len < prof.p50;
+    // streak na zona onde a mesa historicamente quebra → break é seguro
+    breakZone = st.len >= prof.p75;
+    // streak perto/no máximo histórico → zona de PERIGO (pode quebrar a qualquer momento)
+    danger = st.len >= prof.p90;
+  }
+
   if(st.len === 4){
     const v4 = volSoma(last(col,4));
-    if(v4 >= 3) add("SK4Q", opos(st.side), W.SK4Q, `Streak 4 ${st.side} + volatilidade ${v4}`, true);
-    else add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} estável → continuar`);
+    if(prof && premature){
+      // mesa costuma esticar mais → NÃO bater quebra ainda; favorece continuação
+      add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} · mesa estica até ~${prof.p75} → continuar`);
+    } else if(prof && breakZone){
+      // zona de quebra confirmada pelo histórico
+      const conf = v4 >= 3 ? W.SK4Q + 0.04 : W.SK4Q;
+      add("SK4Q", opos(st.side), conf, `Streak 4 ${st.side} · zona de quebra (hist p75=${prof.p75}) vol${v4}`, true);
+    } else {
+      // neutro
+      if(v4 >= 3) add("SK4Q", opos(st.side), W.SK4Q, `Streak 4 ${st.side} + volatilidade ${v4}`, true);
+      else add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} estável → continuar`);
+    }
   } else if(st.len === 3){
     const v3 = volSoma(last(col,3));
-    if(v3 >= 3) add("SK3Q", opos(st.side), W.SK3Q, `Streak 3 ${st.side} + volatilidade ${v3}`);
-    else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
+    if(prof && premature){
+      add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} · ainda curto p/ mesa → continuar`);
+    } else if(prof && breakZone){
+      add("SK3Q", opos(st.side), W.SK3Q + 0.03, `Streak 3 ${st.side} · zona de quebra (hist) vol${v3}`);
+    } else {
+      if(v3 >= 3) add("SK3Q", opos(st.side), W.SK3Q, `Streak 3 ${st.side} + volatilidade ${v3}`);
+      else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
+    }
   } else if(st.len >= 5){
-    // EXAUSTAO — AGUARDA
-    out.exaustao = true;
+    // EXAUSTÃO — streak longo
+    if(prof && st.len < prof.p90 && st.len < prof.max){
+      // ainda dentro do range histórico desta mesa → pode continuar, mas NÃO entrar
+      out.exaustao = true;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · mesa já fez até ${prof.max} · NÃO perseguir quebra ainda`;
+    } else {
+      out.exaustao = true;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão${prof?` (hist máx ${prof.max})`:''}`;
+    }
+  }
+
+  // ── PADRÃO PAGANTE MADURO · fadiga de regime ──
+  const fatigue = patternFatigue(col);
+  out.fatigue = fatigue;
+  if(fatigue.fatigued){
+    // regime pagante repetiu demais → prestes a quebrar → bloquear novas entradas
+    out.regimeFatigado = true;
+    out.regimeMotivo = `${fatigue.regime} repetiu ${fatigue.repeats}× · padrão maduro, risco de quebra`;
   }
 
   // REEQUILÍBRIO 6/7/8 de 8
@@ -637,6 +874,14 @@ function analyze(){
   // [7] Exaustão
   if(out.exaustao){ heat -= 20; heatReasons.push("streak exaustão"); }
 
+  // [7b] Regime pagante maduro/fatigado
+  if(out.regimeFatigado){ heat -= 16; heatReasons.push(`${out.fatigue.regime} maduro`); }
+
+  // [7c] Zona de perigo de quebra (streak no p90 histórico)
+  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
+    heat -= 12; heatReasons.push("streak na zona de perigo");
+  }
+
   // [8] Big Road clean signals
   if(big.length >= 3){
     // colunas longas e consistentes = bom momento
@@ -663,54 +908,95 @@ function analyze(){
 
   // Determinar estado da mesa e threshold dinâmico
   let tableState, dynThreshold, requireConvergence;
+  // ════════════════════════════════════════════════════════════════════════
+  // THRESHOLDS · mais entradas mantendo qualidade (cada red = 3 greens · win efetivo c/ gale ~89%)
+  // ════════════════════════════════════════════════════════════════════════
   if(heat >= 75){
     tableState = "QUENTE";
-    dynThreshold = 0.62;
+    dynThreshold = 0.70;
     requireConvergence = false;
-  } else if(heat >= 60){
+  } else if(heat >= 58){
     tableState = "FAVORÁVEL";
-    dynThreshold = 0.68;
+    dynThreshold = 0.74;
     requireConvergence = false;
-  } else if(heat >= 45){
+  } else if(heat >= 42){
     tableState = "NEUTRA";
-    dynThreshold = 0.75;
-    requireConvergence = false;
-  } else if(heat >= 30){
+    dynThreshold = 0.79;
+    requireConvergence = true;
+  } else if(heat >= 28){
     tableState = "FRIA";
-    dynThreshold = 0.82;
-    requireConvergence = true; // exige 2+ padrões
+    dynThreshold = 0.85;
+    requireConvergence = true;
   } else {
     tableState = "CONGELADA";
-    dynThreshold = 0.88;
+    dynThreshold = 0.99;
     requireConvergence = true;
   }
 
-  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence };
+  // Padrões mínimos por estado · padrão único forte agora vale em HOT/FAV/NEUTRA
+  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 3 : 2;
+  let strongSingleOK = false;
+  let STRONG_SINGLE = 0.84;
+  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.77; }
+  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.80; }
+  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.84; }
 
-  // ── DECISÃO FINAL · COM HEAT ──
+  // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
+  const hunter = tieHunter(ST.H, heat);
+  out.hunter = hunter;
+  // Atualiza o tie.active com base no farejador (mais inteligente)
+  out.tie.active = (hunter.status === "ABERTA" || hunter.status === "QUENTE" || hunter.status === "ECO");
+  out.tie.hunterStatus = hunter.status;
+  out.tie.hunterConf = hunter.conf;
+
+  // EV gate: cada red vale 3 greens. Piso 0.68 (com gale, win efetivo ~89%)
+  const EV_FLOOR = 0.68;
+
+  out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
+
+  // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
+  const effThreshold = Math.max(dynThreshold, EV_FLOOR);
   if(out.exaustao){
     out.signal = "W";
-    out.reason = `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
+    out.reason = out.exaustaoMotivo || `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
     out.conf = 0;
-  } else if(out.contradiction && tableState !== "QUENTE"){
-    // contradição em mesa não-quente → aguardar
+  } else if(out.regimeFatigado){
+    // padrão pagante maduro repetiu demais → parar de entrar (vai quebrar)
     out.signal = "W";
-    out.reason = `Padrões contraditórios em mesa ${tableState} · AGUARDA`;
+    out.reason = `🛑 ${out.regimeMotivo} · pare antes da quebra`;
     out.conf = bestConf;
-  } else if(bestSide && bestConf >= dynThreshold &&
-            (!requireConvergence || byBet[bestSide].length >= 2)){
+  } else if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
+    // streak na zona de perigo histórica → não perseguir quebra nem continuação
+    out.signal = "W";
+    out.reason = `⚠️ Streak ${out.streakLen} ${out.streakSide} na zona de perigo (hist máx ${out.profile.max}) · aguardar quebra confirmar`;
+    out.conf = bestConf;
+  } else if(out.contradiction){
+    // contradição entre padrões P e B → sempre aguarda (cada red custa 3 greens)
+    out.signal = "W";
+    out.reason = `Padrões contraditórios · risco alto · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && bestSide !== "T" && roadHint === "MUDA" &&
+            col.length && bestSide === col[col.length-1].r){
+    // estradas derivadas dizem MUDA mas o sinal aposta em continuar → conflito → aguarda
+    out.signal = "W";
+    out.reason = `Gráficos derivados indicam mudança, sinal apostaria continuação · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && bestConf >= effThreshold &&
+            (byBet[bestSide].length >= minPatterns ||
+             (strongSingleOK && bestConf >= STRONG_SINGLE))){
     out.signal = bestSide;
     out.conf = bestConf;
     out.reason = bestReason;
+    if(byBet[bestSide].length < minPatterns) out.reason += " · padrão único forte";
     if(roadHint){ out.reason += ` · roads:${roadHint}`; }
   } else {
     out.signal = "W";
-    if(bestSide && requireConvergence && byBet[bestSide].length < 2){
-      out.reason = `Mesa ${tableState} exige 2+ padrões convergentes · só ${byBet[bestSide].length} detectado`;
+    if(bestSide && byBet[bestSide].length < minPatterns){
+      out.reason = `Mesa ${tableState} exige ${minPatterns}+ padrões · só ${byBet[bestSide].length} detectado · AGUARDA`;
     } else if(bestSide){
-      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín mesa ${tableState} ${(dynThreshold*100).toFixed(0)}%`;
+      out.reason = `Conf ${(bestConf*100).toFixed(0)}% < mín ${(effThreshold*100).toFixed(0)}% (mesa ${tableState}) · AGUARDA`;
     } else {
-      out.reason = `Mesa ${tableState} · sem padrão dominante`;
+      out.reason = `Mesa ${tableState} · sem padrão forte · AGUARDA`;
     }
     out.conf = bestConf;
   }
@@ -735,14 +1021,18 @@ function confirmEntry(){
   ST.ciclo_sinal = a.signal;
   ST.ciclo_conf = a.conf;
   ST.ciclo_razao = a.reason;
-  ST.ciclo_tie = a.tie.active ? a.tie.payout : null;
+  ST.ciclo_tie = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
+  ST.ciclo_aguarda_count = 0;
+  // SESSÃO INICIA AQUI · só termina ao clicar finalizar
+  ST.sessaoAtiva = true;
+  ST.metaAviso = null;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
-  if(a.tie.active) msg += ` + EMPATE ${a.tie.payout}`;
+  if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
   toast(msg, 2800);
-  save(); render();
+  save(); renderRouter();
 }
 
 function abortCiclo(){
@@ -754,70 +1044,277 @@ function abortCiclo(){
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
-  save(); render();
+  ST.ciclo_aguarda_count = 0;
+  checarMetaStop();
+  save(); renderRouter();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// GESTÃO DE RISCO · Meta 5-0 líquido · 2 loss finalizam a sessão
+// Empate é bônus (não conta pra meta), EXCETO 88x que conta como ponto extra
+// ════════════════════════════════════════════════════════════════════════
+const META_LIQUIDO = 5;   // greens líquidos para bater a meta
+const STOP_LOSS = 2;      // reds finalizam a sessão
+function checarMetaStop(){
+  if(!ST.sessaoAtiva) return;
+  const liquido = ST.greens - ST.reds;
+  // STOP LOSS · 2 reds finalizam
+  if(ST.reds >= STOP_LOSS){
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} losses · sessão encerrada para proteger a banca` };
+    ST.sessaoAtiva = false;
+    return;
+  }
+  // META · 5 líquido
+  if(liquido >= META_LIQUIDO){
+    ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
+    ST.sessaoAtiva = false;
+    return;
+  }
+}
+
+function hunterAtivo(a){
+  return a && a.hunter && (a.hunter.status === "ABERTA" || a.hunter.status === "QUENTE" || a.hunter.status === "ECO");
 }
 
 function addRound(r, sNum){
   const s = parseInt(sNum) || 0;
+  // SNAPSHOT para o desfazer: guarda estado completo ANTES de processar a rodada
+  // (assim o desfazer reverte green/red e o ciclo, não só o histórico)
+  if(!ST.undoStack) ST.undoStack = [];
+  ST.undoStack.push({
+    greens: ST.greens, reds: ST.reds, bonus: ST.bonus,
+    ciclo: ST.ciclo, ciclo_sinal: ST.ciclo_sinal, ciclo_conf: ST.ciclo_conf,
+    ciclo_razao: ST.ciclo_razao, ciclo_tie: ST.ciclo_tie,
+    ciclo_gale_sinal: ST.ciclo_gale_sinal, ciclo_gale_dec: ST.ciclo_gale_dec,
+    ciclo_gale_tie: ST.ciclo_gale_tie, ciclo_aguarda_count: ST.ciclo_aguarda_count,
+    sessaoAtiva: ST.sessaoAtiva
+  });
+  if(ST.undoStack.length > 50) ST.undoStack.shift();
+
+  // ANALISAR ANTES de adicionar — para saber estado do farejador no momento da rodada
+  // (se eu analiso depois, o dist vira 0 e o farejador muda de estado, perdendo o "ativo")
+  const aBefore = analyze();
+  const hunterAntes = hunterAtivo(aBefore);
   ST.H.push({r, s});
 
-  // ── CICLO ──
+  // ════════════════════════════════════════════════════════════════════════
+  // EMPATE · farejador ativo = GREEN sempre (aposta independente da cor)
+  // Bônus: empate ALTO (10x/25x/88x) durante aguarda_gale CANCELA o gale
+  // ════════════════════════════════════════════════════════════════════════
+  if(r === "T"){
+    const pay = payoutDaSoma(s);
+    const isHighPay = ["10x","25x","88x"].includes(pay);
+    const is88 = pay === "88x";
+
+    if(hunterAntes){
+      // 88x conta como ponto na meta · os outros empates são BÔNUS (não contam pra meta 5-0)
+      if(is88){
+        ST.greens++;
+        celebraPaga(pay);
+      } else {
+        ST.bonus = (ST.bonus||0) + 1;
+        if(isHighPay){ celebraPaga(pay); }
+        else { toast(`✅ BÔNUS EMPATE · ${pay} (não conta na meta)`, 2800); }
+      }
+
+      // Resolução do ciclo:
+      // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
+      // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
+      // · aguarda_gale + empate baixo (4x, 6x): bônus contado mas gale continua
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
+        abortCiclo();
+      } else if(ST.ciclo === "aguarda_gale" && isHighPay){
+        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
+        abortCiclo();
+      } else {
+        // aguarda_gale com pay baixo, OU idle → continua
+        save(); renderRouter();
+      }
+    } else {
+      // Farejador inativo → push, vida que segue
+      toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
+      else { save(); renderRouter(); }
+    }
+    return;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // COR (P ou B) · CICLO STATE MACHINE: idle | entrada | aguarda_gale | gale
+  // aguarda_gale tem TETO de 2 rodadas. Depois disso o gale entra forçado
+  // para não passar mais de 2 rodadas sem agir após a entrada perdida.
+  // ════════════════════════════════════════════════════════════════════════
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
-    if(r === sig || r === "T"){
-      // GREEN na entrada (cor certa OU empate)
+    if(r === sig){
       ST.greens++;
-      toast(r === "T" ? `✅ GREEN · EMPATE bateu!` : `✅ GREEN · ${lbl(r)}`);
+      toast(`✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
-      // Entrada falhou → DECIDIR GALE (analisar APÓS o novo resultado já registrado)
+      // Cor errada → decidir gale
       const a2 = analyze();
-      let galeSide, dec;
-      if(a2.signal && a2.signal !== "W"){
-        // motor tem sinal claro
-        galeSide = a2.signal;
-        dec = (galeSide === sig) ? "MANTER" : "INVERTER";
+      if(a2.signal === "P" || a2.signal === "B"){
+        // Motor tem sinal claro → gale imediato
+        ST.ciclo = "gale";
+        ST.ciclo_gale_sinal = a2.signal;
+        ST.ciclo_gale_dec = (a2.signal === sig) ? "MANTER" : "INVERTER";
+        ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+        let gmsg = `⚡ GALE ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
+        if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+        toast(gmsg, 3500);
       } else {
-        // motor incerto → AGUARDAR mas fallback inverte (padrão mudou)
-        galeSide = opos(sig);
-        dec = "AGUARDAR";
+        // Motor incerto → aguarda gale com TETO de 2 rodadas
+        ST.ciclo = "aguarda_gale";
+        ST.ciclo_aguarda_count = 0;
+        ST.ciclo_gale_sinal = null;
+        ST.ciclo_gale_dec = "AGUARDAR";
+        ST.ciclo_gale_tie = null;
+        toast(`⏳ AGUARDAR · motor analisando · máximo 2 rodadas`, 3500);
       }
+      save(); renderRouter();
+    }
+  } else if(ST.ciclo === "aguarda_gale"){
+    // Nova rodada registrada · re-analisa e decide
+    ST.ciclo_aguarda_count = (ST.ciclo_aguarda_count || 0) + 1;
+    const MAX_AGUARDA = 3;
+    const a2 = analyze();
+    if(a2.signal === "P" || a2.signal === "B"){
+      // Motor agora tem sinal claro → gale com esse sinal
+      ST.ciclo = "gale";
+      ST.ciclo_gale_sinal = a2.signal;
+      ST.ciclo_gale_dec = (a2.signal === ST.ciclo_sinal) ? "MANTER" : "INVERTER";
+      ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+      let gmsg = `⚡ ENTRAR no GALE · ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+      toast(gmsg, 3800);
+    } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
+      // ════════════════════════════════════════════════════════════════
+      // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
+      // Direção determinada AUTOMATICAMENTE pela tendência das últimas 8:
+      // - Lado dominante (mesmo que pouco): vai com ele
+      // - 4/4 verdadeiro (raríssimo): INVERTER por segurança
+      // Decisão MANTER ou INVERTER sai automaticamente da análise
+      // ════════════════════════════════════════════════════════════════
+      const recent = ST.H.filter(x=>x.r!=='T').slice(-8);
+      const pCount = recent.filter(x=>x.r==='P').length;
+      const bCount = recent.filter(x=>x.r==='B').length;
+      let galeSide, motivo;
+      if(pCount > bCount){
+        galeSide = 'P';
+        motivo = `tendência P (${pCount}/${recent.length})`;
+      } else if(bCount > pCount){
+        galeSide = 'B';
+        motivo = `tendência B (${bCount}/${recent.length})`;
+      } else {
+        galeSide = opos(ST.ciclo_sinal);
+        motivo = 'equilíbrio · INVERTER';
+      }
+      const dec = galeSide === ST.ciclo_sinal ? "MANTER" : "INVERTER";
       ST.ciclo = "gale";
       ST.ciclo_gale_sinal = galeSide;
-      ST.ciclo_gale_dec = dec;
-      ST.ciclo_gale_tie = a2.tie.active ? a2.tie.payout : null;
-      let gmsg = dec === "AGUARDAR"
-        ? `⏳ GALE · AGUARDAR melhor momento · tendência ${lbl(galeSide)}`
-        : `⚡ GALE · ${dec} · ${lbl(galeSide)}`;
-      if(a2.tie.active) gmsg += ` + EMPATE ${a2.tie.payout}`;
-      toast(gmsg, 3400);
-      save(); render();
+      ST.ciclo_gale_dec = `${dec} (limite · ${motivo})`;
+      ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+      let gmsg = `⚡ GALE ${lbl(galeSide)} · ${dec} · ${motivo}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+      toast(gmsg, 4500);
+    } else {
+      // Continua aguardando (ainda dentro do teto)
+      toast(`⏳ Aguardando gale · ${ST.ciclo_aguarda_count}/${MAX_AGUARDA} rodadas`, 2500);
     }
+    save(); renderRouter();
   } else if(ST.ciclo === "gale"){
-    // Resultado do GALE — CONTABILIZA SEMPRE
     const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
-    if(r === galeSide || r === "T"){
+    if(r === galeSide){
       ST.greens++;
-      toast(r === "T" ? `✅ GREEN GALE · EMPATE bateu!` : `✅ GREEN GALE · ${lbl(r)}`);
+      toast(`✅ GREEN GALE · ${lbl(r)}`);
+      abortCiclo();
     } else {
       ST.reds++;
       toast(`❌ RED · entrada e gale falharam`);
+      abortCiclo();
     }
-    abortCiclo();
   } else {
-    save(); render();
+    // idle · cor sem entrada confirmada → só registra
+    save(); renderRouter();
   }
 }
 
+// Recálculo retroativo: descobre empates que estavam com farejador ativo no histórico
+// e oferece adicionar esses greens perdidos (útil quando o app rodou com bug antes)
+window.recalcularEmpates = function(){
+  if(!ST.H || ST.H.length < 12){ toast("Histórico curto demais para recalcular", 2500); return; }
+  let greensDeEmpate = 0;
+  let detalhes = [];
+  ST.H.forEach((x,i)=>{
+    if(x.r !== "T") return;
+    // estado do farejador no momento ANTES deste empate
+    const histAntes = ST.H.slice(0, i);
+    if(histAntes.length < 12) return;
+    // simular o tieHunter com o histórico parcial
+    const heat = 40; // assumir mesa fria/neutra como média
+    const h = tieHunter(histAntes, heat);
+    if(h && (h.status === "ABERTA" || h.status === "QUENTE" || h.status === "ECO")){
+      greensDeEmpate++;
+      detalhes.push(`rodada ${i}: T s=${x.s} · ${h.status}`);
+    }
+  });
+  const diff = greensDeEmpate - ST.greens;
+  if(greensDeEmpate === 0){
+    toast(`Nenhum empate com farejador ativo encontrado`, 3000);
+    return;
+  }
+  const msg = `Histórico analisado:\n\n• ${greensDeEmpate} empates aconteceram com farejador ATIVO\n• Você tem ${ST.greens} green(s) registrados\n\nQuer SOBRESCREVER o placar para ${greensDeEmpate} greens? (Reds atuais: ${ST.reds} ficam)\n\nOu CANCELAR para não mexer.`;
+  if(confirm(msg)){
+    ST.greens = greensDeEmpate;
+    save();
+    toast(`✓ Placar ajustado · ${greensDeEmpate} greens de empate computados`, 4000);
+    renderRouter();
+  }
+};
+
+// Celebração especial para empate de alto pagamento
+function celebraPaga(pay){
+  ST.celebra = pay;
+  toast(`🔥 PAGA ${pay} 🔥`, 4500);
+  setTimeout(()=>{ ST.celebra = null; renderRouter(); }, 4500);
+}
+
 function undo(){
-  if(ST.H.length > 0) ST.H.pop();
-  abortCiclo();
+  if(ST.H.length === 0){ toast("Nada para desfazer", 1800); return; }
+  ST.H.pop();
+  // Restaura o estado completo de ANTES da última rodada (reverte green/red e ciclo)
+  if(ST.undoStack && ST.undoStack.length){
+    const snap = ST.undoStack.pop();
+    const g0 = ST.greens, r0 = ST.reds;
+    ST.greens = snap.greens;
+    ST.reds = snap.reds;
+    ST.bonus = snap.bonus;
+    ST.ciclo = snap.ciclo;
+    ST.ciclo_sinal = snap.ciclo_sinal;
+    ST.ciclo_conf = snap.ciclo_conf;
+    ST.ciclo_razao = snap.ciclo_razao;
+    ST.ciclo_tie = snap.ciclo_tie;
+    ST.ciclo_gale_sinal = snap.ciclo_gale_sinal;
+    ST.ciclo_gale_dec = snap.ciclo_gale_dec;
+    ST.ciclo_gale_tie = snap.ciclo_gale_tie;
+    ST.ciclo_aguarda_count = snap.ciclo_aguarda_count;
+    ST.sessaoAtiva = snap.sessaoAtiva;
+    let msg = "↩ Rodada desfeita";
+    if(g0 > snap.greens) msg += " · green removido";
+    if(r0 > snap.reds) msg += " · red removido";
+    toast(msg, 2500);
+    save(); renderRouter();
+  } else {
+    // sem snapshot (rodada antiga) → só remove do histórico
+    abortCiclo();
+  }
 }
 
 function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
-  ST.H = []; ST.greens = 0; ST.reds = 0;
+  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
   ST.deltaAcum = {}; ST.countAcum = {};
+  ST.metaAviso = null; ST.sessaoAtiva = false;
   abortCiclo();
 }
 
@@ -825,14 +1322,13 @@ function finalizarSessao(){
   const total = ST.greens + ST.reds;
   const rate = total > 0 ? Math.round(100 * ST.greens / total) : 0;
   if(!confirm(`Finalizar sessão?\n\n✅ ${ST.greens} GREEN · ❌ ${ST.reds} RED · ${rate}% rate\n\n• Placar será zerado\n• Aprendizado, histórico e pesos serão mantidos\n• Sessão #${ST.sessoes + 1} iniciada`)) return;
-
-  // Copia JSON antes de zerar
   copyJSON();
-
-  // Zera somente placar
   ST.greens = 0;
   ST.reds = 0;
+  ST.bonus = 0;
   ST.sessoes++;
+  ST.sessaoAtiva = false;
+  ST.metaAviso = null;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
   save();
@@ -871,7 +1367,7 @@ function injectJSON(){
     toast(`✓ ${ST.H.length} rodadas carregadas · ${ST.greens}/${ST.reds}`);
     ST.injTxt = "";
     ST.jsonOpen = false;
-    render();
+    renderRouter();
   }catch(e){
     toast("❌ JSON inválido");
   }
@@ -913,7 +1409,67 @@ function fallbackCopy(t){
 // ════════════════════════════════════════════════════════════════════════════
 // RENDER
 // ════════════════════════════════════════════════════════════════════════════
-function render(){
+// ════════════════════════════════════════════════════════════════════════
+// CARD DE ENTRADA/GALE · compartilhado entre app público e painel admin
+// ════════════════════════════════════════════════════════════════════════
+function buildEntryCard(a, forAdmin){
+  const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
+  function cardSinalGrande(titulo, lado, sub, tieInfo){
+    const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
+               lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
+               "rgba(245,158,11,.12),rgba(245,158,11,.04)";
+    const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
+    const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
+      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
+      ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
+      ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
+    </div>`;
+  }
+
+  if(ST.ciclo === "idle"){
+    if(a.signal && a.signal !== "W"){
+      const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
+      return forAdmin
+        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
+        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra);
+    } else if(!ST.sessaoAtiva && !bomMomento){
+      return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
+        <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
+        <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
+          Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
+          👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
+        </div>
+      </div>`;
+    } else {
+      return `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar'}</div></div>`;
+    }
+  } else if(ST.ciclo === "entrada"){
+    return cardSinalGrande("▶ ENTRADA ATIVA", ST.ciclo_sinal,
+      `${(ST.ciclo_conf*100).toFixed(0)}% confiança${forAdmin?' · registre o resultado abaixo':''}`, ST.ciclo_tie);
+  } else if(ST.ciclo === "aguarda_gale"){
+    const cnt = ST.ciclo_aguarda_count || 0;
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div>
+      <div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">${cnt}/3 rodadas</div>
+      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+        Motor refinando para evitar red.<br/>
+        ${cnt < 3 ? `Após <strong style="color:var(--txt)">${3-cnt}</strong> rodada(s) sem sinal, o gale entra automaticamente.` : 'Próxima rodada: gale forçado'}<br/>
+        Entrada anterior: <strong>${lbl(ST.ciclo_sinal)}</strong>
+      </div>
+    </div>`;
+  } else if(ST.ciclo === "gale"){
+    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    const gDec = ST.ciclo_gale_dec || "INVERTER";
+    const sub = `Decisão: ${gDec} · entrada anterior foi ${lbl(ST.ciclo_sinal)}${forAdmin?' · registre resultado':''}`;
+    return cardSinalGrande(`⚡ GALE · ENTRAR AGORA`, gSide, sub, ST.ciclo_gale_tie);
+  }
+  return "";
+}
+
+function renderApp(){
   const a = analyze();
   const total = ST.greens + ST.reds;
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
@@ -984,6 +1540,8 @@ function render(){
 
   // Tie pays
   const tieHi = a.tie.payout;
+  const hunterOpen = a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE' || a.hunter.status==='ECO');
+  const provavel = a.hunter ? a.hunter.payoutProvavel : null;
   const tieRows = [
     ["88x","2,12",a.tie.probs["88x_2_12"]],
     ["25x","3,11",a.tie.probs["25x_3_11"]],
@@ -992,7 +1550,8 @@ function render(){
     ["4x","6,7,8",a.tie.probs["4x_6_8"]]
   ];
   const tiePays = tieRows.map(([n,t,p])=>{
-    const isHi = a.tie.active && n === tieHi;
+    // destaca a faixa provável do farejador quando a janela está aberta
+    const isHi = hunterOpen && provavel && provavel.includes(n);
     return `<div class="pay-cell ${isHi?'hot':''}">
       <div class="pay-num">${n}</div>
       <div class="pay-pct">${t}</div>
@@ -1005,67 +1564,67 @@ function render(){
   else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
   else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
 
-  // Tie badge junto da entrada
-  const tieBadge = (a.tie.active && a.signal !== "W")
-    ? `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
-        🔥 + GATILHO EMPATE ${a.tie.payout}
-      </div>`
-    : "";
-
-  // Entry section
-  let entryHtml = "";
-  if(ST.ciclo === "idle"){
-    if(a.signal && a.signal !== "W"){
-      const tieExtra = a.tie.active ? ` + EMPATE ${a.tie.payout}` : "";
-      entryHtml = `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:8px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra}</button>`;
-    } else {
-      entryHtml = `<div class="wait-card"><div class="wait-act">⏳ AGUARDA · ${a.reason}</div></div>`;
-    }
-  } else if(ST.ciclo === "entrada"){
-    const tieLine = ST.ciclo_tie
-      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_tie}</div>`
-      : "";
-    entryHtml = `<div class="entry-card">
-      <div class="entry-ttl">▶ ENTRADA ATIVA</div>
-      <div class="entry-act">Apostar em ${lbl(ST.ciclo_sinal)} · ${(ST.ciclo_conf*100).toFixed(0)}%</div>
-      ${tieLine}
-      <div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Registre o resultado real abaixo ↓</div>
-    </div>`;
-  } else if(ST.ciclo === "gale"){
-    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
-    const gDec = ST.ciclo_gale_dec || "INVERTER";
-    const decColor = gDec === "AGUARDAR" ? "var(--txt2)" : gDec === "MANTER" ? "var(--blue2)" : "var(--gold2)";
-    const decIcon = gDec === "AGUARDAR" ? "⏳" : gDec === "MANTER" ? "↻" : "⇄";
-    const tieLine = ST.ciclo_gale_tie
-      ? `<div style="margin-top:5px;font-size:11px;color:var(--gold2);font-family:var(--mono)">🔥 + Gatilho Empate ${ST.ciclo_gale_tie}</div>`
-      : "";
-    const aviso = gDec === "AGUARDAR"
-      ? `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5">⚠️ Motor incerto · aguarde o melhor momento. Tendência ${lbl(gSide)} (padrão mudou). Registre o resultado quando entrar.</div>`
-      : `<div style="margin-top:6px;font-size:10px;color:var(--txt3);font-family:var(--mono)">Decisão: <strong style="color:${decColor}">${gDec}</strong> · registre o resultado do gale ↓</div>`;
-    entryHtml = `<div class="entry-card" style="background:linear-gradient(135deg,rgba(245,158,11,.1),rgba(245,158,11,.03));border-color:rgba(245,158,11,.4)">
-      <div class="entry-ttl" style="color:${decColor}">${decIcon} GALE 1 · ${gDec}</div>
-      <div class="entry-act">Apostar em ${lbl(gSide)}</div>
-      ${tieLine}
-      ${aviso}
-    </div>`;
+  // Tie badge junto da entrada — dirigido pelo farejador
+  let tieBadge = "";
+  if(a.hunter && (a.hunter.status==='ABERTA' || a.hunter.status==='QUENTE' || a.hunter.status==='ECO')){
+    const lbl2 = a.hunter.status==='QUENTE'?'IMINENTE':a.hunter.status==='ECO'?'NA QUINA':'PRÓXIMO';
+    tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.4);border-radius:9px;font-size:13px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+        🐕 FAREJADOR: EMPATE ${lbl2} · ${a.hunter.payoutProvavel||'4x'}
+      </div>`;
+  } else if(a.hunter && a.hunter.status==='PASSOU'){
+    tieBadge = `<div style="display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:9px;font-size:11px;color:var(--red2);font-family:var(--mono)">
+        🛑 Empate já passou · não apostar no tie agora
+      </div>`;
   }
+
+  // Entry section · usa função compartilhada (mesma do admin)
+  const proxSessao = (AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length) ? AUTH.config.sessoes : [];
+  const entryHtml = buildEntryCard(a, isAdmin());
 
   root.innerHTML = `
     <div class="app">
       <div class="hdr">
-        <div class="tg">⬢ BAC BRU</div>
+        <div onclick="${isAdmin()?'abrirAdminApp()':''}" style="display:flex;align-items:center;gap:7px;${isAdmin()?'cursor:pointer':''}">
+          ${isAdmin()?diceSVG("blue",4).replace('width="34" height="34"','width="20" height="20"')+diceSVG("red",3).replace('width="34" height="34"','width="20" height="20"'):''}
+          <div class="tg">⬢ BAC BRU</div>
+        </div>
         <div class="hdr-r">
           <span class="dot" style="background:${SYNC_STATUS==='LIVE'?'#22c55e':SYNC_STATUS==='CONNECTING'?'#f59e0b':'#ef4444'}"></span>
           ${SYNC_STATUS === 'LIVE' ? 'LIVE · SYNC' : SYNC_STATUS === 'CONNECTING' ? 'CONECTANDO...' : 'OFFLINE'}
         </div>
       </div>
 
-      <div class="stats-bar">
-        <div class="stat"><div class="stat-v g">${ST.greens}</div><div class="stat-l">GREEN</div></div>
-        <div class="stat"><div class="stat-v r">${ST.reds}</div><div class="stat-l">RED</div></div>
-        <div class="stat"><div class="stat-v y">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--purple)">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
+      <div class="stats-bar" style="padding:14px 12px">
+        <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
+        <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
+        <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:28px">${rate}%</div><div class="stat-l">RATE</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS 🔥</div></div>
       </div>
+
+      <!-- META 5-0 · barra de progresso -->
+      <div class="card" style="padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+          <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">🎯 META DA SESSÃO · 5-0 LÍQUIDO</div>
+          <div style="font-size:13px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</div>
+        </div>
+        <div style="height:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;display:flex;gap:2px">
+          ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds)>=n?'var(--green2)':'rgba(148,163,184,.15)'};border-radius:2px"></div>`).join("")}
+        </div>
+        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">2 losses encerram a sessão · empates são bônus (88x conta ponto)</div>
+      </div>
+
+      ${ST.metaAviso ? `<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.15),rgba(34,211,238,.06)':'rgba(239,68,68,.12),rgba(245,158,11,.05)'});border:2px solid ${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.4)':'rgba(239,68,68,.4)'}">
+        <div style="font-size:17px;font-weight:900;font-family:var(--mono);color:${ST.metaAviso.tipo==='meta'?'var(--green2)':'var(--red2)'};line-height:1.4">${ST.metaAviso.msg}</div>
+        <div style="margin-top:8px;font-size:11px;color:var(--txt2);font-family:var(--mono)">Sessão encerrada. ${isAdmin()?'Clique em FINALIZAR SESSÃO para zerar o placar.':'Aguarde a próxima sessão ao vivo.'}</div>
+      </div>` : ''}
+      ${(() => {
+        const rec = AUTH.key && AUTH.keys[AUTH.key];
+        if(rec && rec.tipo === "teste" && rec.expiraEm){
+          const dias = Math.max(0, Math.ceil((rec.expiraEm - Date.now())/(24*60*60*1000)));
+          return `<div style="margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(245,158,11,.05));border:1px solid rgba(167,139,250,.25);border-radius:10px;text-align:center;font-size:11px;color:var(--purple);font-family:var(--mono)">🎁 Período de teste · <strong>${dias} dia(s)</strong> restante(s) · assine para continuar</div>`;
+        }
+        return "";
+      })()}
 
       <!-- TABLE HEAT STATUS -->
       ${a.heat ? `
@@ -1101,57 +1660,24 @@ function render(){
           a.heat.state==='FRIA'?'var(--gold2)':
           'var(--red2)'
         };margin-bottom:6px">${a.heat.score}/100</div>
-        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden;margin-bottom:10px">
+        <div style="height:6px;background:rgba(0,0,0,.4);border-radius:3px;overflow:hidden">
           <div style="width:${a.heat.score}%;height:100%;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 30%,#94a3b8 50%,#22d3ee 70%,#22c55e 100%);transition:width .4s"></div>
-        </div>
-        <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
-          <strong style="color:var(--txt)">Critério ativo:</strong> conf mín ${(a.heat.threshold*100).toFixed(0)}%${a.heat.requireConvergence?' · exige 2+ padrões':''}<br/>
-          <span style="color:var(--txt3)">${a.heat.reasons.length ? a.heat.reasons.slice(0,4).join(' · ') : 'mesa em análise inicial'}</span>
         </div>
       </div>` : ''}
 
       <!-- SIGNAL CARD -->
       <div class="card signal-card">
-        <div class="sig-status">
-          ${a.convergence >= 2 ? `<span class="conv-badge">⚡ CONVERGÊNCIA ${a.convergence}</span>` : ""}
-          ${a.derivedAlign >= 2 ? `<span class="conv-badge">📊 ROADS ALINHADAS</span>` : ""}
-          MOTOR NEURAL · ${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}
-        </div>
+        <div class="sig-status">${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}</div>
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
-        <div class="sig-reason">${a.reason}</div>
         <div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
         <div class="conf-txt">
           <span>CONFIANÇA</span>
-          <span>${(a.conf*100).toFixed(0)}% · mín ${a.heat?(a.heat.threshold*100).toFixed(0):(ST.weights.min_conf*100).toFixed(0)}%</span>
+          <span>${(a.conf*100).toFixed(0)}%</span>
         </div>
         ${entryHtml}
-      </div>
-
-      <!-- INPUT -->
-      <div class="sec-lbl">REGISTRAR RODADA</div>
-      <div class="card">
-        <div class="sum-row">
-          <input id="soma" class="sum-inp" type="number" placeholder="SOMA (ex: 8)" value="${ST.somaIn}"/>
-          <div class="sum-lbl">DADOS</div>
-        </div>
-        <div class="input-row" style="margin-top:8px">
-          <button class="btn btn-p" onclick="reg('P')">AZUL · P</button>
-          <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
-          <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
-        </div>
-      </div>
-
-      <!-- PADRÕES DETECTADOS -->
-      <div class="sec-lbl">PADRÕES DETECTADOS · ${a.patterns.length} ATIVOS</div>
-      <div class="card">
-        <div class="pat-list">${patHtml}</div>
-        <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.6">
-          ${a.padrao}<br/>
-          Soma méd: <strong style="color:var(--txt2)">${a.sumAvg.toFixed(1)}</strong> · Δsoma: <strong style="color:var(--txt2)">${a.sumDelta.toFixed(2)}</strong>
-        </div>
       </div>
 
       <!-- BEAD ROAD NUMÉRICO -->
@@ -1200,50 +1726,126 @@ function render(){
       </div>
 
       <!-- TIE ANALYSIS -->
-      <div class="sec-lbl">EMPATE · ANÁLISE PROBABILÍSTICA</div>
-      <div class="card tie-card">
-        <div class="tie-status ${a.tie.active?'act':'idle'}">
-          ${a.tie.active ? '🔥 GATILHO ATIVO' : '○ MONITORANDO'} · ${a.tie.dt} rodadas sem Tie${a.tie.mp?' · MESA PAGADORA':''}
-        </div>
-        <div class="tie-pays">${tiePays}</div>
-        ${a.tie.active ? `<div style="margin-top:10px;padding:7px 10px;background:rgba(245,158,11,.1);border-radius:7px;font-size:10px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
-          Faixa mais provável: <strong>${a.tie.payout}</strong> · soma média: ${a.sumAvg.toFixed(1)}
-        </div>` : ''}
-      </div>
-
-      <!-- JSON PANEL -->
-      <div class="sec-lbl">CALIBRAGEM · APRENDIZADO ADAPTATIVO</div>
-      <div class="card">
-        <div class="json-hdr" onclick="toggleJson()">
-          <div class="json-ttl">⊡ INJETAR / EXPORTAR JSON</div>
-          <div class="json-arr" style="${ST.jsonOpen?'transform:rotate(180deg)':''}">▼</div>
-        </div>
-        ${ST.jsonOpen ? `
-        <div class="json-body">
-          <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt}</textarea>
-          <div class="json-btns">
-            <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR</button>
-            <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
+      <!-- FAREJADOR DE EMPATES -->
+      <div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
+      <div class="card" style="background:linear-gradient(135deg,${
+        a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.12),rgba(239,68,68,.05)' :
+        a.hunter && a.hunter.status==='ECO' ? 'rgba(167,139,250,.12),rgba(245,158,11,.05)' :
+        a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.08),rgba(34,211,238,.03)' :
+        a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.06),rgba(0,0,0,.2)' :
+        'rgba(148,163,184,.04),rgba(0,0,0,.2)'
+      });border-color:${
+        a.hunter && a.hunter.status==='QUENTE' ? 'rgba(245,158,11,.45)' :
+        a.hunter && a.hunter.status==='ECO' ? 'rgba(167,139,250,.45)' :
+        a.hunter && a.hunter.status==='ABERTA' ? 'rgba(245,158,11,.3)' :
+        a.hunter && a.hunter.status==='PASSOU' ? 'rgba(239,68,68,.3)' :
+        'var(--border)'
+      }">
+        ${a.hunter ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:${
+            a.hunter.status==='QUENTE' ? 'var(--gold2)' :
+            a.hunter.status==='ECO' ? 'var(--purple)' :
+            a.hunter.status==='ABERTA' ? 'var(--gold2)' :
+            a.hunter.status==='PASSOU' ? 'var(--red2)' :
+            'var(--txt2)'
+          }">
+            ${a.hunter.status==='QUENTE'?'🔥 QUENTE':a.hunter.status==='ECO'?'🔁 ECO · QUINA':a.hunter.status==='ABERTA'?'🟢 JANELA ABERTA':a.hunter.status==='PASSOU'?'🛑 PASSOU':a.hunter.status==='FECHADA'?'⏳ FECHADA':'○ COLETANDO'}
           </div>
-          <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
-          ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
+          <div style="font-size:12px;font-family:var(--mono);color:var(--txt2)">${(a.hunter.conf*100).toFixed(0)}%</div>
+        </div>
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6;margin-bottom:10px">${a.hunter.msg}</div>
+        ${a.hunter.echo && a.hunter.status!=='ECO' ? `<div style="font-size:10px;color:var(--purple);font-family:var(--mono);margin-bottom:8px">🔁 Mesa de eco detectada · ${(a.hunter.echoRate*100).toFixed(0)}% dos empates vêm na quina</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--cyan)">${a.hunter.dist}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">SEM EMPATE</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--txt)">${a.hunter.avgGap.toFixed(0)}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">MÉDIA GAP</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--purple)">${a.hunter.ties30}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">EM 30</div>
+          </div>
+        </div>
+        ${(a.hunter.status==='ABERTA'||a.hunter.status==='QUENTE'||a.hunter.status==='ECO') ? `
+        <div style="padding:9px 11px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:11px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
+          💰 Payout provável: <strong>${a.hunter.payoutProvavel||'4x'}</strong> · soma média recente: ${a.sumAvg.toFixed(1)}<br/>
+          <span style="font-size:10px;color:var(--txt2)">Apostar no empate agora tem valor de bônus</span>
         </div>` : ''}
+        ${a.hunter.ultimosPay && a.hunter.ultimosPay.length ? `
+        <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono)">
+          Últimos empates: ${a.hunter.ultimosPay.map(p=>`<span style="color:${p.pay==='88x'||p.pay==='25x'?'var(--gold2)':'var(--txt3)'}">${p.pay}</span>`).join(' · ')}
+        </div>` : ''}
+        ` : '<div style="color:var(--txt3);font-size:11px;text-align:center;padding:12px;font-family:var(--mono)">Coletando histórico de empates...</div>'}
+        <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>
 
-      <!-- FINALIZAR SESSÃO -->
-      <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-top:10px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
-        ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
-      </button>
+      <!-- ESTADO DA MESA + HORÁRIOS DAS LIVES · em destaque pro assinante -->
+      ${a.heat ? `
+      <div class="sec-lbl" style="margin-top:18px;font-size:11px">📊 ESTADO DA MESA AGORA</div>
+      <div class="card" style="padding:18px;text-align:center;background:linear-gradient(135deg,${
+        a.heat.state==='QUENTE'?'rgba(34,197,94,.10),rgba(34,211,238,.04)':
+        a.heat.state==='FAVORÁVEL'?'rgba(34,211,238,.08),rgba(34,197,94,.04)':
+        a.heat.state==='NEUTRA'?'rgba(148,163,184,.06),rgba(255,255,255,.02)':
+        a.heat.state==='FRIA'?'rgba(245,158,11,.08),rgba(239,68,68,.04)':
+        'rgba(239,68,68,.10),rgba(245,158,11,.04)'
+      })">
+        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:${
+          a.heat.state==='QUENTE'?'var(--green2)':
+          a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+          a.heat.state==='NEUTRA'?'var(--txt)':
+          a.heat.state==='FRIA'?'var(--gold2)':
+          'var(--red2)'
+        };letter-spacing:2px;margin-bottom:8px">
+          ${a.heat.state==='QUENTE'?'🔥':a.heat.state==='FAVORÁVEL'?'⚡':a.heat.state==='NEUTRA'?'○':a.heat.state==='FRIA'?'❄':'🧊'} ${a.heat.state}
+        </div>
+        <div style="font-size:14px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          ${a.heat.state==='QUENTE'?'Mesa muito previsível · operamos com tranquilidade':
+            a.heat.state==='FAVORÁVEL'?'Mesa boa · operamos com critério':
+            a.heat.state==='NEUTRA'?'Mesa sem direção · só com forte confirmação':
+            a.heat.state==='FRIA'?'Mesa caótica · NÃO operamos para evitar reds':
+            'Mesa congelada · BLOQUEADA · aguardar virada'}
+        </div>
+        ${ST.sessaoAtiva?`<div style="margin-top:12px;padding:8px 14px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:9px;display:inline-block;font-size:12px;color:var(--green2);font-family:var(--mono);font-weight:700">▶ SESSÃO ATIVA</div>`:''}
+      </div>` : ''}
 
-      <!-- FOOTER -->
-      <div class="foot-btns">
-        <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
-        <button class="util-btn" onclick="reset()">◌ ZERAR TUDO</button>
-      </div>
+      ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
+      <div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div>
+      <div class="card" style="padding:18px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+          ${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
+        </div>
+        <div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>
+          A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.
+        </div>
+      </div>` : ''}
 
-      <div class="credit">BAC BRU · v6.3 · GALE INVERTER/MANTER/AGUARDAR · TIE INLINE · SYNC</div>
+      <div class="credit">BAC BRU · v7.9 · META 5-0 · STOP 2 LOSS · GESTÃO DE BANCA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
+      ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
+        <div class="paga-big">🔥 PAGA 🔥</div>
+        <div class="paga-x">${ST.celebra}</div>
+        <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+      </div>` : ''}
+      ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
+        <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
+          <div style="font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.9">
+            🎯 <strong style="color:var(--green2)">Meta da sessão: 5-0 líquido.</strong> Bateu 5 greens de saldo? Pare no lucro.<br/><br/>
+            🛑 <strong style="color:var(--red2)">2 losses encerram a sessão.</strong> Sem exceção. Protege a banca.<br/><br/>
+            💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong> Nunca mais que isso por entrada.<br/><br/>
+            ⚡ <strong style="color:var(--gold2)">Dobra no gale é opcional.</strong> Se preferir não dobrar, tudo bem — reduz o risco.<br/><br/>
+            🔥 <strong style="color:var(--gold2)">Empates são bônus</strong> — dinheiro extra no bolso, não contam pra meta (só o 88x conta ponto).<br/><br/>
+            <span style="color:var(--txt3);font-size:11px">As entradas são sinais probabilísticos, não garantias. Aposte apenas o que pode perder. Jogo é variância — a disciplina protege você.</span>
+          </div>
+          <button onclick="fecharAviso()" style="width:100%;margin-top:18px;padding:14px;background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(34,211,238,.1));border:1px solid rgba(34,197,94,.4);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI · COMEÇAR</button>
+        </div>
+      </div>` : ''}
     </div>
   `;
 
@@ -1258,6 +1860,556 @@ function render(){
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AUTENTICAÇÃO · ASSINATURA + ADMIN
+// ════════════════════════════════════════════════════════════════════════════
+const AUTH = {
+  view: "loading", // loading | lock | admin | app
+  key: localStorage.getItem("bacbru_key") || "",
+  adminToken: localStorage.getItem("bacbru_admin") || "",
+  keys: {},          // keys carregadas do firebase
+  config: { sessoes: [], adminHash: null, admins: {} },
+  msg: "",
+  keyInput: "",
+  pwInput: "",
+  newKeyName: "",
+  newKeyTipo: "mensal",
+  newSessao: "",
+  newAdminNome: "",
+  newAdminPw: "",
+  secretCount: 0,
+  secretTimer: null
+};
+
+// hash simples (não-criptográfico, suficiente p/ gate de acesso)
+function simpleHash(s){
+  let h = 5381;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)+h) + s.charCodeAt(i); h = h & h; }
+  return "h" + (h>>>0).toString(36);
+}
+
+function genKey(tipo){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let k = "";
+  for(let i=0;i<6;i++) k += chars[Math.floor(Math.random()*chars.length)];
+  const prefix = tipo === "vitalicia" ? "BRU-V-" : tipo === "teste" ? "BRU-T-" : "BRU-M-";
+  return prefix + k;
+}
+
+function keyIsValid(rec){
+  if(!rec || !rec.ativo) return false;
+  if(rec.tipo === "vitalicia") return true;
+  if(rec.expiraEm && Date.now() > rec.expiraEm) return false;
+  return true;
+}
+
+function initAuth(){
+  // Carrega config (sessões + admins) e chaves
+  db.ref("config").on("value", s => {
+    const c = s.val() || {};
+    AUTH.config.sessoes = c.sessoes || [];
+    AUTH.config.adminHash = c.adminHash || null; // master (compatibilidade)
+    AUTH.config.admins = c.admins || {};         // { hash: {nome, master} }
+    routeAuth();
+  });
+  db.ref("keys").on("value", s => {
+    AUTH.keys = s.val() || {};
+    routeAuth();
+  });
+}
+
+// verifica se um hash é admin (master antigo OU lista de admins)
+function hashIsAdmin(hash){
+  if(!hash) return false;
+  if(AUTH.config.adminHash && hash === AUTH.config.adminHash) return true;
+  if(AUTH.config.admins && AUTH.config.admins[hash]) return true;
+  return false;
+}
+
+function routeAuth(){
+  // Admin reconhecido pelo dispositivo?
+  if(AUTH.adminToken && hashIsAdmin(AUTH.adminToken)){
+    if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
+  } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key])){
+    if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
+  } else {
+    if(AUTH.view === "loading" || AUTH.view === "app") AUTH.view = "lock";
+  }
+  renderRouter();
+}
+
+function isAdmin(){
+  return AUTH.adminToken && hashIsAdmin(AUTH.adminToken);
+}
+
+// ── Ações de acesso ──
+window.tentarChave = function(){
+  const k = (AUTH.keyInput||"").trim().toUpperCase();
+  if(!k){ AUTH.msg = "Digite sua chave"; renderRouter(); return; }
+  const rec = AUTH.keys[k];
+  if(keyIsValid(rec)){
+    AUTH.key = k;
+    localStorage.setItem("bacbru_key", k);
+    AUTH.msg = "";
+    AUTH.view = "app";
+    renderRouter();
+  } else if(rec && !keyIsValid(rec)){
+    AUTH.msg = "Chave expirada ou desativada";
+    renderRouter();
+  } else {
+    AUTH.msg = "Chave inválida";
+    renderRouter();
+  }
+};
+
+window.abrirAdmin = function(){
+  if(isAdmin()){ AUTH.view = "admin"; renderRouter(); return; }
+  AUTH.view = "adminLogin";
+  renderRouter();
+};
+
+// Toque secreto: 5 toques na logo/dadinhos abre o admin (escondido dos assinantes)
+window.secretAdmin = function(){
+  AUTH.secretCount++;
+  clearTimeout(AUTH.secretTimer);
+  AUTH.secretTimer = setTimeout(()=>{ AUTH.secretCount = 0; renderRouter(); }, 1500);
+  if(AUTH.secretCount >= 5){
+    AUTH.secretCount = 0;
+    clearTimeout(AUTH.secretTimer);
+    abrirAdmin();
+  } else {
+    renderRouter();
+  }
+};
+
+window.loginAdmin = function(){
+  const pw = (AUTH.pwInput||"").trim();
+  if(!pw){ AUTH.msg = "Digite a senha-mestra"; renderRouter(); return; }
+  const hash = simpleHash(pw);
+  const semAdmins = !AUTH.config.adminHash && (!AUTH.config.admins || Object.keys(AUTH.config.admins).length === 0);
+  if(semAdmins){
+    // primeira configuração — define o admin-mestre
+    db.ref("config/adminHash").set(hash);
+    db.ref("config/admins/" + hash).set({ nome: "Admin Master", master: true, criadoEm: Date.now() });
+    AUTH.adminToken = hash;
+    localStorage.setItem("bacbru_admin", hash);
+    AUTH.msg = ""; AUTH.pwInput = ""; AUTH.view = "admin";
+    renderRouter();
+  } else if(hashIsAdmin(hash)){
+    AUTH.adminToken = hash;
+    localStorage.setItem("bacbru_admin", hash);
+    AUTH.msg = ""; AUTH.pwInput = ""; AUTH.view = "admin";
+    renderRouter();
+  } else {
+    AUTH.msg = "Senha incorreta";
+    renderRouter();
+  }
+};
+
+// Criar/remover admins adicionais
+window.criarAdmin = function(){
+  const nome = (AUTH.newAdminNome||"").trim() || "Admin";
+  const pw = (AUTH.newAdminPw||"").trim();
+  if(pw.length < 4){ AUTH.msg = "Senha do admin precisa de 4+ caracteres"; renderRouter(); return; }
+  const hash = simpleHash(pw);
+  db.ref("config/admins/" + hash).set({ nome, master: false, criadoEm: Date.now() });
+  AUTH.newAdminNome = ""; AUTH.newAdminPw = "";
+  AUTH.msg = "✓ Admin criada: " + nome;
+  renderRouter();
+};
+
+window.removerAdmin = function(hash){
+  const rec = AUTH.config.admins[hash];
+  if(rec && rec.master){ alert("Não é possível remover o admin master."); return; }
+  if(!confirm("Remover este admin?")) return;
+  db.ref("config/admins/" + hash).remove();
+};
+
+window.criarChave = function(){
+  const nome = (AUTH.newKeyName||"").trim() || "sem nome";
+  const tipo = AUTH.newKeyTipo;
+  const k = genKey(tipo);
+  const dur = tipo === "teste" ? 3*24*60*60*1000 : 30*24*60*60*1000;
+  const rec = {
+    ativo: true,
+    tipo,
+    nome,
+    criadoEm: Date.now(),
+    expiraEm: tipo === "vitalicia" ? null : Date.now() + dur
+  };
+  db.ref("keys/" + k).set(rec);
+  AUTH.newKeyName = "";
+  AUTH.msg = "✓ Chave criada: " + k;
+  renderRouter();
+};
+
+// Autoatendimento: teste grátis de 3 dias (1 por dispositivo, controlado no Firebase)
+function getDeviceId(){
+  let id = localStorage.getItem("bacbru_dev");
+  if(!id){ id = "dev_" + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("bacbru_dev", id); }
+  return id;
+}
+window.iniciarTeste = function(){
+  const devId = getDeviceId();
+  db.ref("trials/" + devId).once("value").then(snap => {
+    if(snap.val()){
+      AUTH.msg = "Teste grátis já utilizado neste dispositivo";
+      renderRouter();
+      return;
+    }
+    const k = genKey("teste");
+    const rec = { ativo:true, tipo:"teste", nome:"Teste 3 dias", criadoEm:Date.now(), expiraEm: Date.now() + 3*24*60*60*1000 };
+    db.ref("keys/" + k).set(rec);
+    db.ref("trials/" + devId).set({ key:k, criadoEm:Date.now() });
+    AUTH.key = k;
+    localStorage.setItem("bacbru_key", k);
+    AUTH.msg = "";
+    AUTH.view = "app";
+    renderRouter();
+  }).catch(()=>{ AUTH.msg = "Erro ao iniciar teste · tente novamente"; renderRouter(); });
+};
+
+window.toggleChave = function(k){
+  const rec = AUTH.keys[k];
+  if(!rec) return;
+  db.ref("keys/" + k + "/ativo").set(!rec.ativo);
+};
+
+window.renovarChave = function(k){
+  const rec = AUTH.keys[k];
+  if(!rec) return;
+  const base = (rec.expiraEm && rec.expiraEm > Date.now()) ? rec.expiraEm : Date.now();
+  db.ref("keys/" + k + "/expiraEm").set(base + 30*24*60*60*1000);
+  db.ref("keys/" + k + "/ativo").set(true);
+};
+
+window.removerChave = function(k){
+  if(!confirm("Remover a chave " + k + "?")) return;
+  db.ref("keys/" + k).remove();
+};
+
+window.addSessao = function(){
+  const t = (AUTH.newSessao||"").trim();
+  if(!/^\d{1,2}:\d{2}$/.test(t)){ AUTH.msg = "Horário inválido (use HH:MM)"; renderRouter(); return; }
+  const arr = [...AUTH.config.sessoes, t].sort();
+  db.ref("config/sessoes").set(arr);
+  AUTH.newSessao = "";
+};
+
+window.removerSessao = function(t){
+  const arr = AUTH.config.sessoes.filter(x=>x!==t);
+  db.ref("config/sessoes").set(arr);
+};
+
+window.sairAdmin = function(){ AUTH.view = "app"; renderRouter(); };
+window.voltarLock = function(){ AUTH.view = "lock"; renderRouter(); };
+
+window.logoutAcesso = function(){
+  if(!confirm("Sair do acesso neste dispositivo?")) return;
+  localStorage.removeItem("bacbru_key");
+  localStorage.removeItem("bacbru_admin");
+  AUTH.key = ""; AUTH.adminToken = "";
+  AUTH.view = "lock";
+  renderRouter();
+};
+
+// ── Render do roteador ──
+function renderRouter(){
+  if(AUTH.view === "app"){ renderApp(); return; }
+  const root = document.getElementById("root");
+  if(AUTH.view === "loading"){
+    root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
+    return;
+  }
+  if(AUTH.view === "lock"){
+    root.innerHTML = renderLock();
+    bindAuthInputs();
+    return;
+  }
+  if(AUTH.view === "adminLogin"){
+    root.innerHTML = renderAdminLogin();
+    bindAuthInputs();
+    return;
+  }
+  if(AUTH.view === "admin"){
+    root.innerHTML = renderAdminPanel();
+    bindAuthInputs();
+    return;
+  }
+}
+
+function diceSVG(color, pips){
+  const c = color === "blue" ? "#3b82f6" : "#ef4444";
+  const c2 = color === "blue" ? "#1e40af" : "#991b1b";
+  const dotPos = {
+    1:[[50,50]],
+    2:[[30,30],[70,70]],
+    3:[[28,28],[50,50],[72,72]],
+    4:[[30,30],[70,30],[30,70],[70,70]],
+    5:[[30,30],[70,30],[50,50],[30,70],[70,70]],
+    6:[[30,28],[70,28],[30,50],[70,50],[30,72],[70,72]]
+  }[pips];
+  const dots = dotPos.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="8" fill="#fff"/>`).join("");
+  return `<svg width="34" height="34" viewBox="0 0 100 100" style="filter:drop-shadow(0 2px 6px ${c}66)">
+    <rect x="6" y="6" width="88" height="88" rx="20" fill="url(#g${color})" stroke="${c2}" stroke-width="2"/>
+    <defs><linearGradient id="g${color}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c2}"/>
+    </linearGradient></defs>
+    ${dots}
+  </svg>`;
+}
+
+function renderLock(){
+  return `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:420px;margin:0 auto">
+    <div onclick="secretAdmin()" style="display:flex;gap:10px;margin-bottom:18px;cursor:pointer">${diceSVG("blue",4)}${diceSVG("red",3)}</div>
+    <div onclick="secretAdmin()" class="tg" style="font-size:30px;margin-bottom:6px;cursor:pointer">BAC BRU</div>
+    <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:28px">ACESSO RESTRITO · ASSINANTES</div>
+    <input id="keyInput" placeholder="DIGITE SUA CHAVE" value="${AUTH.keyInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none;text-transform:uppercase"/>
+    ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono)">${AUTH.msg}</div>` : ""}
+    <button onclick="tentarChave()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,211,238,.08));border:1px solid rgba(34,197,94,.3);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">▶ ENTRAR</button>
+    <div style="display:flex;align-items:center;gap:10px;width:100%;margin:18px 0 4px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:9px;color:var(--txt4);font-family:var(--mono);letter-spacing:2px">OU</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <button onclick="iniciarTeste()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(245,158,11,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">🎁 TESTAR GRÁTIS · 3 DIAS</button>
+    <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center">acesso completo por 3 dias · 1 por dispositivo</div>
+    ${AUTH.secretCount > 0 && AUTH.secretCount < 5 ? `<div style="margin-top:18px;font-size:9px;color:var(--txt4);font-family:var(--mono)">${'●'.repeat(AUTH.secretCount)}${'○'.repeat(5-AUTH.secretCount)}</div>` : ""}
+  </div>`;
+}
+
+function renderAdminLogin(){
+  const first = !AUTH.config.adminHash && (!AUTH.config.admins || Object.keys(AUTH.config.admins).length === 0);
+  return `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;max-width:420px;margin:0 auto">
+    <div style="display:flex;gap:10px;margin-bottom:18px">${diceSVG("blue",6)}${diceSVG("red",6)}</div>
+    <div class="tg" style="font-size:24px;margin-bottom:6px">PAINEL ADMIN</div>
+    <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;margin-bottom:24px">${first ? "DEFINA SUA SENHA-MESTRA" : "DIGITE A SENHA-MESTRA"}</div>
+    <input id="pwInput" type="password" placeholder="SENHA-MESTRA" value="${AUTH.pwInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none"/>
+    ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:var(--red2);font-family:var(--mono)">${AUTH.msg}</div>` : ""}
+    ${first ? `<div style="margin-top:12px;font-size:10px;color:var(--gold2);font-family:var(--mono);line-height:1.5;text-align:center">⚠️ Esta será a senha-mestra do sistema. Guarde-a bem. Este dispositivo será reconhecido como admin automaticamente.</div>` : ""}
+    <button onclick="loginAdmin()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(167,139,250,.15),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">${first ? "✓ DEFINIR E ENTRAR" : "▶ ENTRAR"}</button>
+    <div onclick="voltarLock()" style="margin-top:20px;font-size:10px;color:var(--txt3);font-family:var(--mono);cursor:pointer">← voltar</div>
+  </div>`;
+}
+
+function renderAdminPanel(){
+  const keys = Object.entries(AUTH.keys).sort((a,b)=>(b[1].criadoEm||0)-(a[1].criadoEm||0));
+  const ativas = keys.filter(([k,r])=>keyIsValid(r)).length;
+  const a = analyze();
+  const total = ST.greens + ST.reds;
+  const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
+  const sigInfo = a.signal === "P" ? {txt:"AZUL · P", color:"var(--blue2)", bg:"rgba(59,130,246,.12)"}
+                : a.signal === "B" ? {txt:"VERMELHO · B", color:"var(--red2)", bg:"rgba(239,68,68,.12)"}
+                : a.signal === "T" ? {txt:"EMPATE", color:"var(--gold2)", bg:"rgba(245,158,11,.12)"}
+                : {txt:"AGUARDA", color:"var(--txt3)", bg:"rgba(148,163,184,.06)"};
+  const cicloLabel = ST.ciclo === "entrada" ? `ENTRADA · ${lbl(ST.ciclo_sinal)}`
+                   : ST.ciclo === "gale" ? `GALE · ${lbl(ST.ciclo_gale_sinal||opos(ST.ciclo_sinal))} (${ST.ciclo_gale_dec||'INVERTER'})`
+                   : ST.ciclo === "aguarda_gale" ? `⏳ AGUARDANDO GALE · ${ST.ciclo_aguarda_count||0}/3 rodadas`
+                   : "—";
+  const hunterTxt = a.hunter ? (
+    a.hunter.status === "QUENTE" ? "🔥 QUENTE" :
+    a.hunter.status === "ECO" ? "🔁 ECO" :
+    a.hunter.status === "ABERTA" ? "🟢 ABERTA" :
+    a.hunter.status === "PASSOU" ? "🛑 PASSOU" :
+    a.hunter.status === "FECHADA" ? "⏳ FECHADA" : "○ analisando"
+  ) : "—";
+  const keyRows = keys.length ? keys.map(([k,r])=>{
+    const valid = keyIsValid(r);
+    const exp = r.tipo === "vitalicia" ? "vitalícia" :
+      (r.expiraEm ? new Date(r.expiraEm).toLocaleDateString("pt-BR") : "—");
+    const dias = (r.tipo === "mensal" || r.tipo === "teste") && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
+    const tipoLabel = r.tipo==='vitalicia'?'♾ VITALÍCIA':r.tipo==='teste'?'🎁 TESTE 3D':'📅 MENSAL';
+    return `<div style="padding:11px;background:rgba(0,0,0,.3);border:1px solid ${valid?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;margin-bottom:7px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${valid?'var(--green2)':'var(--red2)'}">${k}</div>
+        <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
+      </div>
+      <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
+      <div style="display:flex;gap:5px;margin-top:8px">
+        <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
+        ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
+        <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
+      </div>
+    </div>`;
+  }).join("") : `<div style="color:var(--txt3);font-size:11px;font-family:var(--mono);text-align:center;padding:14px">nenhuma chave criada</div>`;
+
+  const sessoesRows = AUTH.config.sessoes.length ? AUTH.config.sessoes.map(t=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:13px;color:var(--cyan)">🕐 ${t}</span>
+      <button onclick="removerSessao('${t}')" style="padding:4px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:var(--red2);font-family:var(--mono);font-size:9px;cursor:pointer">×</button>
+    </div>`).join("") : `<div style="color:var(--txt3);font-size:10px;font-family:var(--mono);padding:8px">nenhum horário definido</div>`;
+
+  const adminsList = Object.entries(AUTH.config.admins || {});
+  const adminRows = adminsList.length ? adminsList.map(([hash,r])=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:rgba(0,0,0,.3);border-radius:8px;margin-bottom:5px">
+      <span style="font-family:var(--mono);font-size:12px;color:${r.master?'var(--gold2)':'var(--purple)'}">${r.master?'👑':'🛡'} ${r.nome||'Admin'}</span>
+      ${r.master?`<span style="font-size:9px;color:var(--txt3);font-family:var(--mono)">MASTER</span>`:`<button onclick="removerAdmin('${hash}')" style="padding:4px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:var(--red2);font-family:var(--mono);font-size:9px;cursor:pointer">remover</button>`}
+    </div>`).join("") : `<div style="color:var(--txt3);font-size:10px;font-family:var(--mono);padding:8px">nenhuma admin além de você</div>`;
+
+  return `<div class="app" style="padding:18px 14px 60px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${diceSVG("blue",5).replace('width="34" height="34"','width="26" height="26"')}${diceSVG("red",2).replace('width="34" height="34"','width="26" height="26"')}
+        <div class="tg" style="font-size:18px">ADMIN</div>
+      </div>
+      <button onclick="sairAdmin()" style="padding:8px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">▶ ABRIR APP</button>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-v g">${ativas}</div><div class="stat-l">ATIVAS</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--purple)">${keys.length}</div><div class="stat-l">TOTAL</div></div>
+      <div class="stat"><div class="stat-v y">${AUTH.config.sessoes.length}</div><div class="stat-l">SESSÕES</div></div>
+    </div>
+
+    <!-- ════════ OPERAÇÃO: SINAL + REGISTRO + CONTROLES ════════ -->
+    <div class="sec-lbl">OPERAÇÃO · SINAL AO VIVO</div>
+    <div class="card" style="padding:14px;background:linear-gradient(135deg,${sigInfo.bg},rgba(0,0,0,.2))">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">SINAL</div>
+          <div style="font-size:24px;font-weight:900;font-family:var(--mono);color:${sigInfo.color};letter-spacing:2px">${sigInfo.txt}</div>
+          <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-top:3px">${(a.conf*100).toFixed(0)}% confiança</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">MESA</div>
+          <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:${
+            a.heat&&a.heat.state==='QUENTE'?'var(--green2)':
+            a.heat&&a.heat.state==='FAVORÁVEL'?'var(--cyan)':
+            a.heat&&a.heat.state==='NEUTRA'?'var(--txt)':
+            a.heat&&a.heat.state==='FRIA'?'var(--gold2)':
+            a.heat?'var(--red2)':'var(--txt3)'
+          }">${a.heat?a.heat.state:'—'}</div>
+          <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);margin-top:3px">${hunterTxt}</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.5">
+        ${a.reason || 'aguardando dados'}
+      </div>
+    </div>
+
+    <!-- CARD QUE O ASSINANTE ESTÁ VENDO (idêntico) -->
+    <div class="sec-lbl">👁 O QUE O ASSINANTE VÊ</div>
+    <div class="card" style="padding:12px">
+      ${buildEntryCard(a, true)}
+    </div>
+
+    <!-- STATS DE GREEN/RED -->
+    <div class="stats-bar" style="padding:12px">
+      <div class="stat"><div class="stat-v g" style="font-size:22px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
+      <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
+      <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
+    </div>
+    <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds)>=5?'rgba(34,197,94,.12)':ST.reds>=2?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5-0 · saldo líquido: </span>
+      <span style="font-size:15px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</span>
+      <span style="font-size:10px;font-family:var(--mono);color:var(--txt3)"> · stop em ${ST.reds}/2 loss</span>
+      ${ST.metaAviso?`<div style="margin-top:6px;font-size:12px;font-weight:700;font-family:var(--mono);color:${ST.metaAviso.tipo==='meta'?'var(--green2)':'var(--red2)'}">${ST.metaAviso.msg}</div>`:''}
+    </div>
+
+    <!-- REGISTRAR RODADA -->
+    <div class="sec-lbl">REGISTRAR RODADA</div>
+    <div class="card">
+      <div class="sum-row">
+        <input id="soma" class="sum-inp" type="number" placeholder="SOMA (ex: 8)" value="${ST.somaIn}"/>
+        <div class="sum-lbl">DADOS</div>
+      </div>
+      <div class="input-row" style="margin-top:8px">
+        <button class="btn btn-p" onclick="reg('P')">AZUL · P</button>
+        <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
+        <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
+      </div>
+      <div class="foot-btns" style="margin-top:8px">
+        <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
+        <button class="util-btn" onclick="reset()">◌ ZERAR HISTÓRICO</button>
+      </div>
+    </div>
+
+    <!-- FINALIZAR SESSÃO -->
+    <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-bottom:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
+      ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
+    </button>
+
+    <div class="sec-lbl">CRIAR NOVA CHAVE</div>
+    <div class="card">
+      <input id="newKeyName" placeholder="Nome do assinante" value="${AUTH.newKeyName}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+        <button onclick="window.setTipo('teste')" style="padding:11px 0;background:${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='teste'?'var(--gold2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">🎁 3 DIAS</button>
+        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">📅 MENSAL</button>
+        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">♾ VITAL.</button>
+      </div>
+      <button onclick="criarChave()" style="width:100%;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,211,238,.06));border:1px solid rgba(34,197,94,.3);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">+ GERAR CHAVE</button>
+      ${AUTH.msg ? `<div style="margin-top:10px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono);text-align:center">${AUTH.msg}</div>` : ""}
+    </div>
+
+    <div class="sec-lbl">CHAVES · ${keys.length}</div>
+    <div class="card" style="max-height:340px;overflow-y:auto">${keyRows}</div>
+
+    <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
+    <div class="card">
+      ${sessoesRows}
+      <div style="display:flex;gap:7px;margin-top:8px">
+        <input id="newSessao" placeholder="HH:MM (ex: 20:00)" value="${AUTH.newSessao}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
+        <button onclick="addSessao()" style="padding:11px 18px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);border-radius:9px;color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer">+</button>
+      </div>
+    </div>
+
+    <div class="sec-lbl">ADMINISTRADORES</div>
+    <div class="card">
+      ${adminRows}
+      <div style="margin-top:8px">
+        <input id="newAdminNome" placeholder="Nome da nova admin" value="${AUTH.newAdminNome}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:7px"/>
+        <div style="display:flex;gap:7px">
+          <input id="newAdminPw" type="text" placeholder="Senha da admin" value="${AUTH.newAdminPw}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
+          <button onclick="criarAdmin()" style="padding:11px 16px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);border-radius:9px;color:var(--purple);font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer">+ ADMIN</button>
+        </div>
+        <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);line-height:1.5">A nova admin abre o app, toca 5× na logo e entra com essa senha. O dispositivo dela será reconhecido automaticamente.</div>
+      </div>
+    </div>
+
+    <div class="sec-lbl">CALIBRAGEM · APLICAR / COPIAR JSON</div>
+    <div class="card">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5;margin-bottom:8px">Cole aqui o JSON exportado da última sessão para retomar o aprendizado, ou copie o JSON atual para guardar.</div>
+      <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt||""}</textarea>
+      <div class="json-btns">
+        <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR JSON</button>
+        <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
+      </div>
+      <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
+      ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
+      <button onclick="recalcularEmpates()" style="width:100%;padding:12px;margin-top:8px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(167,139,250,.06));border:1px solid rgba(245,158,11,.3);border-radius:9px;color:var(--gold2);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer">🔄 RECALCULAR EMPATES DO HISTÓRICO</button>
+      <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);line-height:1.5">Conta retroativamente quantos empates aconteceram com o farejador ativo. Útil se empates não foram contabilizados em sessões anteriores.</div>
+    </div>
+
+    <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
+
+    <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
+  </div>`;
+}
+
+window.setTipo = function(t){ AUTH.newKeyTipo = t; renderRouter(); };
+
+function bindAuthInputs(){
+  const bind = (id, field, upper) => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener("input", e => {
+      AUTH[field] = upper ? e.target.value.toUpperCase() : e.target.value;
+    });
+  };
+  bind("keyInput", "keyInput", true);
+  bind("pwInput", "pwInput", false);
+  bind("newKeyName", "newKeyName", false);
+  bind("newSessao", "newSessao", false);
+  bind("newAdminNome", "newAdminNome", false);
+  bind("newAdminPw", "newAdminPw", false);
+
+  // Inputs operacionais do admin (soma + JSON) → gravam em ST, não AUTH
+  const si = document.getElementById("soma");
+  if(si) si.addEventListener("input", e => { ST.somaIn = e.target.value; });
+  const ja = document.getElementById("injta");
+  if(ja) ja.addEventListener("input", e => { ST.injTxt = e.target.value; });
+}
+
 window.reg = function(r){
   const soma = ST.somaIn;
   addRound(r, soma);
@@ -1270,11 +2422,15 @@ window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
 window.finalizarSessao = finalizarSessao;
-window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; render(); };
-window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; render(); };
+window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; renderApp(); };
+window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
+window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
+window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
+window.fecharAviso = function(){ ST.avisoVisto = true; renderRouter(); };
 
-render();
+renderRouter();
 initFirebaseSync();
+initAuth();
 </script>
 </body>
 </html>
