@@ -905,37 +905,37 @@ function analyze(){
   // Determinar estado da mesa e threshold dinâmico
   let tableState, dynThreshold, requireConvergence;
   // ════════════════════════════════════════════════════════════════════════
-  // THRESHOLDS CONSERVADORES · cada RED = 3 GREEN → precisa >75% acerto
-  // Só entra quando o valor esperado é fortemente positivo
+  // THRESHOLDS · mais entradas mantendo qualidade (cada red = 3 greens · win efetivo c/ gale ~89%)
   // ════════════════════════════════════════════════════════════════════════
-  if(heat >= 78){
+  if(heat >= 75){
     tableState = "QUENTE";
-    dynThreshold = 0.72;          // antes 0.62
-    requireConvergence = true;     // mesmo quente, exige 2+ padrões
-  } else if(heat >= 62){
+    dynThreshold = 0.70;
+    requireConvergence = false;
+  } else if(heat >= 58){
     tableState = "FAVORÁVEL";
-    dynThreshold = 0.76;
-    requireConvergence = true;
-  } else if(heat >= 48){
+    dynThreshold = 0.74;
+    requireConvergence = false;
+  } else if(heat >= 42){
     tableState = "NEUTRA";
-    dynThreshold = 0.82;
+    dynThreshold = 0.79;
     requireConvergence = true;
-  } else if(heat >= 32){
+  } else if(heat >= 28){
     tableState = "FRIA";
-    dynThreshold = 0.88;
-    requireConvergence = true;     // + exige 3 (tratado abaixo)
+    dynThreshold = 0.85;
+    requireConvergence = true;
   } else {
     tableState = "CONGELADA";
-    dynThreshold = 0.99;           // praticamente bloqueado
+    dynThreshold = 0.99;
     requireConvergence = true;
   }
 
-  // Em mesa FRIA exige 3+ padrões; nas demais, 2+
-  // EXCEÇÃO: mesa QUENTE/FAVORÁVEL aceita 1 padrão ÚNICO MUITO FORTE (≥0.84)
-  // para não travar entradas no bom momento.
+  // Padrões mínimos por estado · padrão único forte agora vale em HOT/FAV/NEUTRA
   let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 3 : 2;
-  const strongSingleOK = (tableState === "QUENTE" || tableState === "FAVORÁVEL");
-  const STRONG_SINGLE = 0.84;
+  let strongSingleOK = false;
+  let STRONG_SINGLE = 0.84;
+  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.77; }
+  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.80; }
+  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.84; }
 
   // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
   const hunter = tieHunter(ST.H, heat);
@@ -945,9 +945,8 @@ function analyze(){
   out.tie.hunterStatus = hunter.status;
   out.tie.hunterConf = hunter.conf;
 
-  // EV gate: cada red vale 3 greens. EV ≈ conf - 3*(1-conf) = 4*conf - 3 (sem gale)
-  // Com gale, há segunda chance, mas mantemos piso rígido de segurança.
-  const EV_FLOOR = 0.72; // nunca abaixo disso, independente do estado
+  // EV gate: cada red vale 3 greens. Piso 0.68 (com gale, win efetivo ~89%)
+  const EV_FLOOR = 0.68;
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
 
@@ -1682,7 +1681,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v7.0 · APP PÚBLICO LIMPO · OPERAÇÃO NO ADMIN</div>
+      <div class="credit">BAC BRU · v7.1 · ENTRADAS MAIS ÁGEIS · MÁQUINA AFINADA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
