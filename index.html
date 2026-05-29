@@ -240,6 +240,7 @@ function pushToFirebase(){
     ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
     ciclo_gale_dec: ST.ciclo_gale_dec || null,
     ciclo_gale_tie: ST.ciclo_gale_tie || null,
+    ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
     sessaoAtiva: !!ST.sessaoAtiva,
     updatedAt: Date.now()
   };
@@ -280,6 +281,7 @@ function initFirebaseSync(){
     ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
+    ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
     ST.sessaoAtiva = !!data.sessaoAtiva;
     SUPPRESS_PUSH = false;
     renderRouter();
@@ -1021,6 +1023,7 @@ function confirmEntry(){
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
+  ST.ciclo_aguarda_count = 0;
   // SESSÃO INICIA AQUI · só termina ao clicar finalizar
   ST.sessaoAtiva = true;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
@@ -1038,6 +1041,7 @@ function abortCiclo(){
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
+  ST.ciclo_aguarda_count = 0;
   save(); renderRouter();
 }
 
@@ -1055,19 +1059,33 @@ function addRound(r, sNum){
 
   // ════════════════════════════════════════════════════════════════════════
   // EMPATE · farejador ativo = GREEN sempre (aposta independente da cor)
+  // Bônus: empate ALTO (10x/25x/88x) durante aguarda_gale CANCELA o gale
   // ════════════════════════════════════════════════════════════════════════
   if(r === "T"){
+    const pay = payoutDaSoma(s);
+    const isHighPay = ["10x","25x","88x"].includes(pay);
+
     if(hunterAntes){
-      const pay = payoutDaSoma(s);
       ST.greens++;
-      if(["10x","25x","88x"].includes(pay)){
+      if(isHighPay){
         celebraPaga(pay);
       } else {
         toast(`✅ GREEN EMPATE · ${pay}`, 2800);
       }
-      // Se havia ciclo de cor rolando, ele encerra junto (cor é push, empate green)
-      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
-      else { save(); renderRouter(); }
+
+      // Resolução do ciclo:
+      // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
+      // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
+      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
+        abortCiclo();
+      } else if(ST.ciclo === "aguarda_gale" && isHighPay){
+        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
+        abortCiclo();
+      } else {
+        // aguarda_gale com pay baixo, OU idle → continua
+        save(); renderRouter();
+      }
     } else {
       // Farejador inativo → push, vida que segue
       toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
@@ -1079,6 +1097,8 @@ function addRound(r, sNum){
 
   // ════════════════════════════════════════════════════════════════════════
   // COR (P ou B) · CICLO STATE MACHINE: idle | entrada | aguarda_gale | gale
+  // aguarda_gale tem TETO de 2 rodadas. Depois disso o gale entra forçado
+  // para não passar mais de 2 rodadas sem agir após a entrada perdida.
   // ════════════════════════════════════════════════════════════════════════
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
@@ -1089,7 +1109,8 @@ function addRound(r, sNum){
     } else {
       // Cor errada → decidir gale
       const a2 = analyze();
-      if(a2.signal && a2.signal !== "W"){
+      if(a2.signal === "P" || a2.signal === "B"){
+        // Motor tem sinal claro → gale imediato
         ST.ciclo = "gale";
         ST.ciclo_gale_sinal = a2.signal;
         ST.ciclo_gale_dec = (a2.signal === sig) ? "MANTER" : "INVERTER";
@@ -1098,17 +1119,23 @@ function addRound(r, sNum){
         if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
         toast(gmsg, 3500);
       } else {
+        // Motor incerto → aguarda gale com TETO de 2 rodadas
         ST.ciclo = "aguarda_gale";
+        ST.ciclo_aguarda_count = 0;
         ST.ciclo_gale_sinal = null;
         ST.ciclo_gale_dec = "AGUARDAR";
         ST.ciclo_gale_tie = null;
-        toast(`⏳ AGUARDAR · próximo sinal será o GALE`, 3500);
+        toast(`⏳ AGUARDAR · motor analisando · máximo 2 rodadas`, 3500);
       }
       save(); renderRouter();
     }
   } else if(ST.ciclo === "aguarda_gale"){
+    // Nova rodada registrada · re-analisa e decide
+    ST.ciclo_aguarda_count = (ST.ciclo_aguarda_count || 0) + 1;
+    const MAX_AGUARDA = 3;
     const a2 = analyze();
-    if(a2.signal && a2.signal !== "W"){
+    if(a2.signal === "P" || a2.signal === "B"){
+      // Motor agora tem sinal claro → gale com esse sinal
       ST.ciclo = "gale";
       ST.ciclo_gale_sinal = a2.signal;
       ST.ciclo_gale_dec = (a2.signal === ST.ciclo_sinal) ? "MANTER" : "INVERTER";
@@ -1116,8 +1143,39 @@ function addRound(r, sNum){
       let gmsg = `⚡ ENTRAR no GALE · ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
       toast(gmsg, 3800);
+    } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
+      // ════════════════════════════════════════════════════════════════
+      // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
+      // Direção determinada AUTOMATICAMENTE pela tendência das últimas 8:
+      // - Lado dominante (mesmo que pouco): vai com ele
+      // - 4/4 verdadeiro (raríssimo): INVERTER por segurança
+      // Decisão MANTER ou INVERTER sai automaticamente da análise
+      // ════════════════════════════════════════════════════════════════
+      const recent = ST.H.filter(x=>x.r!=='T').slice(-8);
+      const pCount = recent.filter(x=>x.r==='P').length;
+      const bCount = recent.filter(x=>x.r==='B').length;
+      let galeSide, motivo;
+      if(pCount > bCount){
+        galeSide = 'P';
+        motivo = `tendência P (${pCount}/${recent.length})`;
+      } else if(bCount > pCount){
+        galeSide = 'B';
+        motivo = `tendência B (${bCount}/${recent.length})`;
+      } else {
+        galeSide = opos(ST.ciclo_sinal);
+        motivo = 'equilíbrio · INVERTER';
+      }
+      const dec = galeSide === ST.ciclo_sinal ? "MANTER" : "INVERTER";
+      ST.ciclo = "gale";
+      ST.ciclo_gale_sinal = galeSide;
+      ST.ciclo_gale_dec = `${dec} (limite · ${motivo})`;
+      ST.ciclo_gale_tie = a2.tie.active ? (a2.hunter && a2.hunter.payoutProvavel) : null;
+      let gmsg = `⚡ GALE ${lbl(galeSide)} · ${dec} · ${motivo}`;
+      if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
+      toast(gmsg, 4500);
     } else {
-      toast(`⏳ Ainda aguardando · sinal não confirmou`, 2000);
+      // Continua aguardando (ainda dentro do teto)
+      toast(`⏳ Aguardando gale · ${ST.ciclo_aguarda_count}/${MAX_AGUARDA} rodadas`, 2500);
     }
     save(); renderRouter();
   } else if(ST.ciclo === "gale"){
@@ -1435,12 +1493,14 @@ function renderApp(){
       ST.ciclo_tie
     );
   } else if(ST.ciclo === "aguarda_gale"){
-    // Aguardando sinal claro para o gale
-    entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.3);border-radius:14px;text-align:center">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDAR · PRÓXIMO SINAL SERÁ O GALE</div>
-      <div style="font-size:18px;font-weight:800;color:var(--txt2);font-family:var(--mono);margin-top:4px">Motor incerto · não entrar agora</div>
-      <div style="margin-top:8px;font-size:11px;color:var(--txt3);font-family:var(--mono);line-height:1.5">
-        Entrada anterior foi <strong>${lbl(ST.ciclo_sinal)}</strong>. Aguarde o motor confirmar para o gale.<br/>${isAdmin()?'Registre as rodadas até o sinal aparecer.':''}
+    const cnt = ST.ciclo_aguarda_count || 0;
+    entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div>
+      <div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">${cnt}/3 rodadas</div>
+      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+        Motor refinando para evitar red.<br/>
+        ${cnt < 3 ? `Após <strong style="color:var(--txt)">${3-cnt}</strong> rodada(s) sem sinal, o gale entra automaticamente.` : 'Próxima rodada: gale forçado'}<br/>
+        Entrada anterior: <strong>${lbl(ST.ciclo_sinal)}</strong>
       </div>
     </div>`;
   } else if(ST.ciclo === "gale"){
@@ -1681,7 +1741,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v7.1 · ENTRADAS MAIS ÁGEIS · MÁQUINA AFINADA</div>
+      <div class="credit">BAC BRU · v7.7 · GALE SEMPRE · TENDÊNCIA AUTOMÁTICA · MANTER OU INVERTER</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
@@ -2047,7 +2107,7 @@ function renderAdminPanel(){
                 : {txt:"AGUARDA", color:"var(--txt3)", bg:"rgba(148,163,184,.06)"};
   const cicloLabel = ST.ciclo === "entrada" ? `ENTRADA · ${lbl(ST.ciclo_sinal)}`
                    : ST.ciclo === "gale" ? `GALE · ${lbl(ST.ciclo_gale_sinal||opos(ST.ciclo_sinal))} (${ST.ciclo_gale_dec||'INVERTER'})`
-                   : ST.ciclo === "aguarda_gale" ? "AGUARDANDO SINAL DO GALE"
+                   : ST.ciclo === "aguarda_gale" ? `⏳ AGUARDANDO GALE · ${ST.ciclo_aguarda_count||0}/3 rodadas`
                    : "—";
   const hunterTxt = a.hunter ? (
     a.hunter.status === "QUENTE" ? "🔥 QUENTE" :
