@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v8.5 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v8.9 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -192,7 +192,7 @@ let SUPPRESS_PUSH = false;
 const DEFAULT_WEIGHTS = {
   PP5: 0.87, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
-  SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71,
+  SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
   DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
   boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
@@ -473,8 +473,8 @@ function patternFatigue(col){
     if(r[i]===r[i-1] && r[i-2]===r[i-3] && r[i]!==r[i-2]) blockRun++;
     else break;
   }
-  if(altRun >= 6) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 8};
-  if(blockRun >= 3) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 4};
+  if(altRun >= 8) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 11};
+  if(blockRun >= 4) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 6};
   return {regime:"MISTO", repeats:0, fatigued:false};
 }
 
@@ -718,11 +718,13 @@ function analyze(){
   let breakZone = null, breakProb = 0.5, premature = false, danger = false;
   if(prof && st.len >= 2){
     breakProb = prof.breakProbAt(st.len);
-    // streak ainda curto (abaixo da mediana histórica) → quebra é PREMATURA
-    premature = st.len < prof.p50;
-    // streak na zona onde a mesa historicamente quebra → break é seguro
-    breakZone = st.len >= prof.p75;
-    // streak perto/no máximo histórico → zona de PERIGO (pode quebrar a qualquer momento)
+    // Zona de quebra amarrada ao MÁXIMO histórico, não ao p75.
+    // Se a mesa estica até 8, uma streak de 3-4 é CONTINUAÇÃO, não quebra.
+    // Segue continuação enquanto < 70% do máximo; só vira quebra perto do teto.
+    const teto = prof.max || prof.p90 || 6;
+    const zonaQuebra = Math.max(prof.p75, Math.ceil(teto * 0.7));
+    premature = st.len < zonaQuebra;
+    breakZone = st.len >= zonaQuebra && st.len < teto;
     danger = st.len >= prof.p90;
   }
 
@@ -751,14 +753,19 @@ function analyze(){
       else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
     }
   } else if(st.len >= 5){
-    // EXAUSTÃO — streak longo
-    if(prof && st.len < prof.p90 && st.len < prof.max){
-      // ainda dentro do range histórico desta mesa → pode continuar, mas NÃO entrar
-      out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · mesa já fez até ${prof.max} · NÃO perseguir quebra ainda`;
+    const teto = prof ? (prof.max || prof.p90 || 7) : 7;
+    const zonaPerigo = prof ? prof.p90 : 6;
+    if(prof && st.len < Math.ceil(teto * 0.75) && st.len < zonaPerigo){
+      // Streak forte ainda na zona SAUDÁVEL (longe do máximo) → SEGUE a continuação.
+      // É o "padrão super forte no meio" que o operador quer pegar.
+      add("SK5C", st.side, Math.min(0.88, W.SK4C + 0.05), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
+    } else if(prof && st.len < prof.max && st.len < zonaPerigo){
+      // chegando perto mas ainda não no perigo → continua mas sem reforço
+      add("SK5C", st.side, W.SK4C, `Streak ${st.len} ${st.side} · ainda dentro do range → continuar`);
     } else {
+      // zona de perigo / no máximo → PARAR (não perseguir continuação nem quebra)
       out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão${prof?` (hist máx ${prof.max})`:''}`;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · zona de perigo (hist máx ${prof?prof.max:'?'}) · PARAR`;
     }
   }
 
@@ -858,7 +865,15 @@ function analyze(){
   out.convergence = bestSide ? byBet[bestSide].length : 0;
 
   // Contradição: padrões apontando para P E B ao mesmo tempo
-  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0;
+  // Contradição real: lados opostos com padrões DIFERENTES de bloco.
+  // O par B22T/B22C aponta lados opostos por natureza (mesma leitura de bloco vista
+  // de dois ângulos) → não é contradição real; resolve pelo de maior confiança.
+  const nomesP = byBet.P.map(p=>p.name);
+  const nomesB = byBet.B.map(p=>p.name);
+  const soBlocoP = nomesP.length && nomesP.every(n=>n==="B22T"||n==="B22C");
+  const soBlocoB = nomesB.length && nomesB.every(n=>n==="B22T"||n==="B22C");
+  const falsaContradicaoBloco = soBlocoP && soBlocoB;
+  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0 && !falsaContradicaoBloco;
 
   // ════════════════════════════════════════════════════════════════════════
   // ── TABLE HEAT · momento da mesa ──
@@ -934,21 +949,21 @@ function analyze(){
   // ════════════════════════════════════════════════════════════════════════
   // THRESHOLDS · mais entradas mantendo qualidade (cada red = 3 greens · win efetivo c/ gale ~89%)
   // ════════════════════════════════════════════════════════════════════════
-  if(heat >= 75){
+  if(heat >= 72){
     tableState = "QUENTE";
-    dynThreshold = 0.70;
+    dynThreshold = 0.68;
     requireConvergence = false;
-  } else if(heat >= 58){
+  } else if(heat >= 54){
     tableState = "FAVORÁVEL";
+    dynThreshold = 0.71;
+    requireConvergence = false;
+  } else if(heat >= 40){
+    tableState = "NEUTRA";
     dynThreshold = 0.74;
     requireConvergence = false;
-  } else if(heat >= 42){
-    tableState = "NEUTRA";
-    dynThreshold = 0.79;
-    requireConvergence = true;
-  } else if(heat >= 28){
+  } else if(heat >= 26){
     tableState = "FRIA";
-    dynThreshold = 0.85;
+    dynThreshold = 0.80;
     requireConvergence = true;
   } else {
     tableState = "CONGELADA";
@@ -956,13 +971,13 @@ function analyze(){
     requireConvergence = true;
   }
 
-  // Padrões mínimos por estado · padrão único forte agora vale em HOT/FAV/NEUTRA
-  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 3 : 2;
+  // Padrões mínimos por estado · padrão único forte vale em QUENTE/FAV/NEUTRA
+  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 2 : 1;
   let strongSingleOK = false;
   let STRONG_SINGLE = 0.84;
-  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.77; }
-  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.80; }
-  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.84; }
+  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.72; }
+  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.75; }
+  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.78; }
 
   // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
   const hunter = tieHunter(ST.H, heat);
@@ -979,12 +994,21 @@ function analyze(){
 
   // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
   const effThreshold = Math.max(dynThreshold, EV_FLOOR);
-  if(out.exaustao){
+  // CRITÉRIO DE MESA (opção B): entrada normal só em QUENTE/FAVORÁVEL/NEUTRA.
+  // Em FRIA/CONGELADA aguarda — a entrada defensiva (mais abaixo) ainda cobre
+  // o caso de a mesa esfriar no MEIO de uma sessão já ativa.
+  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
+  if(!mesaPermiteEntrada && !out.exaustao){
+    out.signal = "W";
+    out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
+    out.conf = bestConf;
+  } else if(out.exaustao){
     out.signal = "W";
     out.reason = out.exaustaoMotivo || `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
     out.conf = 0;
-  } else if(out.regimeFatigado){
-    // padrão pagante maduro repetiu demais → parar de entrar (vai quebrar)
+  } else if(out.regimeFatigado && !(stableCt >= 2 && bestSide && bestSide !== "T")){
+    // padrão maduro repetiu demais → bloqueia SÓ se as estradas NÃO confirmam continuação.
+    // Se 2+ estradas derivadas estão STABLE (padrão sendo respeitado), deixa a entrada passar.
     out.signal = "W";
     out.reason = `🛑 ${out.regimeMotivo} · pare antes da quebra`;
     out.conf = bestConf;
@@ -993,11 +1017,24 @@ function analyze(){
     out.signal = "W";
     out.reason = `⚠️ Streak ${out.streakLen} ${out.streakSide} na zona de perigo (hist máx ${out.profile.max}) · aguardar quebra confirmar`;
     out.conf = bestConf;
-  } else if(out.contradiction){
-    // contradição entre padrões P e B → sempre aguarda (cada red custa 3 greens)
+  } else if(out.contradiction && !(stableCt >= 2 && roadHint === "CONT")){
+    // contradição entre padrões P e B → aguarda, EXCETO quando as estradas derivadas
+    // estão alinhadas em continuação (2+ STABLE): aí a continuação desempata, segue o fluxo.
     out.signal = "W";
     out.reason = `Padrões contraditórios · risco alto · AGUARDA`;
     out.conf = bestConf;
+  } else if(out.contradiction && stableCt >= 2 && roadHint === "CONT"){
+    // desempate por estradas: continuação → segue o último lado
+    const lastSide = col.length ? col[col.length-1].r : null;
+    if(lastSide && lastSide !== "T"){
+      out.signal = lastSide;
+      out.conf = Math.min(0.9, bestConf);
+      out.reason = `Contradição resolvida pelas estradas (3 STABLE) · continuação ${lbl(lastSide)}`;
+    } else {
+      out.signal = "W";
+      out.reason = `Padrões contraditórios · AGUARDA`;
+      out.conf = bestConf;
+    }
   } else if(bestSide && bestSide !== "T" && roadHint === "MUDA" &&
             col.length && bestSide === col[col.length-1].r){
     // estradas derivadas dizem MUDA mas o sinal aposta em continuar → conflito → aguarda
@@ -1968,7 +2005,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v8.5 · ENTRADA DEFENSIVA NO CAOS</div>
+      <div class="credit">BAC BRU · v8.9 · CRITERIO FAV-NEUTRA-QUENTE</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
