@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v8.9 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v9.1 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -1199,12 +1199,14 @@ function checarMetaStop(){
   // STOP LOSS · 2 reds finalizam
   if(ST.reds >= STOP_LOSS){
     ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} losses · sessão encerrada para proteger a banca` };
+    ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
   }
   // META · 5 líquido
   if(liquido >= META_LIQUIDO){
     ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
+    ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
   }
@@ -1242,43 +1244,36 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
+    const naEntrada = (ST.ciclo === "entrada" || ST.ciclo === "gale");
 
-    if(hunterAntes){
-      // Empate com farejador ativo = GREEN (volta ao comportamento anterior)
+    if(naEntrada){
+      // EMPATE NA ENTRADA DE COR = GREEN sempre (push a favor, qualquer pagamento).
+      // Inclui o 4x/6x — sua aposta de cor é devolvida e o ciclo fecha como acerto.
       ST.greens++;
-      if(isHighPay){
-        celebraPaga(pay);
-      } else {
-        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
-      }
-
-      // Resolução do ciclo:
-      // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
-      // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
-      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
-      if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
-        abortCiclo();
-      } else if(ST.ciclo === "aguarda_gale" && isHighPay){
-        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
-        abortCiclo();
-      } else {
-        // aguarda_gale com pay baixo, OU idle → continua
-        save(); renderRouter();
-      }
+      if(isHighPay) celebraPaga(pay);
+      else toast(`✅ GREEN · empate na entrada · ${pay}`, 2800);
+      abortCiclo();
+    } else if(ST.ciclo === "aguarda_gale" && isHighPay){
+      // empate alto cobre a entrada perdida → cancela o gale, conta green
+      ST.greens++;
+      celebraPaga(pay);
+      toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
+      abortCiclo();
+    } else if(hunterAntes && isHighPay){
+      // farejador ativo + empate ALTO (fora de aposta) = GREEN + celebração
+      ST.greens++;
+      celebraPaga(pay);
+      save(); renderRouter();
+    } else if(hunterAntes && !isHighPay){
+      // farejador ativo + empate BAIXO (4x/6x) = BÔNUS, NÃO conta green
+      ST.bonus = (ST.bonus || 0) + 1;
+      toast(`✨ BÔNUS · empate ${pay} (não conta na meta)`, 2800);
+      if(ST.ciclo === "aguarda_gale") { save(); renderRouter(); }
+      else { save(); renderRouter(); }
     } else {
-      // Farejador inativo → push, vida que segue.
-      // MAS: se havia aposta na mesa (entrada/gale) e saiu empate ALTO,
-      // o pagamento do empate é real → celebra mesmo com farejador inativo.
-      const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
-      if(isHighPay && tinhaAposta){
-        ST.greens++;
-        celebraPaga(pay);
-        abortCiclo();
-      } else {
-        toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
-        if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
-        else { save(); renderRouter(); }
-      }
+      // sem farejador e sem aposta → neutro
+      toast(`↻ Empate ${pay} · sem alteração no placar`, 2500);
+      save(); renderRouter();
     }
     return;
   }
@@ -1448,6 +1443,26 @@ function celebraOverlayHTML(){
     <div class="paga-big">🔥 PAGA 🔥</div>
     <div class="paga-x">${ST.celebra}</div>
     <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+  </div>`;
+}
+
+// Popup de fim de sessão (meta batida ou stop) · usado no app E no admin
+function avisoSessaoHTML(){
+  if(!ST.metaAviso || ST.metaAvisoVisto) return '';
+  const meta = ST.metaAviso.tipo === 'meta';
+  const cor = meta ? 'var(--green2)' : 'var(--red2)';
+  const bg = meta ? 'rgba(34,197,94,.16),rgba(34,211,238,.06)' : 'rgba(239,68,68,.16),rgba(245,158,11,.05)';
+  const borda = meta ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)';
+  const icone = meta ? '🎯' : '🛑';
+  const titulo = meta ? 'META BATIDA' : 'STOP ATINGIDO';
+  return `<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99997;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAvisoSessao()">
+    <div style="max-width:380px;background:linear-gradient(160deg,${bg});border:2px solid ${borda};border-radius:18px;padding:28px 24px;text-align:center" onclick="event.stopPropagation()">
+      <div style="font-size:42px;margin-bottom:10px">${icone}</div>
+      <div style="font-size:20px;font-weight:900;font-family:var(--mono);color:${cor};letter-spacing:2px;margin-bottom:12px">${titulo}</div>
+      <div style="font-size:14px;color:var(--txt);font-family:var(--mono);line-height:1.6;margin-bottom:20px">${ST.metaAviso.msg}</div>
+      <button onclick="fecharAvisoSessao()" style="width:100%;padding:14px;background:linear-gradient(135deg,${bg});border:1px solid ${borda};border-radius:12px;color:${cor};font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI</button>
+      <div style="margin-top:16px;font-size:11px;color:var(--txt3);font-family:var(--mono);line-height:1.5">A próxima sessão será informada no rodapé da página.</div>
+    </div>
   </div>`;
 }
 
@@ -1780,6 +1795,7 @@ function renderApp(){
         <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
         <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:28px">${rate}%</div><div class="stat-l">RATE</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS ✨</div></div>
       </div>
 
       <!-- META 5-0 · barra de progresso -->
@@ -2005,10 +2021,11 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v8.9 · CRITERIO FAV-NEUTRA-QUENTE</div>
+      <div class="credit">BAC BRU · v9.1 · POPUP COM AVISO PROX SESSAO</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
+      ${avisoSessaoHTML()}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
         <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
@@ -2017,7 +2034,7 @@ function renderApp(){
             🛑 <strong style="color:var(--red2)">2 losses encerram a sessão.</strong> Sem exceção. Protege a banca.<br/><br/>
             💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong> Nunca mais que isso por entrada.<br/><br/>
             ⚡ <strong style="color:var(--gold2)">Dobra no gale é opcional.</strong> Se preferir não dobrar, tudo bem — reduz o risco.<br/><br/>
-            🔥 <strong style="color:var(--gold2)">Empates são bônus</strong> — dinheiro extra no bolso, não contam pra meta (só o 88x conta ponto).<br/><br/>
+            🔥 <strong style="color:var(--gold2)">Empates pagam bônus</strong> — empate alto (10x+) conta green; empate baixo (4x/6x) é bônus extra. Empate na sua entrada de cor sempre conta green.<br/><br/>
             <span style="color:var(--txt3);font-size:11px">As entradas são sinais probabilísticos, não garantias. Aposte apenas o que pode perder. Jogo é variância — a disciplina protege você.</span>
           </div>
           <button onclick="fecharAviso()" style="width:100%;margin-top:18px;padding:14px;background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(34,211,238,.1));border:1px solid rgba(34,197,94,.4);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI · COMEÇAR</button>
@@ -2479,6 +2496,7 @@ function renderAdminPanel(){
       <div class="stat"><div class="stat-v g" style="font-size:22px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
       <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
       <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
     </div>
     <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds)>=5?'rgba(34,197,94,.12)':ST.reds>=2?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
       <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5-0 · saldo líquido: </span>
@@ -2565,6 +2583,7 @@ function renderAdminPanel(){
 
     <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
     ${celebraOverlayHTML()}
+    ${avisoSessaoHTML()}
   </div>`;
 }
 
@@ -2622,6 +2641,7 @@ window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
 window.fecharAviso = function(){ ST.avisoVisto = true; renderRouter(); };
+window.fecharAvisoSessao = function(){ ST.metaAvisoVisto = true; renderRouter(); };
 
 renderRouter();
 initFirebaseSync();
