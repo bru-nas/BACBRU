@@ -27,11 +27,28 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pagaPop{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.15);opacity:1}60%{transform:scale(.95)}100%{transform:scale(1);opacity:1}}
+@keyframes pagaPopBig{0%{transform:scale(.2) rotate(-8deg);opacity:0}35%{transform:scale(1.35) rotate(4deg);opacity:1}55%{transform:scale(.9) rotate(-2deg)}75%{transform:scale(1.08) rotate(1deg)}100%{transform:scale(1) rotate(0);opacity:1}}
 @keyframes fireGlow{0%,100%{text-shadow:0 0 20px #f59e0b,0 0 40px #ef4444}50%{text-shadow:0 0 40px #fbbf24,0 0 80px #f59e0b}}
-.paga-overlay{position:fixed;inset:0;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92));z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:slideIn .2s}
-.paga-big{font-size:64px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px}
-.paga-x{font-size:88px;font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:pagaPop .6s ease;margin-top:8px}
-.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s}
+@keyframes fireGlowMax{0%,100%{text-shadow:0 0 30px #fbbf24,0 0 60px #f59e0b,0 0 90px #ef4444}50%{text-shadow:0 0 60px #fff,0 0 120px #fbbf24,0 0 180px #f59e0b}}
+@keyframes bgPulse{0%,100%{background:radial-gradient(circle at center,rgba(245,158,11,.22),rgba(0,0,0,.93))}50%{background:radial-gradient(circle at center,rgba(245,158,11,.4),rgba(0,0,0,.9))}}
+@keyframes bgPulseMax{0%,100%{background:radial-gradient(circle at center,rgba(245,158,11,.35),rgba(0,0,0,.92))}50%{background:radial-gradient(circle at center,rgba(251,191,36,.6),rgba(120,30,10,.9))}}
+@keyframes confettiFall{0%{transform:translateY(-110vh) rotate(0);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:.2}}
+@keyframes ringBurst{0%{transform:scale(.2);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+.paga-overlay{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92))}
+.paga-overlay.lvl1{animation:slideIn .2s}
+.paga-overlay.lvl2{animation:slideIn .2s,bgPulse 1s ease infinite}
+.paga-overlay.lvl3{animation:slideIn .2s,bgPulseMax .8s ease infinite}
+.paga-big{font-size:54px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px;z-index:2}
+.paga-overlay.lvl3 .paga-big{font-size:62px;animation:pagaPopBig .6s ease,fireGlowMax .9s ease infinite}
+.paga-x{font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-top:8px;z-index:2}
+.paga-overlay.lvl1 .paga-x{font-size:72px;animation:pagaPop .6s ease}
+.paga-overlay.lvl2 .paga-x{font-size:96px;animation:pagaPop .6s ease,fireGlow 1.2s ease infinite}
+.paga-overlay.lvl3 .paga-x{font-size:120px;animation:pagaPopBig .7s ease,fireGlowMax .9s ease infinite}
+.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s;z-index:2}
+.paga-ring{position:absolute;width:200px;height:200px;border:3px solid #fbbf24;border-radius:50%;animation:ringBurst 1s ease-out infinite}
+.paga-ring.r2{animation-delay:.35s}
+.paga-ring.r3{animation-delay:.7s}
+.confetti{position:absolute;top:0;width:10px;height:14px;border-radius:2px;animation:confettiFall linear infinite}
 .tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
 .app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh}
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
@@ -87,7 +104,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .cell-empty{width:12px;height:12px}
 /* BEAD ROAD NUMÉRICO */
 .bead-grid{display:grid;grid-template-rows:repeat(6,22px);grid-auto-flow:column;grid-auto-columns:22px;gap:2px;min-width:max-content}
-.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:var(--mono);color:#fff}
+.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;font-weight:800;font-family:var(--mono);color:#fff;flex:0 0 auto}
 .bead.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af)}
 .bead.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b)}
 .bead.t{background:radial-gradient(circle at 30% 30%,#fcd34d,#92400e)}
@@ -1131,10 +1148,18 @@ function addRound(r, sNum){
         save(); renderRouter();
       }
     } else {
-      // Farejador inativo → push, vida que segue
-      toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
-      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
-      else { save(); renderRouter(); }
+      // Farejador inativo → push, vida que segue.
+      // MAS: se havia aposta na mesa (entrada/gale) e saiu empate ALTO,
+      // o pagamento do empate é real → celebra mesmo com farejador inativo.
+      const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
+      if(isHighPay && tinhaAposta){
+        celebraPaga(pay);
+        abortCiclo();
+      } else {
+        toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
+        if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
+        else { save(); renderRouter(); }
+      }
     }
     return;
   }
@@ -1475,14 +1500,16 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
-  // Bead road render (últimas 6×N)
+  // Bead road render — últimas 90 rodadas (15 colunas de 6), mais novas à direita
   const beadCells = [];
-  const colCount = Math.ceil(ST.H.length / 6);
+  const BEAD_MAX = 90;
+  const beadH = ST.H.slice(-BEAD_MAX);
+  const colCount = Math.ceil(beadH.length / 6);
   for(let c=0;c<colCount;c++){
     for(let r=0;r<6;r++){
       const idx = c*6+r;
-      if(idx < ST.H.length){
-        const x = ST.H[idx];
+      if(idx < beadH.length){
+        const x = beadH[idx];
         beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
       } else {
         beadCells.push(`<div></div>`);
@@ -1682,7 +1709,7 @@ function renderApp(){
 
       <!-- BEAD ROAD NUMÉRICO -->
       <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
-      <div class="card road">
+      <div class="card road" id="beadRoad">
         <div class="bead-grid">${beadCells.join("")}</div>
       </div>
 
@@ -1827,11 +1854,27 @@ function renderApp(){
       <div class="credit">BAC BRU · v7.9 · META 5-0 · STOP 2 LOSS · GESTÃO DE BANCA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
-      ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
+      ${ST.celebra ? (()=>{
+        const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
+        const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
+        const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
+        let conf = '';
+        for(let i=0;i<confCount;i++){
+          const left = Math.random()*100;
+          const dur = 1.6 + Math.random()*1.8;
+          const delay = Math.random()*1.2;
+          const c = cols[i % cols.length];
+          conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
+        }
+        const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
+        return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
+        ${rings}
+        ${conf}
         <div class="paga-big">🔥 PAGA 🔥</div>
         <div class="paga-x">${ST.celebra}</div>
         <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
-      </div>` : ''}
+      </div>`;
+      })() : ''}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
         <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
@@ -1858,6 +1901,10 @@ function renderApp(){
   if(ja){
     ja.addEventListener("input", e => { ST.injTxt = e.target.value; });
   }
+
+  // Rolar os gráficos horizontais até o fim — mostra as rodadas mais recentes
+  const br = document.getElementById("beadRoad");
+  if(br){ br.scrollLeft = br.scrollWidth; }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2411,7 +2458,21 @@ function bindAuthInputs(){
 }
 
 window.reg = function(r){
-  const soma = ST.somaIn;
+  // Lê a soma DIRETO do campo no instante do clique (não depende do listener de input,
+  // que pode não ter disparado se houve re-render ou clique rápido).
+  const el = document.getElementById("soma");
+  const soma = el ? el.value : ST.somaIn;
+  ST.somaIn = soma;
+
+  // Empate precisa de soma válida (2 a 12) — é ela que define o pagamento.
+  if(r === "T"){
+    const n = parseInt(soma);
+    if(!n || n < 2 || n > 12){
+      toast("⚠ Digite a SOMA do empate (2 a 12) antes de marcar EMPATE", 3200);
+      return;
+    }
+  }
+
   addRound(r, soma);
   ST.somaIn = "";
 };
