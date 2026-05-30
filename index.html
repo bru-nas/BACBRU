@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v8.0 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v8.5 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -216,6 +216,8 @@ const ST = {
   ciclo_sinal: null,
   ciclo_conf: 0,
   ciclo_razao: "",
+  ciclo_patterns: [],
+  esperaSessao: 0,
   jsonOpen: false, viewOpen: false, injTxt: "",
   toast: "",
   toastT: 0
@@ -254,12 +256,14 @@ function pushToFirebase(){
     ciclo_sinal: ST.ciclo_sinal,
     ciclo_conf: ST.ciclo_conf,
     ciclo_razao: ST.ciclo_razao,
+    ciclo_patterns: ST.ciclo_patterns || [],
     ciclo_tie: ST.ciclo_tie || null,
     ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
     ciclo_gale_dec: ST.ciclo_gale_dec || null,
     ciclo_gale_tie: ST.ciclo_gale_tie || null,
     ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
     sessaoAtiva: !!ST.sessaoAtiva,
+    esperaSessao: ST.esperaSessao || 0,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -296,12 +300,14 @@ function initFirebaseSync(){
     ST.ciclo_sinal = data.ciclo_sinal || null;
     ST.ciclo_conf = data.ciclo_conf || 0;
     ST.ciclo_razao = data.ciclo_razao || "";
+    ST.ciclo_patterns = data.ciclo_patterns || [];
     ST.ciclo_tie = data.ciclo_tie || null;
     ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
     ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
     ST.sessaoAtiva = !!data.sessaoAtiva;
+    ST.esperaSessao = data.esperaSessao || 0;
     SUPPRESS_PUSH = false;
     renderRouter();
   }, err => {
@@ -659,7 +665,7 @@ function analyze(){
 
   const patterns = [];
   function add(name, sig, base, reason, hi=false){
-    let conf = Math.min(0.95, base + totalBoost);
+    let conf = Math.min(0.95, (base * fatorAprendido(name)) + totalBoost);
     if(sig === "P") conf += W.bias_P;
     if(sig === "B") conf += W.bias_B;
     conf = Math.max(0, Math.min(0.95, conf));
@@ -998,13 +1004,40 @@ function analyze(){
     out.signal = "W";
     out.reason = `Gráficos derivados indicam mudança, sinal apostaria continuação · AGUARDA`;
     out.conf = bestConf;
-  } else if(bestSide && bestConf >= effThreshold &&
-            (byBet[bestSide].length >= minPatterns ||
-             (strongSingleOK && bestConf >= STRONG_SINGLE))){
+  } else if(bestSide && bestSide !== "T" && roadHint === "CONT" &&
+            col.length && bestSide !== col[col.length-1].r &&
+            byBet[bestSide].length < 2){
+    // estradas dizem CONTINUAR mas padrão ÚNICO aposta na quebra → sem confirmação → aguarda
+    out.signal = "W";
+    out.reason = `Gráficos derivados indicam continuação, padrão único apostaria quebra · sem confirmação cruzada · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && byBet[bestSide].length >= 2 && bestConf >= effThreshold){
+    // ── CRUZAMENTO FORTE: 2+ padrões concordam e estradas não contrariam → melhor entrada
     out.signal = bestSide;
     out.conf = bestConf;
     out.reason = bestReason;
-    if(byBet[bestSide].length < minPatterns) out.reason += " · padrão único forte";
+    if(roadHint){ out.reason += ` · roads:${roadHint}`; }
+  } else if(bestSide && byBet[bestSide].length < minPatterns &&
+            strongSingleOK && bestConf >= STRONG_SINGLE){
+    // ── PADRÃO ÚNICO FORTE
+    const lastSide = col.length ? col[col.length-1].r : null;
+    const continua = bestSide === lastSide;
+    const estradaContraria = (roadHint === "MUDA" && continua) || (roadHint === "CONT" && !continua);
+    // Veto cruzado SÓ em mesa fria/congelada · em quente/favorável/neutra a confiança forte basta
+    const vetoAtivo = (tableState === "FRIA" || tableState === "CONGELADA");
+    if(estradaContraria && vetoAtivo){
+      out.signal = "W";
+      out.reason = `Mesa ${tableState} + gráficos derivados contrariam padrão único · AGUARDA`;
+      out.conf = bestConf;
+    } else {
+      out.signal = bestSide;
+      out.conf = bestConf;
+      out.reason = bestReason + " · padrão único forte (estradas " + (roadHint||"neutras") + ")";
+    }
+  } else if(bestSide && bestConf >= effThreshold && byBet[bestSide].length >= minPatterns){
+    out.signal = bestSide;
+    out.conf = bestConf;
+    out.reason = bestReason;
     if(roadHint){ out.reason += ` · roads:${roadHint}`; }
   } else {
     out.signal = "W";
@@ -1016,6 +1049,24 @@ function analyze(){
       out.reason = `Mesa ${tableState} · sem padrão forte · AGUARDA`;
     }
     out.conf = bestConf;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ENTRADA DEFENSIVA · se a sessão está ATIVA e o motor já aguardou demais
+  // (mesa caótica no meio do jogo), libera a entrada de MENOR RISCO em vez de
+  // deixar o operador exposto esperando. Marca para encerrar no próximo green.
+  // Teto: 4 rodadas aguardando. Não age em mesa CONGELADA (aí é melhor parar).
+  // ════════════════════════════════════════════════════════════════════════
+  const TETO_ESPERA = 4;
+  out.defensiva = false;
+  if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
+     && tableState !== "CONGELADA"
+     && (ST.esperaSessao || 0) >= TETO_ESPERA
+     && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
+    out.signal = bestSide;
+    out.conf = bestConf;
+    out.defensiva = true;
+    out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
   }
 
   // Padrão narrativo
@@ -1031,6 +1082,33 @@ function analyze(){
 // ════════════════════════════════════════════════════════════════════════════
 // CICLO · entrada / gale / placar
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// APRENDIZADO · cada padrão que apontou o lado é creditado (acerto) ou debitado (erro)
+// acertou = a cor saiu igual ao sinal · errou = saiu o contrário · empate = neutro
+// ════════════════════════════════════════════════════════════════════════════
+function aprendePadroes(acertou){
+  const pats = ST.ciclo_patterns || [];
+  if(!pats.length) return;
+  if(!ST.deltaAcum) ST.deltaAcum = {};
+  if(!ST.countAcum) ST.countAcum = {};
+  pats.forEach(name => {
+    ST.countAcum[name] = (ST.countAcum[name] || 0) + 1;
+    ST.deltaAcum[name] = (ST.deltaAcum[name] || 0) + (acertou ? 1 : -1);
+  });
+}
+
+// Fator aprendido de um padrão: taxa de acerto observada vira multiplicador 0.7–1.15.
+// Precisa de pelo menos 8 amostras para começar a influenciar (antes disso = neutro).
+function fatorAprendido(name){
+  const n = (ST.countAcum && ST.countAcum[name]) || 0;
+  if(n < 8) return 1;
+  const d = (ST.deltaAcum && ST.deltaAcum[name]) || 0;
+  const taxa = (d / n + 1) / 2; // saldo -1..1 → taxa 0..1 (0.5 = neutro)
+  // taxa 0.5 → fator 1.0 · acima reforça (até 1.15) · abaixo derruba (até 0.7)
+  if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
+  return Math.max(0.7, 1 - (0.5 - taxa) * 0.8);
+}
+
 function confirmEntry(){
   const a = analyze();
   if(!a.signal || a.signal === "W") return;
@@ -1038,6 +1116,10 @@ function confirmEntry(){
   ST.ciclo_sinal = a.signal;
   ST.ciclo_conf = a.conf;
   ST.ciclo_razao = a.reason;
+  // Guarda os padrões que apontaram o lado escolhido (para o aprendizado)
+  ST.ciclo_patterns = (a.patterns||[])
+    .filter(p => p.sig === a.signal)
+    .map(p => p.name);
   ST.ciclo_tie = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
@@ -1045,6 +1127,7 @@ function confirmEntry(){
   ST.ciclo_aguarda_count = 0;
   // SESSÃO INICIA AQUI · só termina ao clicar finalizar
   ST.sessaoAtiva = true;
+  ST.esperaSessao = 0;
   ST.metaAviso = null;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
@@ -1057,6 +1140,7 @@ function abortCiclo(){
   ST.ciclo_sinal = null;
   ST.ciclo_conf = 0;
   ST.ciclo_razao = "";
+  ST.ciclo_patterns = [];
   ST.ciclo_tie = null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
@@ -1171,9 +1255,11 @@ function addRound(r, sNum){
     const sig = ST.ciclo_sinal;
     if(r === sig){
       ST.greens++;
+      aprendePadroes(true);
       toast(`✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
+      aprendePadroes(false);
       // Cor errada → decidir gale
       const a2 = analyze();
       if(a2.signal === "P" || a2.signal === "B"){
@@ -1258,6 +1344,16 @@ function addRound(r, sNum){
     }
   } else {
     // idle · cor sem entrada confirmada → só registra
+    // Conta espera de sessão: se sessão ativa e motor não deu sinal de cor, soma 1.
+    // Isso alimenta a ENTRADA DEFENSIVA quando o caos persiste (teto de 4 rodadas).
+    if(ST.sessaoAtiva){
+      const aNow = analyze();
+      if(aNow.signal === "P" || aNow.signal === "B"){
+        ST.esperaSessao = 0; // motor voltou a ter sinal → zera espera
+      } else {
+        ST.esperaSessao = (ST.esperaSessao || 0) + 1;
+      }
+    }
     save(); renderRouter();
   }
 }
@@ -1294,6 +1390,29 @@ window.recalcularEmpates = function(){
     renderRouter();
   }
 };
+
+// HTML da overlay de celebração (usado no app E no admin)
+function celebraOverlayHTML(){
+  if(!ST.celebra) return '';
+  const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
+  const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
+  const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
+  let conf = '';
+  for(let i=0;i<confCount;i++){
+    const left = Math.random()*100;
+    const dur = 1.6 + Math.random()*1.8;
+    const delay = Math.random()*1.2;
+    const c = cols[i % cols.length];
+    conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
+  }
+  const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
+  return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
+    ${rings}${conf}
+    <div class="paga-big">🔥 PAGA 🔥</div>
+    <div class="paga-x">${ST.celebra}</div>
+    <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+  </div>`;
+}
 
 // Celebração especial para empate de alto pagamento
 function celebraPaga(pay){
@@ -1337,7 +1456,7 @@ function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
   ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
   ST.deltaAcum = {}; ST.countAcum = {};
-  ST.metaAviso = null; ST.sessaoAtiva = false;
+  ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
 }
 
@@ -1351,6 +1470,7 @@ function finalizarSessao(){
   ST.bonus = 0;
   ST.sessoes++;
   ST.sessaoAtiva = false;
+  ST.esperaSessao = 0;
   ST.metaAviso = null;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
@@ -1848,30 +1968,10 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v8.0 · EMPATE=GREEN · ANIM 10x+ · BEAD OK</div>
+      <div class="credit">BAC BRU · v8.5 · ENTRADA DEFENSIVA NO CAOS</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
-      ${ST.celebra ? (()=>{
-        const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
-        const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
-        const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
-        let conf = '';
-        for(let i=0;i<confCount;i++){
-          const left = Math.random()*100;
-          const dur = 1.6 + Math.random()*1.8;
-          const delay = Math.random()*1.2;
-          const c = cols[i % cols.length];
-          conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
-        }
-        const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
-        return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
-        ${rings}
-        ${conf}
-        <div class="paga-big">🔥 PAGA 🔥</div>
-        <div class="paga-x">${ST.celebra}</div>
-        <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
-      </div>`;
-      })() : ''}
+      ${celebraOverlayHTML()}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
         <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
@@ -2427,6 +2527,7 @@ function renderAdminPanel(){
     <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
 
     <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
+    ${celebraOverlayHTML()}
   </div>`;
 }
 
