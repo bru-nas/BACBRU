@@ -27,11 +27,28 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pagaPop{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.15);opacity:1}60%{transform:scale(.95)}100%{transform:scale(1);opacity:1}}
+@keyframes pagaPopBig{0%{transform:scale(.2) rotate(-8deg);opacity:0}35%{transform:scale(1.35) rotate(4deg);opacity:1}55%{transform:scale(.9) rotate(-2deg)}75%{transform:scale(1.08) rotate(1deg)}100%{transform:scale(1) rotate(0);opacity:1}}
 @keyframes fireGlow{0%,100%{text-shadow:0 0 20px #f59e0b,0 0 40px #ef4444}50%{text-shadow:0 0 40px #fbbf24,0 0 80px #f59e0b}}
-.paga-overlay{position:fixed;inset:0;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92));z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;animation:slideIn .2s}
-.paga-big{font-size:64px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px}
-.paga-x{font-size:88px;font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:pagaPop .6s ease;margin-top:8px}
-.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s}
+@keyframes fireGlowMax{0%,100%{text-shadow:0 0 30px #fbbf24,0 0 60px #f59e0b,0 0 90px #ef4444}50%{text-shadow:0 0 60px #fff,0 0 120px #fbbf24,0 0 180px #f59e0b}}
+@keyframes bgPulse{0%,100%{background:radial-gradient(circle at center,rgba(245,158,11,.22),rgba(0,0,0,.93))}50%{background:radial-gradient(circle at center,rgba(245,158,11,.4),rgba(0,0,0,.9))}}
+@keyframes bgPulseMax{0%,100%{background:radial-gradient(circle at center,rgba(245,158,11,.35),rgba(0,0,0,.92))}50%{background:radial-gradient(circle at center,rgba(251,191,36,.6),rgba(120,30,10,.9))}}
+@keyframes confettiFall{0%{transform:translateY(-110vh) rotate(0);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:.2}}
+@keyframes ringBurst{0%{transform:scale(.2);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+.paga-overlay{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at center,rgba(245,158,11,.25),rgba(0,0,0,.92))}
+.paga-overlay.lvl1{animation:slideIn .2s}
+.paga-overlay.lvl2{animation:slideIn .2s,bgPulse 1s ease infinite}
+.paga-overlay.lvl3{animation:slideIn .2s,bgPulseMax .8s ease infinite}
+.paga-big{font-size:54px;font-weight:900;font-family:var(--mono);color:#fbbf24;animation:pagaPop .5s ease,fireGlow 1.2s ease infinite;letter-spacing:4px;z-index:2}
+.paga-overlay.lvl3 .paga-big{font-size:62px;animation:pagaPopBig .6s ease,fireGlowMax .9s ease infinite}
+.paga-x{font-weight:900;font-family:var(--mono);background:linear-gradient(135deg,#fbbf24,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-top:8px;z-index:2}
+.paga-overlay.lvl1 .paga-x{font-size:72px;animation:pagaPop .6s ease}
+.paga-overlay.lvl2 .paga-x{font-size:96px;animation:pagaPop .6s ease,fireGlow 1.2s ease infinite}
+.paga-overlay.lvl3 .paga-x{font-size:120px;animation:pagaPopBig .7s ease,fireGlowMax .9s ease infinite}
+.paga-sub{font-size:14px;color:#fbbf24;font-family:var(--mono);letter-spacing:3px;margin-top:14px;animation:slideIn .8s;z-index:2}
+.paga-ring{position:absolute;width:200px;height:200px;border:3px solid #fbbf24;border-radius:50%;animation:ringBurst 1s ease-out infinite}
+.paga-ring.r2{animation-delay:.35s}
+.paga-ring.r3{animation-delay:.7s}
+.confetti{position:absolute;top:0;width:10px;height:14px;border-radius:2px;animation:confettiFall linear infinite}
 .tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
 .app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh}
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
@@ -189,7 +206,7 @@ const DEFAULT_WEIGHTS = {
 // ════════════════════════════════════════════════════════════════════════════
 const ST = {
   H: [],
-  greens: 0, reds: 0,
+  greens: 0, reds: 0, bonus: 0,
   weights: {...DEFAULT_WEIGHTS},
   deltaAcum: {}, countAcum: {},
   sessoes: 0,
@@ -215,7 +232,7 @@ try{
 
 function save(){
   try{
-    const {toast,toastT,jsonOpen,viewOpen,injTxt,somaIn,...keep} = ST;
+    const {toast,toastT,jsonOpen,viewOpen,injTxt,somaIn,undoStack,avisoVisto,metaAviso,...keep} = ST;
     localStorage.setItem("bacbru_v6", JSON.stringify(keep));
   }catch(e){}
   // push to Firebase
@@ -228,6 +245,7 @@ function pushToFirebase(){
     H: ST.H,
     greens: ST.greens,
     reds: ST.reds,
+    bonus: ST.bonus || 0,
     weights: ST.weights,
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
@@ -269,6 +287,7 @@ function initFirebaseSync(){
     if(Array.isArray(data.H)) ST.H = data.H;
     if(typeof data.greens === "number") ST.greens = data.greens;
     if(typeof data.reds === "number") ST.reds = data.reds;
+    if(typeof data.bonus === "number") ST.bonus = data.bonus;
     if(data.weights) ST.weights = {...DEFAULT_WEIGHTS, ...data.weights};
     if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
     if(data.countAcum) ST.countAcum = data.countAcum;
@@ -1026,6 +1045,7 @@ function confirmEntry(){
   ST.ciclo_aguarda_count = 0;
   // SESSÃO INICIA AQUI · só termina ao clicar finalizar
   ST.sessaoAtiva = true;
+  ST.metaAviso = null;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
   toast(msg, 2800);
@@ -1042,7 +1062,31 @@ function abortCiclo(){
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
   ST.ciclo_aguarda_count = 0;
+  checarMetaStop();
   save(); renderRouter();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// GESTÃO DE RISCO · Meta 5-0 líquido · 2 loss finalizam a sessão
+// Empate é bônus (não conta pra meta), EXCETO 88x que conta como ponto extra
+// ════════════════════════════════════════════════════════════════════════
+const META_LIQUIDO = 5;   // greens líquidos para bater a meta
+const STOP_LOSS = 2;      // reds finalizam a sessão
+function checarMetaStop(){
+  if(!ST.sessaoAtiva) return;
+  const liquido = ST.greens - ST.reds;
+  // STOP LOSS · 2 reds finalizam
+  if(ST.reds >= STOP_LOSS){
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} losses · sessão encerrada para proteger a banca` };
+    ST.sessaoAtiva = false;
+    return;
+  }
+  // META · 5 líquido
+  if(liquido >= META_LIQUIDO){
+    ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
+    ST.sessaoAtiva = false;
+    return;
+  }
 }
 
 function hunterAtivo(a){
@@ -1051,6 +1095,19 @@ function hunterAtivo(a){
 
 function addRound(r, sNum){
   const s = parseInt(sNum) || 0;
+  // SNAPSHOT para o desfazer: guarda estado completo ANTES de processar a rodada
+  // (assim o desfazer reverte green/red e o ciclo, não só o histórico)
+  if(!ST.undoStack) ST.undoStack = [];
+  ST.undoStack.push({
+    greens: ST.greens, reds: ST.reds, bonus: ST.bonus,
+    ciclo: ST.ciclo, ciclo_sinal: ST.ciclo_sinal, ciclo_conf: ST.ciclo_conf,
+    ciclo_razao: ST.ciclo_razao, ciclo_tie: ST.ciclo_tie,
+    ciclo_gale_sinal: ST.ciclo_gale_sinal, ciclo_gale_dec: ST.ciclo_gale_dec,
+    ciclo_gale_tie: ST.ciclo_gale_tie, ciclo_aguarda_count: ST.ciclo_aguarda_count,
+    sessaoAtiva: ST.sessaoAtiva
+  });
+  if(ST.undoStack.length > 50) ST.undoStack.shift();
+
   // ANALISAR ANTES de adicionar — para saber estado do farejador no momento da rodada
   // (se eu analiso depois, o dist vira 0 e o farejador muda de estado, perdendo o "ativo")
   const aBefore = analyze();
@@ -1064,19 +1121,23 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
+    const is88 = pay === "88x";
 
     if(hunterAntes){
-      ST.greens++;
-      if(isHighPay){
+      // 88x conta como ponto na meta · os outros empates são BÔNUS (não contam pra meta 5-0)
+      if(is88){
+        ST.greens++;
         celebraPaga(pay);
       } else {
-        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
+        ST.bonus = (ST.bonus||0) + 1;
+        if(isHighPay){ celebraPaga(pay); }
+        else { toast(`✅ BÔNUS EMPATE · ${pay} (não conta na meta)`, 2800); }
       }
 
       // Resolução do ciclo:
       // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
       // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
-      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
+      // · aguarda_gale + empate baixo (4x, 6x): bônus contado mas gale continua
       if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
         abortCiclo();
       } else if(ST.ciclo === "aguarda_gale" && isHighPay){
@@ -1087,10 +1148,18 @@ function addRound(r, sNum){
         save(); renderRouter();
       }
     } else {
-      // Farejador inativo → push, vida que segue
-      toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
-      if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
-      else { save(); renderRouter(); }
+      // Farejador inativo → push, vida que segue.
+      // MAS: se havia aposta na mesa (entrada/gale) e saiu empate ALTO,
+      // o pagamento do empate é real → celebra mesmo com farejador inativo.
+      const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
+      if(isHighPay && tinhaAposta){
+        celebraPaga(pay);
+        abortCiclo();
+      } else {
+        toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
+        if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
+        else { save(); renderRouter(); }
+      }
     }
     return;
   }
@@ -1236,14 +1305,41 @@ function celebraPaga(pay){
 }
 
 function undo(){
-  if(ST.H.length > 0) ST.H.pop();
-  abortCiclo();
+  if(ST.H.length === 0){ toast("Nada para desfazer", 1800); return; }
+  ST.H.pop();
+  // Restaura o estado completo de ANTES da última rodada (reverte green/red e ciclo)
+  if(ST.undoStack && ST.undoStack.length){
+    const snap = ST.undoStack.pop();
+    const g0 = ST.greens, r0 = ST.reds;
+    ST.greens = snap.greens;
+    ST.reds = snap.reds;
+    ST.bonus = snap.bonus;
+    ST.ciclo = snap.ciclo;
+    ST.ciclo_sinal = snap.ciclo_sinal;
+    ST.ciclo_conf = snap.ciclo_conf;
+    ST.ciclo_razao = snap.ciclo_razao;
+    ST.ciclo_tie = snap.ciclo_tie;
+    ST.ciclo_gale_sinal = snap.ciclo_gale_sinal;
+    ST.ciclo_gale_dec = snap.ciclo_gale_dec;
+    ST.ciclo_gale_tie = snap.ciclo_gale_tie;
+    ST.ciclo_aguarda_count = snap.ciclo_aguarda_count;
+    ST.sessaoAtiva = snap.sessaoAtiva;
+    let msg = "↩ Rodada desfeita";
+    if(g0 > snap.greens) msg += " · green removido";
+    if(r0 > snap.reds) msg += " · red removido";
+    toast(msg, 2500);
+    save(); renderRouter();
+  } else {
+    // sem snapshot (rodada antiga) → só remove do histórico
+    abortCiclo();
+  }
 }
 
 function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
-  ST.H = []; ST.greens = 0; ST.reds = 0;
+  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
   ST.deltaAcum = {}; ST.countAcum = {};
+  ST.metaAviso = null; ST.sessaoAtiva = false;
   abortCiclo();
 }
 
@@ -1254,8 +1350,10 @@ function finalizarSessao(){
   copyJSON();
   ST.greens = 0;
   ST.reds = 0;
+  ST.bonus = 0;
   ST.sessoes++;
   ST.sessaoAtiva = false;
+  ST.metaAviso = null;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
   save();
@@ -1336,6 +1434,66 @@ function fallbackCopy(t){
 // ════════════════════════════════════════════════════════════════════════════
 // RENDER
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
+// CARD DE ENTRADA/GALE · compartilhado entre app público e painel admin
+// ════════════════════════════════════════════════════════════════════════
+function buildEntryCard(a, forAdmin){
+  const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
+  function cardSinalGrande(titulo, lado, sub, tieInfo){
+    const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
+               lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
+               "rgba(245,158,11,.12),rgba(245,158,11,.04)";
+    const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
+    const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
+      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
+      ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
+      ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
+    </div>`;
+  }
+
+  if(ST.ciclo === "idle"){
+    if(a.signal && a.signal !== "W"){
+      const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
+      return forAdmin
+        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
+        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra);
+    } else if(!ST.sessaoAtiva && !bomMomento){
+      return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
+        <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
+        <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
+          A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
+          Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
+          👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
+        </div>
+      </div>`;
+    } else {
+      return `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar'}</div></div>`;
+    }
+  } else if(ST.ciclo === "entrada"){
+    return cardSinalGrande("▶ ENTRADA ATIVA", ST.ciclo_sinal,
+      `${(ST.ciclo_conf*100).toFixed(0)}% confiança${forAdmin?' · registre o resultado abaixo':''}`, ST.ciclo_tie);
+  } else if(ST.ciclo === "aguarda_gale"){
+    const cnt = ST.ciclo_aguarda_count || 0;
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div>
+      <div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">${cnt}/3 rodadas</div>
+      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+        Motor refinando para evitar red.<br/>
+        ${cnt < 3 ? `Após <strong style="color:var(--txt)">${3-cnt}</strong> rodada(s) sem sinal, o gale entra automaticamente.` : 'Próxima rodada: gale forçado'}<br/>
+        Entrada anterior: <strong>${lbl(ST.ciclo_sinal)}</strong>
+      </div>
+    </div>`;
+  } else if(ST.ciclo === "gale"){
+    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
+    const gDec = ST.ciclo_gale_dec || "INVERTER";
+    const sub = `Decisão: ${gDec} · entrada anterior foi ${lbl(ST.ciclo_sinal)}${forAdmin?' · registre resultado':''}`;
+    return cardSinalGrande(`⚡ GALE · ENTRAR AGORA`, gSide, sub, ST.ciclo_gale_tie);
+  }
+  return "";
+}
+
 function renderApp(){
   const a = analyze();
   const total = ST.greens + ST.reds;
@@ -1444,76 +1602,9 @@ function renderApp(){
       </div>`;
   }
 
-  // Entry section · redesign explícito para gale
-  const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
+  // Entry section · usa função compartilhada (mesma do admin)
   const proxSessao = (AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length) ? AUTH.config.sessoes : [];
-
-  // Helper para card colorido grande no estilo do sinal
-  function cardSinalGrande(titulo, lado, sub, tieInfo){
-    const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
-               lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
-               "rgba(245,158,11,.12),rgba(245,158,11,.04)";
-    const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
-    const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
-    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
-      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
-      ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
-      ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
-    </div>`;
-  }
-
-  let entryHtml = "";
-  if(ST.ciclo === "idle"){
-    if(a.signal && a.signal !== "W"){
-      // Há sinal · botão de confirmar entrada
-      const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
-      entryHtml = isAdmin()
-        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
-        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra);
-    } else if(!ST.sessaoAtiva && !bomMomento){
-      // FORA DE SESSÃO — só antes da primeira entrada
-      entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
-        <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
-        <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-          A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
-          Agora a mesa está <strong style="color:var(--txt)">${a.heat?a.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
-          👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
-        </div>
-      </div>`;
-    } else {
-      // Sessão ativa OU bom momento mas sem padrão ainda
-      entryHtml = `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar'}</div></div>`;
-    }
-  } else if(ST.ciclo === "entrada"){
-    entryHtml = cardSinalGrande(
-      "▶ ENTRADA ATIVA",
-      ST.ciclo_sinal,
-      `${(ST.ciclo_conf*100).toFixed(0)}% confiança${isAdmin()?' · registre o resultado abaixo':''}`,
-      ST.ciclo_tie
-    );
-  } else if(ST.ciclo === "aguarda_gale"){
-    const cnt = ST.ciclo_aguarda_count || 0;
-    entryHtml = `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div>
-      <div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">${cnt}/3 rodadas</div>
-      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
-        Motor refinando para evitar red.<br/>
-        ${cnt < 3 ? `Após <strong style="color:var(--txt)">${3-cnt}</strong> rodada(s) sem sinal, o gale entra automaticamente.` : 'Próxima rodada: gale forçado'}<br/>
-        Entrada anterior: <strong>${lbl(ST.ciclo_sinal)}</strong>
-      </div>
-    </div>`;
-  } else if(ST.ciclo === "gale"){
-    const gSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
-    const gDec = ST.ciclo_gale_dec || "INVERTER";
-    const sub = `Decisão: ${gDec} · entrada anterior foi ${lbl(ST.ciclo_sinal)}${isAdmin()?' · registre resultado':''}`;
-    entryHtml = cardSinalGrande(
-      `⚡ GALE · ENTRAR AGORA`,
-      gSide,
-      sub,
-      ST.ciclo_gale_tie
-    );
-  }
+  const entryHtml = buildEntryCard(a, isAdmin());
 
   root.innerHTML = `
     <div class="app">
@@ -1531,9 +1622,26 @@ function renderApp(){
       <div class="stats-bar" style="padding:14px 12px">
         <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
-        <div class="stat" style="flex:1.3"><div class="stat-v y" style="font-size:30px">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--purple);font-size:24px">${ST.sessoes||0}</div><div class="stat-l">SESSÕES</div></div>
+        <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:28px">${rate}%</div><div class="stat-l">RATE</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS 🔥</div></div>
       </div>
+
+      <!-- META 5-0 · barra de progresso -->
+      <div class="card" style="padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+          <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">🎯 META DA SESSÃO · 5-0 LÍQUIDO</div>
+          <div style="font-size:13px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</div>
+        </div>
+        <div style="height:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;display:flex;gap:2px">
+          ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds)>=n?'var(--green2)':'rgba(148,163,184,.15)'};border-radius:2px"></div>`).join("")}
+        </div>
+        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">2 losses encerram a sessão · empates são bônus (88x conta ponto)</div>
+      </div>
+
+      ${ST.metaAviso ? `<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.15),rgba(34,211,238,.06)':'rgba(239,68,68,.12),rgba(245,158,11,.05)'});border:2px solid ${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.4)':'rgba(239,68,68,.4)'}">
+        <div style="font-size:17px;font-weight:900;font-family:var(--mono);color:${ST.metaAviso.tipo==='meta'?'var(--green2)':'var(--red2)'};line-height:1.4">${ST.metaAviso.msg}</div>
+        <div style="margin-top:8px;font-size:11px;color:var(--txt2);font-family:var(--mono)">Sessão encerrada. ${isAdmin()?'Clique em FINALIZAR SESSÃO para zerar o placar.':'Aguarde a próxima sessão ao vivo.'}</div>
+      </div>` : ''}
       ${(() => {
         const rec = AUTH.key && AUTH.keys[AUTH.key];
         if(rec && rec.tipo === "teste" && rec.expiraEm){
@@ -1741,13 +1849,43 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v7.7 · GALE SEMPRE · TENDÊNCIA AUTOMÁTICA · MANTER OU INVERTER</div>
+      <div class="credit">BAC BRU · v7.9 · META 5-0 · STOP 2 LOSS · GESTÃO DE BANCA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
-      ${ST.celebra ? `<div class="paga-overlay" onclick="fecharPaga()">
+      ${ST.celebra ? (()=>{
+        const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
+        const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
+        const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
+        let conf = '';
+        for(let i=0;i<confCount;i++){
+          const left = Math.random()*100;
+          const dur = 1.6 + Math.random()*1.8;
+          const delay = Math.random()*1.2;
+          const c = cols[i % cols.length];
+          conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
+        }
+        const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
+        return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
+        ${rings}
+        ${conf}
         <div class="paga-big">🔥 PAGA 🔥</div>
         <div class="paga-x">${ST.celebra}</div>
         <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+      </div>`;
+      })() : ''}
+      ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
+        <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
+          <div style="font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.9">
+            🎯 <strong style="color:var(--green2)">Meta da sessão: 5-0 líquido.</strong> Bateu 5 greens de saldo? Pare no lucro.<br/><br/>
+            🛑 <strong style="color:var(--red2)">2 losses encerram a sessão.</strong> Sem exceção. Protege a banca.<br/><br/>
+            💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong> Nunca mais que isso por entrada.<br/><br/>
+            ⚡ <strong style="color:var(--gold2)">Dobra no gale é opcional.</strong> Se preferir não dobrar, tudo bem — reduz o risco.<br/><br/>
+            🔥 <strong style="color:var(--gold2)">Empates são bônus</strong> — dinheiro extra no bolso, não contam pra meta (só o 88x conta ponto).<br/><br/>
+            <span style="color:var(--txt3);font-size:11px">As entradas são sinais probabilísticos, não garantias. Aposte apenas o que pode perder. Jogo é variância — a disciplina protege você.</span>
+          </div>
+          <button onclick="fecharAviso()" style="width:100%;margin-top:18px;padding:14px;background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(34,211,238,.1));border:1px solid rgba(34,197,94,.4);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI · COMEÇAR</button>
+        </div>
       </div>` : ''}
     </div>
   `;
@@ -2188,16 +2326,26 @@ function renderAdminPanel(){
       <div style="margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:8px;font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.5">
         ${a.reason || 'aguardando dados'}
       </div>
-      ${ST.ciclo !== "idle" ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:8px;font-size:11px;color:var(--purple);font-family:var(--mono);font-weight:700;text-align:center">▶ CICLO: ${cicloLabel}</div>` : ''}
-      ${ST.ciclo === "idle" && a.signal !== "W" ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:14px 0" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}</button>` : ''}
+    </div>
+
+    <!-- CARD QUE O ASSINANTE ESTÁ VENDO (idêntico) -->
+    <div class="sec-lbl">👁 O QUE O ASSINANTE VÊ</div>
+    <div class="card" style="padding:12px">
+      ${buildEntryCard(a, true)}
     </div>
 
     <!-- STATS DE GREEN/RED -->
     <div class="stats-bar" style="padding:12px">
       <div class="stat"><div class="stat-v g" style="font-size:22px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
       <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
-      <div class="stat"><div class="stat-v y" style="font-size:24px">${rate}%</div><div class="stat-l">RATE</div></div>
-      <div class="stat"><div class="stat-v" style="color:var(--purple);font-size:22px">${ST.H.length}</div><div class="stat-l">ROUNDS</div></div>
+      <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
+      <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
+    </div>
+    <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds)>=5?'rgba(34,197,94,.12)':ST.reds>=2?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5-0 · saldo líquido: </span>
+      <span style="font-size:15px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</span>
+      <span style="font-size:10px;font-family:var(--mono);color:var(--txt3)"> · stop em ${ST.reds}/2 loss</span>
+      ${ST.metaAviso?`<div style="margin-top:6px;font-size:12px;font-weight:700;font-family:var(--mono);color:${ST.metaAviso.tipo==='meta'?'var(--green2)':'var(--red2)'}">${ST.metaAviso.msg}</div>`:''}
     </div>
 
     <!-- REGISTRAR RODADA -->
@@ -2295,6 +2443,12 @@ function bindAuthInputs(){
   bind("newSessao", "newSessao", false);
   bind("newAdminNome", "newAdminNome", false);
   bind("newAdminPw", "newAdminPw", false);
+
+  // Inputs operacionais do admin (soma + JSON) → gravam em ST, não AUTH
+  const si = document.getElementById("soma");
+  if(si) si.addEventListener("input", e => { ST.somaIn = e.target.value; });
+  const ja = document.getElementById("injta");
+  if(ja) ja.addEventListener("input", e => { ST.injTxt = e.target.value; });
 }
 
 window.reg = function(r){
@@ -2313,6 +2467,7 @@ window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; renderApp(); };
 window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
+window.fecharAviso = function(){ ST.avisoVisto = true; renderRouter(); };
 
 renderRouter();
 initFirebaseSync();
