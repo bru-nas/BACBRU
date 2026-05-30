@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.7 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v9.4 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -192,7 +192,7 @@ let SUPPRESS_PUSH = false;
 const DEFAULT_WEIGHTS = {
   PP5: 0.87, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
-  SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71,
+  SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
   DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
   boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
@@ -216,6 +216,8 @@ const ST = {
   ciclo_sinal: null,
   ciclo_conf: 0,
   ciclo_razao: "",
+  ciclo_patterns: [],
+  esperaSessao: 0,
   jsonOpen: false, viewOpen: false, injTxt: "",
   toast: "",
   toastT: 0
@@ -254,12 +256,14 @@ function pushToFirebase(){
     ciclo_sinal: ST.ciclo_sinal,
     ciclo_conf: ST.ciclo_conf,
     ciclo_razao: ST.ciclo_razao,
+    ciclo_patterns: ST.ciclo_patterns || [],
     ciclo_tie: ST.ciclo_tie || null,
     ciclo_gale_sinal: ST.ciclo_gale_sinal || null,
     ciclo_gale_dec: ST.ciclo_gale_dec || null,
     ciclo_gale_tie: ST.ciclo_gale_tie || null,
     ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
     sessaoAtiva: !!ST.sessaoAtiva,
+    esperaSessao: ST.esperaSessao || 0,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -296,12 +300,14 @@ function initFirebaseSync(){
     ST.ciclo_sinal = data.ciclo_sinal || null;
     ST.ciclo_conf = data.ciclo_conf || 0;
     ST.ciclo_razao = data.ciclo_razao || "";
+    ST.ciclo_patterns = data.ciclo_patterns || [];
     ST.ciclo_tie = data.ciclo_tie || null;
     ST.ciclo_gale_sinal = data.ciclo_gale_sinal || null;
     ST.ciclo_gale_dec = data.ciclo_gale_dec || null;
     ST.ciclo_gale_tie = data.ciclo_gale_tie || null;
     ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
     ST.sessaoAtiva = !!data.sessaoAtiva;
+    ST.esperaSessao = data.esperaSessao || 0;
     SUPPRESS_PUSH = false;
     renderRouter();
   }, err => {
@@ -467,8 +473,8 @@ function patternFatigue(col){
     if(r[i]===r[i-1] && r[i-2]===r[i-3] && r[i]!==r[i-2]) blockRun++;
     else break;
   }
-  if(altRun >= 6) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 8};
-  if(blockRun >= 3) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 4};
+  if(altRun >= 8) return {regime:"ALTERNANCIA", repeats:altRun, fatigued:altRun >= 11};
+  if(blockRun >= 4) return {regime:"BLOCOS_2x2", repeats:blockRun, fatigued:blockRun >= 6};
   return {regime:"MISTO", repeats:0, fatigued:false};
 }
 
@@ -659,7 +665,7 @@ function analyze(){
 
   const patterns = [];
   function add(name, sig, base, reason, hi=false){
-    let conf = Math.min(0.95, base + totalBoost);
+    let conf = Math.min(0.95, (base * fatorAprendido(name)) + totalBoost);
     if(sig === "P") conf += W.bias_P;
     if(sig === "B") conf += W.bias_B;
     conf = Math.max(0, Math.min(0.95, conf));
@@ -712,11 +718,13 @@ function analyze(){
   let breakZone = null, breakProb = 0.5, premature = false, danger = false;
   if(prof && st.len >= 2){
     breakProb = prof.breakProbAt(st.len);
-    // streak ainda curto (abaixo da mediana histórica) → quebra é PREMATURA
-    premature = st.len < prof.p50;
-    // streak na zona onde a mesa historicamente quebra → break é seguro
-    breakZone = st.len >= prof.p75;
-    // streak perto/no máximo histórico → zona de PERIGO (pode quebrar a qualquer momento)
+    // Zona de quebra amarrada ao MÁXIMO histórico, não ao p75.
+    // Se a mesa estica até 8, uma streak de 3-4 é CONTINUAÇÃO, não quebra.
+    // Segue continuação enquanto < 70% do máximo; só vira quebra perto do teto.
+    const teto = prof.max || prof.p90 || 6;
+    const zonaQuebra = Math.max(prof.p75, Math.ceil(teto * 0.7));
+    premature = st.len < zonaQuebra;
+    breakZone = st.len >= zonaQuebra && st.len < teto;
     danger = st.len >= prof.p90;
   }
 
@@ -745,14 +753,19 @@ function analyze(){
       else add("SK3C", st.side, W.SK3C, `Streak 3 ${st.side} estável → continuar`);
     }
   } else if(st.len >= 5){
-    // EXAUSTÃO — streak longo
-    if(prof && st.len < prof.p90 && st.len < prof.max){
-      // ainda dentro do range histórico desta mesa → pode continuar, mas NÃO entrar
-      out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · mesa já fez até ${prof.max} · NÃO perseguir quebra ainda`;
+    const teto = prof ? (prof.max || prof.p90 || 7) : 7;
+    const zonaPerigo = prof ? prof.p90 : 6;
+    if(prof && st.len < Math.ceil(teto * 0.75) && st.len < zonaPerigo){
+      // Streak forte ainda na zona SAUDÁVEL (longe do máximo) → SEGUE a continuação.
+      // É o "padrão super forte no meio" que o operador quer pegar.
+      add("SK5C", st.side, Math.min(0.88, W.SK4C + 0.05), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
+    } else if(prof && st.len < prof.max && st.len < zonaPerigo){
+      // chegando perto mas ainda não no perigo → continua mas sem reforço
+      add("SK5C", st.side, W.SK4C, `Streak ${st.len} ${st.side} · ainda dentro do range → continuar`);
     } else {
+      // zona de perigo / no máximo → PARAR (não perseguir continuação nem quebra)
       out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão${prof?` (hist máx ${prof.max})`:''}`;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · zona de perigo (hist máx ${prof?prof.max:'?'}) · PARAR`;
     }
   }
 
@@ -852,7 +865,15 @@ function analyze(){
   out.convergence = bestSide ? byBet[bestSide].length : 0;
 
   // Contradição: padrões apontando para P E B ao mesmo tempo
-  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0;
+  // Contradição real: lados opostos com padrões DIFERENTES de bloco.
+  // O par B22T/B22C aponta lados opostos por natureza (mesma leitura de bloco vista
+  // de dois ângulos) → não é contradição real; resolve pelo de maior confiança.
+  const nomesP = byBet.P.map(p=>p.name);
+  const nomesB = byBet.B.map(p=>p.name);
+  const soBlocoP = nomesP.length && nomesP.every(n=>n==="B22T"||n==="B22C");
+  const soBlocoB = nomesB.length && nomesB.every(n=>n==="B22T"||n==="B22C");
+  const falsaContradicaoBloco = soBlocoP && soBlocoB;
+  out.contradiction = byBet.P.length > 0 && byBet.B.length > 0 && !falsaContradicaoBloco;
 
   // ════════════════════════════════════════════════════════════════════════
   // ── TABLE HEAT · momento da mesa ──
@@ -928,21 +949,21 @@ function analyze(){
   // ════════════════════════════════════════════════════════════════════════
   // THRESHOLDS · mais entradas mantendo qualidade (cada red = 3 greens · win efetivo c/ gale ~89%)
   // ════════════════════════════════════════════════════════════════════════
-  if(heat >= 75){
+  if(heat >= 72){
     tableState = "QUENTE";
-    dynThreshold = 0.70;
+    dynThreshold = 0.68;
     requireConvergence = false;
-  } else if(heat >= 58){
+  } else if(heat >= 54){
     tableState = "FAVORÁVEL";
+    dynThreshold = 0.71;
+    requireConvergence = false;
+  } else if(heat >= 40){
+    tableState = "NEUTRA";
     dynThreshold = 0.74;
     requireConvergence = false;
-  } else if(heat >= 42){
-    tableState = "NEUTRA";
-    dynThreshold = 0.79;
-    requireConvergence = true;
-  } else if(heat >= 28){
+  } else if(heat >= 26){
     tableState = "FRIA";
-    dynThreshold = 0.85;
+    dynThreshold = 0.80;
     requireConvergence = true;
   } else {
     tableState = "CONGELADA";
@@ -950,13 +971,13 @@ function analyze(){
     requireConvergence = true;
   }
 
-  // Padrões mínimos por estado · padrão único forte agora vale em HOT/FAV/NEUTRA
-  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 3 : 2;
+  // Padrões mínimos por estado · padrão único forte vale em QUENTE/FAV/NEUTRA
+  let minPatterns = (tableState === "FRIA" || tableState === "CONGELADA") ? 2 : 1;
   let strongSingleOK = false;
   let STRONG_SINGLE = 0.84;
-  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.77; }
-  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.80; }
-  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.84; }
+  if(tableState === "QUENTE"){ strongSingleOK = true; STRONG_SINGLE = 0.72; }
+  else if(tableState === "FAVORÁVEL"){ strongSingleOK = true; STRONG_SINGLE = 0.75; }
+  else if(tableState === "NEUTRA"){ strongSingleOK = true; STRONG_SINGLE = 0.78; }
 
   // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
   const hunter = tieHunter(ST.H, heat);
@@ -973,12 +994,21 @@ function analyze(){
 
   // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
   const effThreshold = Math.max(dynThreshold, EV_FLOOR);
-  if(out.exaustao){
+  // CRITÉRIO DE MESA (opção B): entrada normal só em QUENTE/FAVORÁVEL/NEUTRA.
+  // Em FRIA/CONGELADA aguarda — a entrada defensiva (mais abaixo) ainda cobre
+  // o caso de a mesa esfriar no MEIO de uma sessão já ativa.
+  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
+  if(!mesaPermiteEntrada && !out.exaustao){
+    out.signal = "W";
+    out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
+    out.conf = bestConf;
+  } else if(out.exaustao){
     out.signal = "W";
     out.reason = out.exaustaoMotivo || `Exaustão · streak ${st.len}+ ${st.side} · AGUARDA`;
     out.conf = 0;
-  } else if(out.regimeFatigado){
-    // padrão pagante maduro repetiu demais → parar de entrar (vai quebrar)
+  } else if(out.regimeFatigado && !(stableCt >= 2 && bestSide && bestSide !== "T")){
+    // padrão maduro repetiu demais → bloqueia SÓ se as estradas NÃO confirmam continuação.
+    // Se 2+ estradas derivadas estão STABLE (padrão sendo respeitado), deixa a entrada passar.
     out.signal = "W";
     out.reason = `🛑 ${out.regimeMotivo} · pare antes da quebra`;
     out.conf = bestConf;
@@ -987,24 +1017,64 @@ function analyze(){
     out.signal = "W";
     out.reason = `⚠️ Streak ${out.streakLen} ${out.streakSide} na zona de perigo (hist máx ${out.profile.max}) · aguardar quebra confirmar`;
     out.conf = bestConf;
-  } else if(out.contradiction){
-    // contradição entre padrões P e B → sempre aguarda (cada red custa 3 greens)
+  } else if(out.contradiction && !(stableCt >= 2 && roadHint === "CONT")){
+    // contradição entre padrões P e B → aguarda, EXCETO quando as estradas derivadas
+    // estão alinhadas em continuação (2+ STABLE): aí a continuação desempata, segue o fluxo.
     out.signal = "W";
     out.reason = `Padrões contraditórios · risco alto · AGUARDA`;
     out.conf = bestConf;
+  } else if(out.contradiction && stableCt >= 2 && roadHint === "CONT"){
+    // desempate por estradas: continuação → segue o último lado
+    const lastSide = col.length ? col[col.length-1].r : null;
+    if(lastSide && lastSide !== "T"){
+      out.signal = lastSide;
+      out.conf = Math.min(0.9, bestConf);
+      out.reason = `Contradição resolvida pelas estradas (3 STABLE) · continuação ${lbl(lastSide)}`;
+    } else {
+      out.signal = "W";
+      out.reason = `Padrões contraditórios · AGUARDA`;
+      out.conf = bestConf;
+    }
   } else if(bestSide && bestSide !== "T" && roadHint === "MUDA" &&
             col.length && bestSide === col[col.length-1].r){
     // estradas derivadas dizem MUDA mas o sinal aposta em continuar → conflito → aguarda
     out.signal = "W";
     out.reason = `Gráficos derivados indicam mudança, sinal apostaria continuação · AGUARDA`;
     out.conf = bestConf;
-  } else if(bestSide && bestConf >= effThreshold &&
-            (byBet[bestSide].length >= minPatterns ||
-             (strongSingleOK && bestConf >= STRONG_SINGLE))){
+  } else if(bestSide && bestSide !== "T" && roadHint === "CONT" &&
+            col.length && bestSide !== col[col.length-1].r &&
+            byBet[bestSide].length < 2){
+    // estradas dizem CONTINUAR mas padrão ÚNICO aposta na quebra → sem confirmação → aguarda
+    out.signal = "W";
+    out.reason = `Gráficos derivados indicam continuação, padrão único apostaria quebra · sem confirmação cruzada · AGUARDA`;
+    out.conf = bestConf;
+  } else if(bestSide && byBet[bestSide].length >= 2 && bestConf >= effThreshold){
+    // ── CRUZAMENTO FORTE: 2+ padrões concordam e estradas não contrariam → melhor entrada
     out.signal = bestSide;
     out.conf = bestConf;
     out.reason = bestReason;
-    if(byBet[bestSide].length < minPatterns) out.reason += " · padrão único forte";
+    if(roadHint){ out.reason += ` · roads:${roadHint}`; }
+  } else if(bestSide && byBet[bestSide].length < minPatterns &&
+            strongSingleOK && bestConf >= STRONG_SINGLE){
+    // ── PADRÃO ÚNICO FORTE
+    const lastSide = col.length ? col[col.length-1].r : null;
+    const continua = bestSide === lastSide;
+    const estradaContraria = (roadHint === "MUDA" && continua) || (roadHint === "CONT" && !continua);
+    // Veto cruzado SÓ em mesa fria/congelada · em quente/favorável/neutra a confiança forte basta
+    const vetoAtivo = (tableState === "FRIA" || tableState === "CONGELADA");
+    if(estradaContraria && vetoAtivo){
+      out.signal = "W";
+      out.reason = `Mesa ${tableState} + gráficos derivados contrariam padrão único · AGUARDA`;
+      out.conf = bestConf;
+    } else {
+      out.signal = bestSide;
+      out.conf = bestConf;
+      out.reason = bestReason + " · padrão único forte (estradas " + (roadHint||"neutras") + ")";
+    }
+  } else if(bestSide && bestConf >= effThreshold && byBet[bestSide].length >= minPatterns){
+    out.signal = bestSide;
+    out.conf = bestConf;
+    out.reason = bestReason;
     if(roadHint){ out.reason += ` · roads:${roadHint}`; }
   } else {
     out.signal = "W";
@@ -1016,6 +1086,24 @@ function analyze(){
       out.reason = `Mesa ${tableState} · sem padrão forte · AGUARDA`;
     }
     out.conf = bestConf;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ENTRADA DEFENSIVA · se a sessão está ATIVA e o motor já aguardou demais
+  // (mesa caótica no meio do jogo), libera a entrada de MENOR RISCO em vez de
+  // deixar o operador exposto esperando. Marca para encerrar no próximo green.
+  // Teto: 4 rodadas aguardando. Não age em mesa CONGELADA (aí é melhor parar).
+  // ════════════════════════════════════════════════════════════════════════
+  const TETO_ESPERA = 4;
+  out.defensiva = false;
+  if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
+     && tableState !== "CONGELADA"
+     && (ST.esperaSessao || 0) >= TETO_ESPERA
+     && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
+    out.signal = bestSide;
+    out.conf = bestConf;
+    out.defensiva = true;
+    out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
   }
 
   // Padrão narrativo
@@ -1031,6 +1119,33 @@ function analyze(){
 // ════════════════════════════════════════════════════════════════════════════
 // CICLO · entrada / gale / placar
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// APRENDIZADO · cada padrão que apontou o lado é creditado (acerto) ou debitado (erro)
+// acertou = a cor saiu igual ao sinal · errou = saiu o contrário · empate = neutro
+// ════════════════════════════════════════════════════════════════════════════
+function aprendePadroes(acertou){
+  const pats = ST.ciclo_patterns || [];
+  if(!pats.length) return;
+  if(!ST.deltaAcum) ST.deltaAcum = {};
+  if(!ST.countAcum) ST.countAcum = {};
+  pats.forEach(name => {
+    ST.countAcum[name] = (ST.countAcum[name] || 0) + 1;
+    ST.deltaAcum[name] = (ST.deltaAcum[name] || 0) + (acertou ? 1 : -1);
+  });
+}
+
+// Fator aprendido de um padrão: taxa de acerto observada vira multiplicador 0.7–1.15.
+// Precisa de pelo menos 8 amostras para começar a influenciar (antes disso = neutro).
+function fatorAprendido(name){
+  const n = (ST.countAcum && ST.countAcum[name]) || 0;
+  if(n < 8) return 1;
+  const d = (ST.deltaAcum && ST.deltaAcum[name]) || 0;
+  const taxa = (d / n + 1) / 2; // saldo -1..1 → taxa 0..1 (0.5 = neutro)
+  // taxa 0.5 → fator 1.0 · acima reforça (até 1.15) · abaixo derruba (até 0.7)
+  if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
+  return Math.max(0.7, 1 - (0.5 - taxa) * 0.8);
+}
+
 function confirmEntry(){
   const a = analyze();
   if(!a.signal || a.signal === "W") return;
@@ -1038,6 +1153,10 @@ function confirmEntry(){
   ST.ciclo_sinal = a.signal;
   ST.ciclo_conf = a.conf;
   ST.ciclo_razao = a.reason;
+  // Guarda os padrões que apontaram o lado escolhido (para o aprendizado)
+  ST.ciclo_patterns = (a.patterns||[])
+    .filter(p => p.sig === a.signal)
+    .map(p => p.name);
   ST.ciclo_tie = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
@@ -1045,6 +1164,7 @@ function confirmEntry(){
   ST.ciclo_aguarda_count = 0;
   // SESSÃO INICIA AQUI · só termina ao clicar finalizar
   ST.sessaoAtiva = true;
+  ST.esperaSessao = 0;
   ST.metaAviso = null;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
@@ -1057,6 +1177,7 @@ function abortCiclo(){
   ST.ciclo_sinal = null;
   ST.ciclo_conf = 0;
   ST.ciclo_razao = "";
+  ST.ciclo_patterns = [];
   ST.ciclo_tie = null;
   ST.ciclo_gale_sinal = null;
   ST.ciclo_gale_dec = null;
@@ -1075,15 +1196,18 @@ const STOP_LOSS = 2;      // reds finalizam a sessão
 function checarMetaStop(){
   if(!ST.sessaoAtiva) return;
   const liquido = ST.greens - ST.reds;
-  // STOP LOSS · 2 reds finalizam
-  if(ST.reds >= STOP_LOSS){
-    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} losses · sessão encerrada para proteger a banca` };
+  // STOP LOSS · 2 reds só finalizam SE o líquido estiver negativo.
+  // Se deu 2 loss mas o líquido ainda está >= 0 (greens cobrindo), a sessão continua.
+  if(ST.reds >= STOP_LOSS && liquido < 0){
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} loss e saldo negativo (${liquido}) · sessão encerrada para proteger a banca` };
+    ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
   }
   // META · 5 líquido
   if(liquido >= META_LIQUIDO){
     ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
+    ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
   }
@@ -1121,43 +1245,36 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
+    const naEntrada = (ST.ciclo === "entrada" || ST.ciclo === "gale");
 
-    if(hunterAntes){
-      // Empate com farejador ativo = GREEN (volta ao comportamento anterior)
+    if(naEntrada){
+      // EMPATE NA ENTRADA DE COR = GREEN sempre (push a favor, qualquer pagamento).
+      // Inclui o 4x/6x — sua aposta de cor é devolvida e o ciclo fecha como acerto.
       ST.greens++;
-      if(isHighPay){
-        celebraPaga(pay);
-      } else {
-        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
-      }
-
-      // Resolução do ciclo:
-      // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
-      // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
-      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
-      if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
-        abortCiclo();
-      } else if(ST.ciclo === "aguarda_gale" && isHighPay){
-        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
-        abortCiclo();
-      } else {
-        // aguarda_gale com pay baixo, OU idle → continua
-        save(); renderRouter();
-      }
+      if(isHighPay) celebraPaga(pay);
+      else toast(`✅ GREEN · empate na entrada · ${pay}`, 2800);
+      abortCiclo();
+    } else if(ST.ciclo === "aguarda_gale" && isHighPay){
+      // empate alto cobre a entrada perdida → cancela o gale, conta green
+      ST.greens++;
+      celebraPaga(pay);
+      toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
+      abortCiclo();
+    } else if(hunterAntes && isHighPay){
+      // farejador ativo + empate ALTO (fora de aposta) = GREEN + celebração
+      ST.greens++;
+      celebraPaga(pay);
+      save(); renderRouter();
+    } else if(hunterAntes && !isHighPay){
+      // farejador ativo + empate BAIXO (4x/6x) = BÔNUS, NÃO conta green
+      ST.bonus = (ST.bonus || 0) + 1;
+      toast(`✨ BÔNUS · empate ${pay} (não conta na meta)`, 2800);
+      if(ST.ciclo === "aguarda_gale") { save(); renderRouter(); }
+      else { save(); renderRouter(); }
     } else {
-      // Farejador inativo → push, vida que segue.
-      // MAS: se havia aposta na mesa (entrada/gale) e saiu empate ALTO,
-      // o pagamento do empate é real → celebra mesmo com farejador inativo.
-      const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
-      if(isHighPay && tinhaAposta){
-        ST.greens++;
-        celebraPaga(pay);
-        abortCiclo();
-      } else {
-        toast(`↻ Empate · farejador estava inativo · sem alteração no placar`, 2800);
-        if(ST.ciclo === "entrada" || ST.ciclo === "gale") abortCiclo();
-        else { save(); renderRouter(); }
-      }
+      // sem farejador e sem aposta → neutro
+      toast(`↻ Empate ${pay} · sem alteração no placar`, 2500);
+      save(); renderRouter();
     }
     return;
   }
@@ -1171,9 +1288,11 @@ function addRound(r, sNum){
     const sig = ST.ciclo_sinal;
     if(r === sig){
       ST.greens++;
+      aprendePadroes(true);
       toast(`✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
+      aprendePadroes(false);
       // Cor errada → decidir gale
       const a2 = analyze();
       if(a2.signal === "P" || a2.signal === "B"){
@@ -1258,6 +1377,16 @@ function addRound(r, sNum){
     }
   } else {
     // idle · cor sem entrada confirmada → só registra
+    // Conta espera de sessão: se sessão ativa e motor não deu sinal de cor, soma 1.
+    // Isso alimenta a ENTRADA DEFENSIVA quando o caos persiste (teto de 4 rodadas).
+    if(ST.sessaoAtiva){
+      const aNow = analyze();
+      if(aNow.signal === "P" || aNow.signal === "B"){
+        ST.esperaSessao = 0; // motor voltou a ter sinal → zera espera
+      } else {
+        ST.esperaSessao = (ST.esperaSessao || 0) + 1;
+      }
+    }
     save(); renderRouter();
   }
 }
@@ -1294,6 +1423,49 @@ window.recalcularEmpates = function(){
     renderRouter();
   }
 };
+
+// HTML da overlay de celebração (usado no app E no admin)
+function celebraOverlayHTML(){
+  if(!ST.celebra) return '';
+  const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
+  const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
+  const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
+  let conf = '';
+  for(let i=0;i<confCount;i++){
+    const left = Math.random()*100;
+    const dur = 1.6 + Math.random()*1.8;
+    const delay = Math.random()*1.2;
+    const c = cols[i % cols.length];
+    conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
+  }
+  const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
+  return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
+    ${rings}${conf}
+    <div class="paga-big">🔥 PAGA 🔥</div>
+    <div class="paga-x">${ST.celebra}</div>
+    <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+  </div>`;
+}
+
+// Popup de fim de sessão (meta batida ou stop) · usado no app E no admin
+function avisoSessaoHTML(){
+  if(!ST.metaAviso || ST.metaAvisoVisto) return '';
+  const meta = ST.metaAviso.tipo === 'meta';
+  const cor = meta ? 'var(--green2)' : 'var(--red2)';
+  const bg = meta ? 'rgba(34,197,94,.16),rgba(34,211,238,.06)' : 'rgba(239,68,68,.16),rgba(245,158,11,.05)';
+  const borda = meta ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)';
+  const icone = meta ? '🎯' : '🛑';
+  const titulo = meta ? 'META BATIDA' : 'STOP ATINGIDO';
+  return `<div style="position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99997;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAvisoSessao()">
+    <div style="max-width:380px;background:linear-gradient(160deg,${bg});border:2px solid ${borda};border-radius:18px;padding:28px 24px;text-align:center" onclick="event.stopPropagation()">
+      <div style="font-size:42px;margin-bottom:10px">${icone}</div>
+      <div style="font-size:20px;font-weight:900;font-family:var(--mono);color:${cor};letter-spacing:2px;margin-bottom:12px">${titulo}</div>
+      <div style="font-size:14px;color:var(--txt);font-family:var(--mono);line-height:1.6;margin-bottom:20px">${ST.metaAviso.msg}</div>
+      <button onclick="fecharAvisoSessao()" style="width:100%;padding:14px;background:linear-gradient(135deg,${bg});border:1px solid ${borda};border-radius:12px;color:${cor};font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI</button>
+      <div style="margin-top:16px;font-size:11px;color:var(--txt3);font-family:var(--mono);line-height:1.5">A próxima sessão será informada no rodapé da página.</div>
+    </div>
+  </div>`;
+}
 
 // Celebração especial para empate de alto pagamento
 function celebraPaga(pay){
@@ -1337,7 +1509,7 @@ function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
   ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
   ST.deltaAcum = {}; ST.countAcum = {};
-  ST.metaAviso = null; ST.sessaoAtiva = false;
+  ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
 }
 
@@ -1351,6 +1523,7 @@ function finalizarSessao(){
   ST.bonus = 0;
   ST.sessoes++;
   ST.sessaoAtiva = false;
+  ST.esperaSessao = 0;
   ST.metaAviso = null;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
@@ -1437,7 +1610,7 @@ function fallbackCopy(t){
 // ════════════════════════════════════════════════════════════════════════
 function buildEntryCard(a, forAdmin){
   const bomMomento = a.heat && (a.heat.state === "QUENTE" || a.heat.state === "FAVORÁVEL");
-  function cardSinalGrande(titulo, lado, sub, tieInfo){
+  function cardSinalGrande(titulo, lado, sub, tieInfo, mostrarDica){
     const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
                lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
                "rgba(245,158,11,.12),rgba(245,158,11,.04)";
@@ -1448,6 +1621,13 @@ function buildEntryCard(a, forAdmin){
       <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
       ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
       ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
+      <div style="margin-top:12px;padding:10px 12px;background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.2);border-radius:10px;text-align:left;${mostrarDica?'':'display:none'}">
+        <div style="font-size:10px;color:var(--cyan);font-family:var(--mono);letter-spacing:2px;margin-bottom:5px;font-weight:700">💡 COMO OPERAR</div>
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          Pegue entre <strong style="color:var(--txt)">3 e 4 sinais</strong> por sessão. Use o <strong style="color:var(--txt)">último sinal</strong> para recuperar o que gastou cobrindo os empates, caso nenhum empate tenha batido.<br/>
+          <strong style="color:var(--gold2)">Na cor, aposte só o valor da cor</strong> — não inclua o que você usou para cobrir o empate. Misturar os dois aumenta a perda se vier um loss.
+        </div>
+      </div>
     </div>`;
   }
 
@@ -1456,7 +1636,7 @@ function buildEntryCard(a, forAdmin){
       const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
       return forAdmin
         ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
-        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra);
+        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra, false);
     } else if(!ST.sessaoAtiva && !bomMomento){
       return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
         <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
@@ -1623,7 +1803,7 @@ function renderApp(){
         <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
         <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:28px">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS 🔥</div></div>
+        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS ✨</div></div>
       </div>
 
       <!-- META 5-0 · barra de progresso -->
@@ -1635,7 +1815,7 @@ function renderApp(){
         <div style="height:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;display:flex;gap:2px">
           ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds)>=n?'var(--green2)':'rgba(148,163,184,.15)'};border-radius:2px"></div>`).join("")}
         </div>
-        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">2 losses encerram a sessão · empates são bônus (88x conta ponto)</div>
+        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">2 loss com saldo negativo encerram a sessão · empate alto conta green, baixo é bônus</div>
       </div>
 
       ${ST.metaAviso ? `<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.15),rgba(34,211,238,.06)':'rgba(239,68,68,.12),rgba(245,158,11,.05)'});border:2px solid ${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.4)':'rgba(239,68,68,.4)'}">
@@ -1849,39 +2029,21 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v7.9 · META 5-0 · STOP 2 LOSS · GESTÃO DE BANCA</div>
+      <div class="credit">BAC BRU · v9.4 · DICA SO NO POPUP</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
-      ${ST.celebra ? (()=>{
-        const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
-        const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
-        const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
-        let conf = '';
-        for(let i=0;i<confCount;i++){
-          const left = Math.random()*100;
-          const dur = 1.6 + Math.random()*1.8;
-          const delay = Math.random()*1.2;
-          const c = cols[i % cols.length];
-          conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
-        }
-        const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
-        return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
-        ${rings}
-        ${conf}
-        <div class="paga-big">🔥 PAGA 🔥</div>
-        <div class="paga-x">${ST.celebra}</div>
-        <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
-      </div>`;
-      })() : ''}
+      ${celebraOverlayHTML()}
+      ${avisoSessaoHTML()}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
         <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
           <div style="font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.9">
             🎯 <strong style="color:var(--green2)">Meta da sessão: 5-0 líquido.</strong> Bateu 5 greens de saldo? Pare no lucro.<br/><br/>
-            🛑 <strong style="color:var(--red2)">2 losses encerram a sessão.</strong> Sem exceção. Protege a banca.<br/><br/>
+            🛑 <strong style="color:var(--red2)">2 loss com saldo negativo encerram a sessão.</strong> Se o saldo ainda estiver positivo ou zerado, dá pra seguir. Protege a banca.<br/><br/>
             💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong> Nunca mais que isso por entrada.<br/><br/>
             ⚡ <strong style="color:var(--gold2)">Dobra no gale é opcional.</strong> Se preferir não dobrar, tudo bem — reduz o risco.<br/><br/>
-            🔥 <strong style="color:var(--gold2)">Empates são bônus</strong> — dinheiro extra no bolso, não contam pra meta (só o 88x conta ponto).<br/><br/>
+            🔥 <strong style="color:var(--gold2)">Empates pagam bônus</strong> — empate alto (10x+) conta green; empate baixo (4x/6x) é bônus extra. Empate na sua entrada de cor sempre conta green.<br/><br/>
+            🎲 <strong style="color:var(--cyan)">Estratégia dos empates:</strong> pegue entre <strong style="color:var(--txt)">3 e 4 sinais</strong> por sessão. Use o <strong style="color:var(--txt)">último sinal</strong> para recuperar o que gastou cobrindo os empates, caso nenhum tenha batido. <strong style="color:var(--gold2)">Na cor, aposte só o valor da cor</strong> — não inclua o que usou para cobrir o empate. Misturar os dois aumenta sua perda se vier um loss.<br/><br/>
             <span style="color:var(--txt3);font-size:11px">As entradas são sinais probabilísticos, não garantias. Aposte apenas o que pode perder. Jogo é variância — a disciplina protege você.</span>
           </div>
           <button onclick="fecharAviso()" style="width:100%;margin-top:18px;padding:14px;background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(34,211,238,.1));border:1px solid rgba(34,197,94,.4);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">ENTENDI · COMEÇAR</button>
@@ -2429,6 +2591,8 @@ function renderAdminPanel(){
     <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
 
     <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
+    ${celebraOverlayHTML()}
+    ${avisoSessaoHTML()}
   </div>`;
 }
 
@@ -2486,6 +2650,7 @@ window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
 window.fecharAviso = function(){ ST.avisoVisto = true; renderRouter(); };
+window.fecharAvisoSessao = function(){ ST.metaAvisoVisto = true; renderRouter(); };
 
 renderRouter();
 initFirebaseSync();
