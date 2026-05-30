@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v6.7 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v8.0 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -104,7 +104,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .cell-empty{width:12px;height:12px}
 /* BEAD ROAD NUMÉRICO */
 .bead-grid{display:grid;grid-template-rows:repeat(6,22px);grid-auto-flow:column;grid-auto-columns:22px;gap:2px;min-width:max-content}
-.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:var(--mono);color:#fff}
+.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;font-weight:800;font-family:var(--mono);color:#fff;flex:0 0 auto}
 .bead.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af)}
 .bead.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b)}
 .bead.t{background:radial-gradient(circle at 30% 30%,#fcd34d,#92400e)}
@@ -1121,23 +1121,20 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
-    const is88 = pay === "88x";
 
     if(hunterAntes){
-      // 88x conta como ponto na meta · os outros empates são BÔNUS (não contam pra meta 5-0)
-      if(is88){
-        ST.greens++;
+      // Empate com farejador ativo = GREEN (volta ao comportamento anterior)
+      ST.greens++;
+      if(isHighPay){
         celebraPaga(pay);
       } else {
-        ST.bonus = (ST.bonus||0) + 1;
-        if(isHighPay){ celebraPaga(pay); }
-        else { toast(`✅ BÔNUS EMPATE · ${pay} (não conta na meta)`, 2800); }
+        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
       }
 
       // Resolução do ciclo:
       // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
       // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
-      // · aguarda_gale + empate baixo (4x, 6x): bônus contado mas gale continua
+      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
       if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
         abortCiclo();
       } else if(ST.ciclo === "aguarda_gale" && isHighPay){
@@ -1153,6 +1150,7 @@ function addRound(r, sNum){
       // o pagamento do empate é real → celebra mesmo com farejador inativo.
       const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
       if(isHighPay && tinhaAposta){
+        ST.greens++;
         celebraPaga(pay);
         abortCiclo();
       } else {
@@ -1500,14 +1498,16 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
-  // Bead road render (últimas 6×N)
+  // Bead road render — últimas 90 rodadas (15 colunas de 6), mais novas à direita
   const beadCells = [];
-  const colCount = Math.ceil(ST.H.length / 6);
+  const BEAD_MAX = 90;
+  const beadH = ST.H.slice(-BEAD_MAX);
+  const colCount = Math.ceil(beadH.length / 6);
   for(let c=0;c<colCount;c++){
     for(let r=0;r<6;r++){
       const idx = c*6+r;
-      if(idx < ST.H.length){
-        const x = ST.H[idx];
+      if(idx < beadH.length){
+        const x = beadH[idx];
         beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
       } else {
         beadCells.push(`<div></div>`);
@@ -1623,7 +1623,6 @@ function renderApp(){
         <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
         <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:28px">${rate}%</div><div class="stat-l">RATE</div></div>
-        <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS 🔥</div></div>
       </div>
 
       <!-- META 5-0 · barra de progresso -->
@@ -1707,7 +1706,7 @@ function renderApp(){
 
       <!-- BEAD ROAD NUMÉRICO -->
       <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
-      <div class="card road">
+      <div class="card road" id="beadRoad">
         <div class="bead-grid">${beadCells.join("")}</div>
       </div>
 
@@ -1849,7 +1848,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v7.9 · META 5-0 · STOP 2 LOSS · GESTÃO DE BANCA</div>
+      <div class="credit">BAC BRU · v8.0 · EMPATE=GREEN · ANIM 10x+ · BEAD OK</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${ST.celebra ? (()=>{
@@ -1899,6 +1898,10 @@ function renderApp(){
   if(ja){
     ja.addEventListener("input", e => { ST.injTxt = e.target.value; });
   }
+
+  // Rolar os gráficos horizontais até o fim — mostra as rodadas mais recentes
+  const br = document.getElementById("beadRoad");
+  if(br){ br.scrollLeft = br.scrollWidth; }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2339,7 +2342,6 @@ function renderAdminPanel(){
       <div class="stat"><div class="stat-v g" style="font-size:22px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
       <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
       <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
-      <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
     </div>
     <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds)>=5?'rgba(34,197,94,.12)':ST.reds>=2?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
       <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5-0 · saldo líquido: </span>
@@ -2452,7 +2454,21 @@ function bindAuthInputs(){
 }
 
 window.reg = function(r){
-  const soma = ST.somaIn;
+  // Lê a soma DIRETO do campo no instante do clique (não depende do listener de input,
+  // que pode não ter disparado se houve re-render ou clique rápido).
+  const el = document.getElementById("soma");
+  const soma = el ? el.value : ST.somaIn;
+  ST.somaIn = soma;
+
+  // Empate precisa de soma válida (2 a 12) — é ela que define o pagamento.
+  if(r === "T"){
+    const n = parseInt(soma);
+    if(!n || n < 2 || n > 12){
+      toast("⚠ Digite a SOMA do empate (2 a 12) antes de marcar EMPATE", 3200);
+      return;
+    }
+  }
+
   addRound(r, soma);
   ST.somaIn = "";
 };
