@@ -1121,23 +1121,20 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
-    const is88 = pay === "88x";
 
     if(hunterAntes){
-      // 88x conta como ponto na meta · os outros empates são BÔNUS (não contam pra meta 5-0)
-      if(is88){
-        ST.greens++;
+      // Empate com farejador ativo = GREEN (volta ao comportamento anterior)
+      ST.greens++;
+      if(isHighPay){
         celebraPaga(pay);
       } else {
-        ST.bonus = (ST.bonus||0) + 1;
-        if(isHighPay){ celebraPaga(pay); }
-        else { toast(`✅ BÔNUS EMPATE · ${pay} (não conta na meta)`, 2800); }
+        toast(`✅ GREEN EMPATE · ${pay}`, 2800);
       }
 
       // Resolução do ciclo:
       // · entrada/gale: empate resolve a aposta de cor (push) → encerra ciclo
       // · aguarda_gale + empate ALTO: gale cancelado (pagamento cobriu a perda)
-      // · aguarda_gale + empate baixo (4x, 6x): bônus contado mas gale continua
+      // · aguarda_gale + empate baixo (4x, 6x): green contado mas gale continua
       if(ST.ciclo === "entrada" || ST.ciclo === "gale"){
         abortCiclo();
       } else if(ST.ciclo === "aguarda_gale" && isHighPay){
@@ -1153,6 +1150,7 @@ function addRound(r, sNum){
       // o pagamento do empate é real → celebra mesmo com farejador inativo.
       const tinhaAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
       if(isHighPay && tinhaAposta){
+        ST.greens++;
         celebraPaga(pay);
         abortCiclo();
       } else {
