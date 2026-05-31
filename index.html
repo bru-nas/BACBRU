@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v9.7 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.0 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -1165,6 +1165,7 @@ function confirmEntry(){
   // SESSÃO INICIA AQUI · só termina ao clicar finalizar
   ST.sessaoAtiva = true;
   ST.esperaSessao = 0;
+  ST.ofereceParada3 = false;
   ST.metaAviso = null;
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
@@ -1183,7 +1184,8 @@ function abortCiclo(){
   ST.ciclo_gale_dec = null;
   ST.ciclo_gale_tie = null;
   ST.ciclo_aguarda_count = 0;
-  checarMetaStop();
+  const estadoMesa = (function(){ try{ return analyze().heat.state; }catch(e){ return null; } })();
+  checarMetaStop(estadoMesa);
   save(); renderRouter();
 }
 
@@ -1191,25 +1193,35 @@ function abortCiclo(){
 // GESTÃO DE RISCO · Meta 5-0 líquido · 2 loss finalizam a sessão
 // Empate é bônus (não conta pra meta), EXCETO 88x que conta como ponto extra
 // ════════════════════════════════════════════════════════════════════════
-const META_LIQUIDO = 5;   // greens líquidos para bater a meta
-const STOP_LOSS = 2;      // reds finalizam a sessão
-function checarMetaStop(){
+const META_LIQUIDO = 5;   // greens líquidos ponderados para bater a meta
+const STOP_LOSS = 2;      // reds para avaliar stop
+const PESO_RED = 3;       // cada red consome 3 greens
+function checarMetaStop(estadoMesa){
   if(!ST.sessaoAtiva) return;
-  const liquido = ST.greens - ST.reds;
-  // STOP LOSS · 2 reds só finalizam SE o líquido estiver negativo.
-  // Se deu 2 loss mas o líquido ainda está >= 0 (greens cobrindo), a sessão continua.
+  // Líquido PONDERADO: cada red vale -3 greens.
+  const liquido = ST.greens - (ST.reds * PESO_RED);
+  // STOP · 2 loss e líquido ainda negativo (greens não recuperaram os reds) → encerra
   if(ST.reds >= STOP_LOSS && liquido < 0){
-    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} loss e saldo negativo (${liquido}) · sessão encerrada para proteger a banca` };
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} loss · saldo ponderado ${liquido} (cada red = -3 greens) · sessão encerrada para proteger a banca` };
     ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
   }
-  // META · 5 líquido
+  // META · 5 greens líquidos ponderados (já descontados os reds)
   if(liquido >= META_LIQUIDO){
     ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
     ST.metaAvisoVisto = false;
     ST.sessaoAtiva = false;
     return;
+  }
+  // PARADA OPCIONAL · +3 líquido → SÓ oferece quando a MESA está RUIM (fria/congelada).
+  // Em mesa boa segue direto até os 5, sem poluir com popup.
+  const mesaRuim = (estadoMesa === "FRIA" || estadoMesa === "CONGELADA");
+  if(liquido >= 3 && liquido < META_LIQUIDO && mesaRuim && !ST.ofereceParada3){
+    ST.ofereceParada3 = true;
+    ST.metaAviso = { tipo:"opcional", msg:`✅ +${liquido} líquidos garantidos e a mesa está ruim agora. Pode parar aqui no lucro — ou seguir até os 5. Você decide.` };
+    ST.metaAvisoVisto = false;
+    // sessão continua ativa de propósito
   }
 }
 
@@ -1446,6 +1458,21 @@ function celebraOverlayHTML(){
 function avisoSessaoHTML(){
   if(!ST.metaAviso || ST.metaAvisoVisto) return '';
   const meta = ST.metaAviso.tipo === 'meta';
+  const opcional = ST.metaAviso.tipo === 'opcional';
+
+  if(opcional){
+    // Parada opcional em +3 · tom dourado, dois caminhos: parar ou seguir
+    return `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99997;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAvisoSessao()">
+      <div style="max-width:380px;background:linear-gradient(160deg,rgba(245,158,11,.16),rgba(34,211,238,.05));border:2px solid rgba(245,158,11,.5);border-radius:18px;padding:28px 24px;text-align:center" onclick="event.stopPropagation()">
+        <div style="font-size:42px;margin-bottom:10px">✅</div>
+        <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--gold2);letter-spacing:2px;margin-bottom:12px">LUCRO GARANTIDO</div>
+        <div style="font-size:14px;color:var(--txt);font-family:var(--mono);line-height:1.6;margin-bottom:20px">${ST.metaAviso.msg}</div>
+        <button onclick="encerrarNoLucro()" style="width:100%;padding:14px;margin-bottom:10px;background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(34,211,238,.08));border:1px solid rgba(34,197,94,.45);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">PARAR AGORA NO LUCRO</button>
+        <button onclick="fecharAvisoSessao()" style="width:100%;padding:14px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:12px;color:var(--txt2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer">SEGUIR ATÉ OS 5</button>
+      </div>
+    </div>`;
+  }
+
   const cor = meta ? 'var(--green2)' : 'var(--red2)';
   const bg = meta ? 'rgba(34,197,94,.16),rgba(34,211,238,.06)' : 'rgba(239,68,68,.16),rgba(245,158,11,.05)';
   const borda = meta ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)';
@@ -1517,6 +1544,7 @@ function finalizarSessao(){
   ST.reds = 0;
   ST.bonus = 0;
   ST.sessoes++;
+  ST.ofereceParada3 = false;
   ST.sessaoAtiva = false;
   ST.esperaSessao = 0;
   ST.metaAviso = null;
@@ -1801,16 +1829,16 @@ function renderApp(){
         <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS ✨</div></div>
       </div>
 
-      <!-- META 5-0 · barra de progresso -->
+      <!-- META · barra de progresso (líquido ponderado: red = -3 greens) -->
       <div class="card" style="padding:12px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-          <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">🎯 META DA SESSÃO · 5-0 LÍQUIDO</div>
-          <div style="font-size:13px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</div>
+          <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">🎯 META DA SESSÃO · 5 LÍQUIDOS</div>
+          <div style="font-size:13px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds*3)>=5?'var(--green2)':(ST.greens-ST.reds*3)<0?'var(--red2)':'var(--txt)'}">${(ST.greens-ST.reds*3)>=0?'+':''}${ST.greens-ST.reds*3}</div>
         </div>
         <div style="height:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;display:flex;gap:2px">
-          ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds)>=n?'var(--green2)':'rgba(148,163,184,.15)'};border-radius:2px"></div>`).join("")}
+          ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds*3)>=n?'var(--green2)':'rgba(148,163,184,.15)'};border-radius:2px"></div>`).join("")}
         </div>
-        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">2 loss com saldo negativo encerram a sessão · empate alto conta green, baixo é bônus</div>
+        <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">cada red consome 3 greens · 2 loss sem recuperação encerram · empate alto=green, baixo=bônus</div>
       </div>
 
       ${ST.metaAviso ? `<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.15),rgba(34,211,238,.06)':'rgba(239,68,68,.12),rgba(245,158,11,.05)'});border:2px solid ${ST.metaAviso.tipo==='meta'?'rgba(34,197,94,.4)':'rgba(239,68,68,.4)'}">
@@ -2024,7 +2052,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v9.7 · POPUP COM SCROLL</div>
+      <div class="credit">BAC BRU · v10.0 · PARADA +3 SO EM MESA RUIM</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
@@ -2502,9 +2530,9 @@ function renderAdminPanel(){
       <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
       <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
     </div>
-    <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds)>=5?'rgba(34,197,94,.12)':ST.reds>=2?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
-      <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5-0 · saldo líquido: </span>
-      <span style="font-size:15px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds)>=5?'var(--green2)':(ST.greens-ST.reds)<0?'var(--red2)':'var(--txt)'}">${ST.greens-ST.reds>=0?'+':''}${ST.greens-ST.reds}</span>
+    <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds*3)>=5?'rgba(34,197,94,.12)':(ST.reds>=2&&(ST.greens-ST.reds*3)<0)?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5 líquidos (red = -3) · saldo: </span>
+      <span style="font-size:15px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds*3)>=5?'var(--green2)':(ST.greens-ST.reds*3)<0?'var(--red2)':'var(--txt)'}">${(ST.greens-ST.reds*3)>=0?'+':''}${ST.greens-ST.reds*3}</span>
       <span style="font-size:10px;font-family:var(--mono);color:var(--txt3)"> · stop em ${ST.reds}/2 loss</span>
       ${ST.metaAviso?`<div style="margin-top:6px;font-size:12px;font-weight:700;font-family:var(--mono);color:${ST.metaAviso.tipo==='meta'?'var(--green2)':'var(--red2)'}">${ST.metaAviso.msg}</div>`:''}
     </div>
@@ -2646,6 +2674,13 @@ window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
 window.fecharAviso = function(){ ST.avisoVisto = true; renderRouter(); };
 window.fecharAvisoSessao = function(){ ST.metaAvisoVisto = true; renderRouter(); };
+window.encerrarNoLucro = function(){
+  const liq = ST.greens - (ST.reds * 3);
+  ST.metaAviso = { tipo:"meta", msg:`✅ Encerrado no lucro · +${liq} líquidos · decisão inteligente em mesa difícil!` };
+  ST.metaAvisoVisto = false;
+  ST.sessaoAtiva = false;
+  renderRouter();
+};
 
 renderRouter();
 initFirebaseSync();
