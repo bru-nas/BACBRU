@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.0 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.1 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -264,6 +264,8 @@ function pushToFirebase(){
     ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
     sessaoAtiva: !!ST.sessaoAtiva,
     esperaSessao: ST.esperaSessao || 0,
+    metaAviso: ST.metaAviso || null,
+    metaAvisoVisto: !!ST.metaAvisoVisto,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -308,6 +310,14 @@ function initFirebaseSync(){
     ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
     ST.sessaoAtiva = !!data.sessaoAtiva;
     ST.esperaSessao = data.esperaSessao || 0;
+    // Aviso de meta/stop sincronizado: se mudou o aviso recebido, reapresenta.
+    const novoAviso = data.metaAviso || null;
+    const msgAntiga = ST.metaAviso ? ST.metaAviso.msg : null;
+    const msgNova = novoAviso ? novoAviso.msg : null;
+    if(msgNova !== msgAntiga){
+      ST.metaAviso = novoAviso;
+      ST.metaAvisoVisto = !!data.metaAvisoVisto;
+    }
     SUPPRESS_PUSH = false;
     renderRouter();
   }, err => {
@@ -2052,7 +2062,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.0 · PARADA +3 SO EM MESA RUIM</div>
+      <div class="credit">BAC BRU · v10.1 · POPUP META-STOP SINCRONIZADO</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
