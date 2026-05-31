@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v9.6 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v9.7 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -2024,13 +2024,13 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v9.6 · EMPATE REGRA DEFINITIVA</div>
+      <div class="credit">BAC BRU · v9.7 · POPUP COM SCROLL</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
       ${avisoSessaoHTML()}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
-        <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px" onclick="event.stopPropagation()">
+        <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch" onclick="event.stopPropagation()">
           <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cyan);letter-spacing:1px;margin-bottom:14px;text-align:center">⚠️ COMO OPERAR COM SEGURANÇA</div>
           <div style="font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.9">
             🎯 <strong style="color:var(--green2)">Meta da sessão: 5-0 líquido.</strong> Bateu 5 greens de saldo? Pare no lucro.<br/><br/>
