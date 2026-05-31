@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v9.4 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v9.6 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -1239,41 +1239,36 @@ function addRound(r, sNum){
   ST.H.push({r, s});
 
   // ════════════════════════════════════════════════════════════════════════
-  // EMPATE · farejador ativo = GREEN sempre (aposta independente da cor)
-  // Bônus: empate ALTO (10x/25x/88x) durante aguarda_gale CANCELA o gale
+  // EMPATE · regras definitivas:
+  // 1) Na entrada de cor (entrada/gale/aguarda_gale) → GREEN, encerra ciclo (push)
+  // 2) No farejador, fora de aposta → alto (10x+)=GREEN, baixo=BÔNUS
+  // 3) Sem farejador e sem aposta → neutro
+  // Empate NUNCA gera gale, NUNCA é loss, NUNCA deixa ciclo aberto.
   // ════════════════════════════════════════════════════════════════════════
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
-    const naEntrada = (ST.ciclo === "entrada" || ST.ciclo === "gale");
+    const temAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale" || ST.ciclo === "aguarda_gale");
 
-    if(naEntrada){
-      // EMPATE NA ENTRADA DE COR = GREEN sempre (push a favor, qualquer pagamento).
-      // Inclui o 4x/6x — sua aposta de cor é devolvida e o ciclo fecha como acerto.
+    if(temAposta){
+      // Estava com aposta na mesa → push, sempre green, encerra tudo
       ST.greens++;
       if(isHighPay) celebraPaga(pay);
       else toast(`✅ GREEN · empate na entrada · ${pay}`, 2800);
       abortCiclo();
-    } else if(ST.ciclo === "aguarda_gale" && isHighPay){
-      // empate alto cobre a entrada perdida → cancela o gale, conta green
-      ST.greens++;
-      celebraPaga(pay);
-      toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4500);
-      abortCiclo();
     } else if(hunterAntes && isHighPay){
-      // farejador ativo + empate ALTO (fora de aposta) = GREEN + celebração
+      // Farejador ativo + empate alto → GREEN
       ST.greens++;
       celebraPaga(pay);
       save(); renderRouter();
     } else if(hunterAntes && !isHighPay){
-      // farejador ativo + empate BAIXO (4x/6x) = BÔNUS, NÃO conta green
+      // Farejador ativo + empate baixo → BÔNUS
       ST.bonus = (ST.bonus || 0) + 1;
-      toast(`✨ BÔNUS · empate ${pay} (não conta na meta)`, 2800);
-      if(ST.ciclo === "aguarda_gale") { save(); renderRouter(); }
-      else { save(); renderRouter(); }
+      toast(`✨ BÔNUS · empate ${pay}`, 2800);
+      save(); renderRouter();
     } else {
-      // sem farejador e sem aposta → neutro
-      toast(`↻ Empate ${pay} · sem alteração no placar`, 2500);
+      // Sem farejador, sem aposta → neutro
+      toast(`↻ Empate ${pay}`, 2200);
       save(); renderRouter();
     }
     return;
@@ -2029,7 +2024,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v9.4 · DICA SO NO POPUP</div>
+      <div class="credit">BAC BRU · v9.6 · EMPATE REGRA DEFINITIVA</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
