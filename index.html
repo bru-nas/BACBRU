@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.3 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.8 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -897,11 +897,14 @@ function analyze(){
   }
 
   // ── CONVERGÊNCIA ──
-  // Agrupa por lado e soma boost se 2+ padrões apontam o mesmo
+  // Agrupa por lado e soma boost se 2+ padrões apontam o mesmo.
+  // IMPORTANTE: o sinal de ENTRADA só pode ser P ou B. NUNCA "T".
+  // Empate não é entrada — o farejador de empate (TIE) serve só como cobertura
+  // complementar de uma entrada de cor, nunca como jogada principal.
   const byBet = {P:[], B:[], T:[]};
   patterns.forEach(p=>{ if(byBet[p.sig]) byBet[p.sig].push(p); });
   let bestSide = null, bestConf = 0, bestReason = "";
-  for(const side of ["P","B","T"]){
+  for(const side of ["P","B"]){
     if(byBet[side].length === 0) continue;
     let conf = Math.max(...byBet[side].map(p=>p.conf));
     if(byBet[side].length >= 3) conf += W.boost_conv3;
@@ -1148,21 +1151,55 @@ function analyze(){
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // ENTRADA DEFENSIVA · se a sessão está ATIVA e o motor já aguardou demais
-  // (mesa caótica no meio do jogo), libera a entrada de MENOR RISCO em vez de
-  // deixar o operador exposto esperando. Marca para encerrar no próximo green.
-  // Teto: 4 rodadas aguardando. Não age em mesa CONGELADA (aí é melhor parar).
+  // FILTRO DE CONVERGÊNCIA ESCALONADO · critério presente em TODOS os estados,
+  // mais rígido conforme a mesa piora. Os gráficos derivados convergem de forma
+  // matemática nos bons momentos; exigir mais convergência em mesa ruim corta
+  // as entradas fracas. Mesa boa tem critério leve (aproveita), mesa ruim só premium.
+  // derivedAlign: +n = n estradas derivadas STABLE concordando (0 a 3).
   // ════════════════════════════════════════════════════════════════════════
-  const TETO_ESPERA = 4;
+  if(out.signal === "P" || out.signal === "B"){
+    const align = out.derivedAlign || 0;
+    const nPad = byBet[out.signal] ? byBet[out.signal].length : 0;
+    const boa = (tableState === "QUENTE" || tableState === "FAVORÁVEL");
+    const ruim = (tableState === "FRIA" || tableState === "CONGELADA");
+    let passa;
+    if(boa){
+      // mesa boa: critério leve — pelo menos 1 gráfico convergindo OU confiança alta OU 2+ padrões
+      passa = (align >= 1) || (out.conf >= 0.80) || (nPad >= 2);
+    } else if(ruim){
+      // mesa ruim: só PREMIUM — convergência total dos 3 gráficos derivados
+      passa = (align >= 3);
+    } else {
+      // neutra: convergência parcial (2 gráficos) E confiança boa, OU padrão muito forte
+      passa = (align >= 2 && out.conf >= 0.78) || (out.conf >= 0.85 && nPad >= 2);
+    }
+    if(!passa){
+      out.signal = "W";
+      out.reason = `Mesa ${tableState} · convergência insuficiente (${align}/3 gráficos) para o critério · AGUARDA`;
+      out.filtradoConvergencia = true;
+    } else if(ruim){
+      out.reason = `⭐ PREMIUM · 3 gráficos convergindo em mesa ${tableState} · ${out.reason}`;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ENTRADA DEFENSIVA · se a sessão está ATIVA e o motor já aguardou demais,
+  // libera a entrada de MENOR RISCO em vez de deixar o operador parado.
+  // Teto de espera ESCALONADO por estado:
+  //   · mesa FRIA/NEUTRA/boa: 4 rodadas
+  //   · mesa CONGELADA (a pior): 6 rodadas (espera mais, dá tempo da mesa melhorar)
+  // Marca para encerrar no próximo green. Nunca fica 100% parada.
+  // ════════════════════════════════════════════════════════════════════════
+  const TETO_ESPERA = (tableState === "CONGELADA") ? 6 : 4;
   out.defensiva = false;
   if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
-     && tableState !== "CONGELADA"
      && (ST.esperaSessao || 0) >= TETO_ESPERA
      && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
     out.signal = bestSide;
     out.conf = bestConf;
     out.defensiva = true;
-    out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
+    const ex = (tableState === "CONGELADA") ? " (mesa congelada · entrada de menor risco)" : "";
+    out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas${ex} · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
   }
 
   // Padrão narrativo
@@ -1171,6 +1208,11 @@ function analyze(){
   } else {
     out.padrao = `Equilíbrio · P=${out.distrib.P}% B=${out.distrib.B}% T=${out.distrib.T}%`;
   }
+
+  // ── TRAVA FINAL DE SEGURANÇA ──
+  // O sinal de entrada JAMAIS pode ser "T" (empate). Empate não é entrada.
+  // Se por qualquer caminho o signal virou "T", força AGUARDA.
+  if(out.signal === "T") out.signal = "W";
 
   return out;
 }
@@ -1190,6 +1232,20 @@ function aprendePadroes(acertou){
   pats.forEach(name => {
     ST.countAcum[name] = (ST.countAcum[name] || 0) + 1;
     ST.deltaAcum[name] = (ST.deltaAcum[name] || 0) + (acertou ? 1 : -1);
+  });
+}
+
+// APRENDIZADO POR RODADA · avalia cada padrão de cor detectado contra o resultado real.
+// Para cada padrão com sinal P ou B, credita se previu certo, debita se errou.
+// Roda em TODA rodada (em sessão ou não), dando amostras rápidas e estatística real.
+function aprendeRodada(patterns, resultadoReal){
+  if(!patterns || !patterns.length) return;
+  if(!ST.deltaAcum) ST.deltaAcum = {};
+  if(!ST.countAcum) ST.countAcum = {};
+  patterns.forEach(p => {
+    if(p.sig !== "P" && p.sig !== "B") return; // só padrões de cor; TIE não entra
+    ST.countAcum[p.name] = (ST.countAcum[p.name] || 0) + 1;
+    ST.deltaAcum[p.name] = (ST.deltaAcum[p.name] || 0) + (p.sig === resultadoReal ? 1 : -1);
   });
 }
 
@@ -1310,6 +1366,16 @@ function addRound(r, sNum){
   ST.H.push({r, s});
 
   // ════════════════════════════════════════════════════════════════════════
+  // APRENDIZADO POR RODADA · cada padrão detectado ANTES desta rodada é avaliado
+  // contra o resultado REAL que acabou de cair (r), em TODA rodada registrada,
+  // esteja em sessão ou não. Assim cada padrão acumula amostras de verdade e o
+  // fatorAprendido ajusta o peso rápido conforme o desempenho real na mesa.
+  // Empates (r==="T") não avaliam padrões de cor (P/B), pois não confirmam nem negam.
+  if(r === "P" || r === "B"){
+    aprendeRodada(aBefore.patterns || [], r);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // EMPATE · regras definitivas:
   // 1) Na entrada de cor (entrada/gale/aguarda_gale) → GREEN, encerra ciclo (push)
   // 2) No farejador, fora de aposta → alto (10x+)=GREEN, baixo=BÔNUS
@@ -1373,11 +1439,11 @@ function addRound(r, sNum){
     const sig = ST.ciclo_sinal;
     if(r === sig){
       ST.greens++;
-      aprendePadroes(true);
+      // (aprendizado agora é por rodada · aprendeRodada já creditou os padrões acima)
       toast(`✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
-      aprendePadroes(false);
+      // (aprendizado por rodada · aprendeRodada já debitou os padrões acima)
       // Cor errada → decidir gale
       const a2 = analyze();
       if(a2.signal === "P" || a2.signal === "B"){
@@ -1735,9 +1801,12 @@ function buildEntryCard(a, forAdmin){
   if(ST.ciclo === "idle"){
     if(a.signal && a.signal !== "W"){
       const tieExtra = a.tie.active ? (a.hunter && a.hunter.payoutProvavel || a.tie.payout) : null;
+      // ADMIN: vê o botão de confirmar a entrada.
+      // ASSINANTE: NÃO vê a entrada antes da confirmação do admin — vê tela de espera.
+      // (a entrada confirmada aparece pra ele quando o ciclo vira "entrada", sincronizado via Firebase)
       return forAdmin
         ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
-        : cardSinalGrande("▶ SINAL CONFIRMADO", a.signal, `${(a.conf*100).toFixed(0)}% de confiança`, tieExtra, false);
+        : `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ SESSÃO ATIVA · analisando a mesa · aguarde o próximo sinal</div></div>`;
     } else if(!ST.sessaoAtiva && !bomMomento){
       return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
         <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
@@ -2130,7 +2199,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.3 · EMPATE BAIXO NO GALE</div>
+      <div class="credit">BAC BRU · v10.8 · DEFENSIVA NA CONGELADA APOS 6</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
