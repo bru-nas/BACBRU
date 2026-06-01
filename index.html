@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.2 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.3 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -1319,10 +1319,29 @@ function addRound(r, sNum){
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
-    const temAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale" || ST.ciclo === "aguarda_gale");
+
+    // CASO ESPECIAL · aguarda_gale (perdeu a entrada, gale ainda não saiu):
+    //  · empate ALTO (10x/25x/88x) cobre a entrada perdida → GREEN e encerra (sem gale)
+    //  · empate BAIXO (4x/6x) NÃO cobre → o gale tem que sair. Conta bônus e mantém o ciclo.
+    if(ST.ciclo === "aguarda_gale"){
+      if(isHighPay){
+        ST.greens++;
+        celebraPaga(pay);
+        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4000);
+        abortCiclo();
+      } else {
+        ST.bonus = (ST.bonus || 0) + 1;
+        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE (empate baixo não cobre)`, 3500);
+        // mantém ST.ciclo em aguarda_gale → o gale será disparado normalmente
+        save(); renderRouter();
+      }
+      return;
+    }
+
+    const temAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
 
     if(temAposta){
-      // Estava com aposta na mesa → push, sempre green, encerra tudo
+      // Estava com aposta na mesa (entrada ou gale já lançado) → push, green, encerra
       ST.greens++;
       if(isHighPay) celebraPaga(pay);
       else toast(`✅ GREEN · empate na entrada · ${pay}`, 2800);
@@ -2111,7 +2130,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.2 · PADRAO 2-1 INDEPENDENTE</div>
+      <div class="credit">BAC BRU · v10.3 · EMPATE BAIXO NO GALE</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
