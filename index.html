@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.1 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.2 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -192,6 +192,7 @@ let SUPPRESS_PUSH = false;
 const DEFAULT_WEIGHTS = {
   PP5: 0.87, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
+  C21: 0.78,
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
   DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
@@ -713,6 +714,54 @@ function analyze(){
     if(c4[0].r === c4[1].r && c4[1].r === c4[2].r && c4[3].r !== c4[2].r){
       add("B31", opos(c4[3].r), W.B31, "Bloco 3-1 · quebra esperada para anterior");
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // CICLO 2-1 (DOIS-UM) · padrão XXY XXY repetido (ex.: B B P B B P B B P ...)
+  // O motor antes confundia isso com Zigzag e entrava na quebra. Agora segue o ciclo.
+  // Detecta o ciclo nas últimas 6-9 jogadas e prevê a próxima conforme a posição.
+  // ════════════════════════════════════════════════════════════════════════
+  const c9 = last(col, 9);
+  function detecta21(seq){
+    if(seq.length < 7) return null; // precisa de margem pra confirmar 2 ciclos
+    const r = seq.map(x=>x.r);
+    const n = r.length;
+    // Testa as 3 fases de um ciclo de período 3 do tipo XXY (par + ímpar).
+    // Para cada fase, verifica se TODA a sequência (de trás pra frente) bate
+    // com o molde XXY repetido, e então prevê a próxima posição.
+    for(let fase=0; fase<3; fase++){
+      let ok=true, lado=null, casados=0;
+      // posição dentro do ciclo: (índice - fase) mod 3 → 0,1 = par(X) · 2 = ímpar(Y)
+      for(let i=n-1; i>=0; i--){
+        const posCiclo = (((i - fase) % 3) + 3) % 3;
+        const ehPar = (posCiclo === 0 || posCiclo === 1); // deve ser X
+        if(lado===null){
+          // estabelece o lado X a partir de uma posição de par
+          if(ehPar) lado = r[i];
+          else { /* posição ímpar: lado Y = oposto, definimos depois */ }
+        }
+        if(lado!==null){
+          const esperado = ehPar ? lado : opos(lado);
+          if(r[i] === esperado){ casados++; }
+          else { ok = (n-1-i) >= 6; break; } // tolera divergência só bem no começo (≥6 casados)
+        }
+      }
+      if(ok && lado && casados >= 6){
+        // prevê a próxima: posição n no ciclo
+        const posProx = (((n - fase) % 3) + 3) % 3;
+        const ehParProx = (posProx === 0 || posProx === 1);
+        const prox = ehParProx ? lado : opos(lado);
+        return {sig:prox, ciclos:Math.floor(casados/3), lado};
+      }
+    }
+    return null;
+  }
+  const ciclo21 = detecta21(c9);
+  if(ciclo21){
+    // Detectado de forma INDEPENDENTE, como qualquer outro padrão.
+    // Peso inicial neutro · o aprendizado (fatorAprendido) ajusta sozinho ao longo das sessões.
+    // NÃO remove o zigzag nem nenhum outro — todos concorrem em pé de igualdade.
+    add("C21", ciclo21.sig, W.C21 || 0.78, `Ciclo 2-1 (dois-um) · ${ciclo21.ciclos} ciclos`);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -2062,7 +2111,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.1 · POPUP META-STOP SINCRONIZADO</div>
+      <div class="credit">BAC BRU · v10.2 · PADRAO 2-1 INDEPENDENTE</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
