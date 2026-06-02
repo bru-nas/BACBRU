@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.8 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v10.9 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -252,6 +252,7 @@ function pushToFirebase(){
     weights: ST.weights,
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
+    tieAcum: ST.tieAcum || {},
     sessoes: ST.sessoes,
     ciclo: ST.ciclo,
     ciclo_sinal: ST.ciclo_sinal,
@@ -265,6 +266,7 @@ function pushToFirebase(){
     ciclo_aguarda_count: ST.ciclo_aguarda_count || 0,
     sessaoAtiva: !!ST.sessaoAtiva,
     esperaSessao: ST.esperaSessao || 0,
+    celebra: ST.celebra || null,
     metaAviso: ST.metaAviso || null,
     metaAvisoVisto: !!ST.metaAvisoVisto,
     updatedAt: Date.now()
@@ -298,6 +300,7 @@ function initFirebaseSync(){
     if(data.weights) ST.weights = {...DEFAULT_WEIGHTS, ...data.weights};
     if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
     if(data.countAcum) ST.countAcum = data.countAcum;
+    if(data.tieAcum) ST.tieAcum = data.tieAcum;
     if(typeof data.sessoes === "number") ST.sessoes = data.sessoes;
     if(typeof data.ciclo === "string") ST.ciclo = data.ciclo;
     ST.ciclo_sinal = data.ciclo_sinal || null;
@@ -311,6 +314,14 @@ function initFirebaseSync(){
     ST.ciclo_aguarda_count = data.ciclo_aguarda_count || 0;
     ST.sessaoAtiva = !!data.sessaoAtiva;
     ST.esperaSessao = data.esperaSessao || 0;
+    // Celebração de empate alto sincronizada: se chegou uma celebração nova, dispara no assinante.
+    const novaCelebra = data.celebra || null;
+    if(novaCelebra && novaCelebra !== ST.celebra){
+      ST.celebra = novaCelebra;
+      setTimeout(()=>{ ST.celebra = null; renderRouter(); }, 4500);
+    } else if(!novaCelebra){
+      ST.celebra = null;
+    }
     // Aviso de meta/stop sincronizado: se mudou o aviso recebido, reapresenta.
     const novoAviso = data.metaAviso || null;
     const msgAntiga = ST.metaAviso ? ST.metaAviso.msg : null;
@@ -1043,6 +1054,12 @@ function analyze(){
 
   // ── FAREJADOR DE EMPATES (usa o heat já calculado) ──
   const hunter = tieHunter(ST.H, heat);
+  // Aplica o aprendizado do farejador: ajusta a confiança do cenário conforme
+  // o histórico real de acerto daquele cenário (eco/quente/aberta). Não vira entrada.
+  if(hunter && ["ECO","QUENTE","ABERTA"].includes(hunter.status)){
+    hunter.conf = Math.min(0.95, (hunter.conf || 0) * fatorEmpate(hunter.status));
+    hunter.fatorAprendido = fatorEmpate(hunter.status);
+  }
   out.hunter = hunter;
   // Atualiza o tie.active com base no farejador (mais inteligente)
   out.tie.active = (hunter.status === "ABERTA" || hunter.status === "QUENTE" || hunter.status === "ECO");
@@ -1249,7 +1266,33 @@ function aprendeRodada(patterns, resultadoReal){
   });
 }
 
-// Fator aprendido de um padrão: taxa de acerto observada vira multiplicador 0.7–1.15.
+// APRENDIZADO DO FAREJADOR DE EMPATE · separado do aprendizado de cor.
+// Registra se a previsão do farejador ("vem empate" quando status ECO/QUENTE/ABERTA)
+// se confirmou na rodada seguinte. Acumula em tieAcum (≠ deltaAcum dos padrões de cor).
+// IMPORTANTE: isto NUNCA gera entrada — empate não é entrada. Serve só para calibrar
+// a confiança do aviso de empate e quais cenários (eco/atraso/mesa fria) realmente pagam.
+// Aprende em TODA rodada, como os padrões de cor, mas em acumulador próprio.
+function aprendeEmpate(tieAntes, resultadoReal){
+  if(!tieAntes) return;
+  if(!ST.tieAcum) ST.tieAcum = {};
+  // status do farejador fica em hunterStatus (ECO/QUENTE/ABERTA/PASSOU/FECHADA)
+  const status = tieAntes.hunterStatus || tieAntes.status;
+  const ativo = ["ECO","QUENTE","ABERTA"].includes(status);
+  if(!ativo) return;
+  const cen = status;
+  if(!ST.tieAcum[cen]) ST.tieAcum[cen] = {c:0, d:0};
+  ST.tieAcum[cen].c += 1;
+  ST.tieAcum[cen].d += (resultadoReal === "T" ? 1 : -1);
+}
+
+// Fator aprendido do farejador de empate por cenário (mesma curva dos padrões).
+function fatorEmpate(cenario){
+  const o = ST.tieAcum && ST.tieAcum[cenario];
+  if(!o || o.c < 8) return 1;
+  const taxa = (o.d / o.c + 1) / 2;
+  if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
+  return Math.max(0.7, 1 - (0.5 - taxa) * 0.8);
+}
 // Precisa de pelo menos 8 amostras para começar a influenciar (antes disso = neutro).
 function fatorAprendido(name){
   const n = (ST.countAcum && ST.countAcum[name]) || 0;
@@ -1374,6 +1417,9 @@ function addRound(r, sNum){
   if(r === "P" || r === "B"){
     aprendeRodada(aBefore.patterns || [], r);
   }
+  // Aprendizado do farejador de empate · roda em TODA rodada (T conta como acerto da
+  // previsão de empate; P/B contam como erro). Separado, NUNCA vira entrada.
+  aprendeEmpate(aBefore.tie, r);
 
   // ════════════════════════════════════════════════════════════════════════
   // EMPATE · regras definitivas:
@@ -1637,7 +1683,8 @@ function avisoSessaoHTML(){
 function celebraPaga(pay){
   ST.celebra = pay;
   toast(`🔥 PAGA ${pay} 🔥`, 4500);
-  setTimeout(()=>{ ST.celebra = null; renderRouter(); }, 4500);
+  save(); // push para o Firebase → assinante vê a animação também
+  setTimeout(()=>{ ST.celebra = null; save(); renderRouter(); }, 4500);
 }
 
 function undo(){
@@ -1674,7 +1721,7 @@ function undo(){
 function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
   ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
-  ST.deltaAcum = {}; ST.countAcum = {};
+  ST.deltaAcum = {}; ST.countAcum = {}; ST.tieAcum = {};
   ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
 }
@@ -1725,6 +1772,7 @@ function injectJSON(){
     }
     if(d.deltaAcum) ST.deltaAcum = d.deltaAcum;
     if(d.countAcum) ST.countAcum = d.countAcum;
+    if(d.tieAcum) ST.tieAcum = d.tieAcum;
     if(typeof d.sessoes === "number") ST.sessoes = d.sessoes + 1;
     save();
     toast(`✓ ${ST.H.length} rodadas carregadas · ${ST.greens}/${ST.reds}`);
@@ -1748,6 +1796,7 @@ function exportJSON(){
     sessoes: ST.sessoes,
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
+    tieAcum: ST.tieAcum || {},
     timestamp: new Date().toISOString()
   }, null, 2);
 }
@@ -2199,7 +2248,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.8 · DEFENSIVA NA CONGELADA APOS 6</div>
+      <div class="credit">BAC BRU · v10.9 · APRENDIZADO E ANIMACAO DE EMPATE</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
