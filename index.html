@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v10.9 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v11.1 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -1422,6 +1422,18 @@ function addRound(r, sNum){
   aprendeEmpate(aBefore.tie, r);
 
   // ════════════════════════════════════════════════════════════════════════
+  // APARADOR DE HISTÓRICO · mantém o arquivo pequeno SEM perder aprendizado.
+  // A rodada que acabou de cair JÁ ensinou os padrões e o farejador acima
+  // (deltaAcum/countAcum/tieAcum guardam o conhecimento de TODAS as rodadas
+  // para sempre). Então as rodadas mais antigas podem sair do histórico bruto:
+  // o motor só precisa das últimas ~150 para ler qualquer padrão.
+  // Resultado: aprendizado infinito e sólido, arquivo de tamanho fixo.
+  const MAX_HIST = 150;
+  if(ST.H.length > MAX_HIST){
+    ST.H = ST.H.slice(-MAX_HIST);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // EMPATE · regras definitivas:
   // 1) Na entrada de cor (entrada/gale/aguarda_gale) → GREEN, encerra ciclo (push)
   // 2) No farejador, fora de aposta → alto (10x+)=GREEN, baixo=BÔNUS
@@ -1747,7 +1759,12 @@ function finalizarSessao(){
 function injectJSON(){
   try{
     const d = JSON.parse(ST.injTxt);
-    if(d.history && Array.isArray(d.history)) ST.H = d.history;
+    // O aprendizado (deltaAcum/countAcum/tieAcum) já vem destilado no JSON, então
+    // não precisamos do histórico inteiro. Mantemos só as últimas 150 rodadas para
+    // o motor ler padrões — o conhecimento das antigas já está nos contadores abaixo.
+    if(d.history && Array.isArray(d.history)){
+      ST.H = d.history.length > 150 ? d.history.slice(-150) : d.history;
+    }
     if(typeof d.greens === "number") ST.greens = d.greens;
     if(typeof d.reds === "number") ST.reds = d.reds;
     if(d.weights){
@@ -2018,6 +2035,13 @@ function renderApp(){
         </div>
       </div>
 
+      ${AUTH.nome ? `<div style="text-align:center;padding:10px 12px 4px;font-family:var(--mono)">
+        <span style="font-size:15px;font-weight:800;color:var(--cyan);letter-spacing:.5px">Bem-vindo, ${AUTH.nome}!</span>
+        <div style="font-size:10px;color:var(--txt3);margin-top:2px;letter-spacing:1px">BOA SESSÃO · OPERE COM DISCIPLINA</div>
+      </div>` : `<div style="text-align:center;padding:10px 12px 4px;font-family:var(--mono)">
+        <span style="font-size:15px;font-weight:800;color:var(--cyan);letter-spacing:.5px">Bem-vindo!</span>
+      </div>`}
+
       <div class="stats-bar" style="padding:14px 12px">
         <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
         <div class="stat"><div class="stat-v r" style="font-size:24px">${ST.reds}</div><div class="stat-l">RED</div></div>
@@ -2248,7 +2272,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v10.9 · APRENDIZADO E ANIMACAO DE EMPATE</div>
+      <div class="credit">BAC BRU · v11.1 · BEM-VINDO COM NOME</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}
@@ -2292,6 +2316,7 @@ function renderApp(){
 const AUTH = {
   view: "loading", // loading | lock | admin | app
   key: localStorage.getItem("bacbru_key") || "",
+  nome: localStorage.getItem("bacbru_nome") || "",
   adminToken: localStorage.getItem("bacbru_admin") || "",
   keys: {},          // keys carregadas do firebase
   config: { sessoes: [], adminHash: null, admins: {} },
@@ -2357,6 +2382,12 @@ function routeAuth(){
   if(AUTH.adminToken && hashIsAdmin(AUTH.adminToken)){
     if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
   } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key])){
+    // recupera o nome do assinante da chave (caso o localStorage do nome esteja vazio)
+    if(!AUTH.nome){
+      const rec = AUTH.keys[AUTH.key];
+      AUTH.nome = (rec && rec.nome && rec.nome !== "sem nome") ? rec.nome : "";
+      if(AUTH.nome) localStorage.setItem("bacbru_nome", AUTH.nome);
+    }
     if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
   } else {
     if(AUTH.view === "loading" || AUTH.view === "app") AUTH.view = "lock";
@@ -2375,7 +2406,9 @@ window.tentarChave = function(){
   const rec = AUTH.keys[k];
   if(keyIsValid(rec)){
     AUTH.key = k;
+    AUTH.nome = (rec && rec.nome && rec.nome !== "sem nome") ? rec.nome : "";
     localStorage.setItem("bacbru_key", k);
+    localStorage.setItem("bacbru_nome", AUTH.nome || "");
     AUTH.msg = "";
     AUTH.view = "app";
     renderRouter();
@@ -2533,8 +2566,9 @@ window.voltarLock = function(){ AUTH.view = "lock"; renderRouter(); };
 window.logoutAcesso = function(){
   if(!confirm("Sair do acesso neste dispositivo?")) return;
   localStorage.removeItem("bacbru_key");
+  localStorage.removeItem("bacbru_nome");
   localStorage.removeItem("bacbru_admin");
-  AUTH.key = ""; AUTH.adminToken = "";
+  AUTH.key = ""; AUTH.nome = ""; AUTH.adminToken = "";
   AUTH.view = "lock";
   renderRouter();
 };
