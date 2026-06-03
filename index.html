@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v12.0 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v12.1 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -2189,11 +2189,9 @@ function renderApp(){
         <div class="sig-status">${a.signal === "W" ? "AGUARDA" : (podeRevelarCor ? "SINAL ATIVO" : "ANALISANDO A MESA")}</div>
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
-        ${isAdmin() ? `<button onclick="toggleCobertura()" style="width:100%;margin-top:10px;padding:12px 0;font-size:13px;font-family:var(--mono);font-weight:700;border:none;border-radius:10px;cursor:pointer;background:${ST.coberturaEmpate?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(245,158,11,.12)'};color:${ST.coberturaEmpate?'#1a1a1a':'var(--gold2)'};border:1px solid rgba(245,158,11,.4)">
-          ${ST.coberturaEmpate ? '🛡️ COBRIR EMPATE · LIGADO · clique p/ desligar' : '🛡️ COBRIR EMPATE'}
-        </button>` : (ST.coberturaEmpate ? `<div style="margin-top:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45);border-radius:10px;text-align:center;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+        ${(!isAdmin() && ST.coberturaEmpate) ? `<div style="margin-top:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45);border-radius:10px;text-align:center;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">
           🛡️ COBRIR EMPATE
-        </div>` : '')}
+        </div>` : ''}
         ${podeRevelarCor ? `<div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
@@ -2348,7 +2346,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v12.0 · POPUP MENOR 1S + TEXTOS LIMPOS</div>
+      <div class="credit">BAC BRU · v12.1 · COBRIR EMPATE NO PAINEL ADMIN</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}${flashOverlayHTML()}
@@ -2855,6 +2853,9 @@ function renderAdminPanel(){
         <button class="btn btn-t" onclick="reg('T')">EMPATE</button>
         <button class="btn btn-b" onclick="reg('B')">VERM · B</button>
       </div>
+      <button onclick="toggleCobertura()" style="width:100%;margin-top:8px;padding:13px 0;font-size:13px;font-family:var(--mono);font-weight:700;border-radius:10px;cursor:pointer;background:${ST.coberturaEmpate?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(245,158,11,.12)'};color:${ST.coberturaEmpate?'#1a1a1a':'var(--gold2)'};border:1px solid rgba(245,158,11,.4)">
+        ${ST.coberturaEmpate ? '🛡️ COBRIR EMPATE · LIGADO · clique p/ desligar' : '🛡️ COBRIR EMPATE'}
+      </button>
       <div class="foot-btns" style="margin-top:8px">
         <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
         <button class="util-btn" onclick="reset()">◌ ZERAR HISTÓRICO</button>
