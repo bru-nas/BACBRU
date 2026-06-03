@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v11.9 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v12.0 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -332,7 +332,7 @@ function initFirebaseSync(){
     const novoFlash = data.flash || null;
     if(novoFlash && (!ST.flash || novoFlash.t !== ST.flash.t)){
       ST.flash = novoFlash;
-      setTimeout(()=>{ ST.flash = null; renderRouter(); }, 4000);
+      setTimeout(()=>{ ST.flash = null; renderRouter(); }, 1100);
     } else if(!novoFlash){
       ST.flash = null;
     }
@@ -360,12 +360,12 @@ function toast(msg, dur=2200){
 }
 
 // Flash de resultado · aparece para ADMIN e ASSINANTE (sincronizado via Firebase).
-// tipo: 'GREEN' | 'RED' | 'BONUS'. Mostra um aviso grande do resultado da rodada.
+// tipo: 'GREEN' | 'RED'. Pop-up pequeno que some em ~1 segundo.
 function flashResultado(tipo, txt){
   ST.flash = { tipo, txt, t: Date.now() };
-  toast(txt, 3500);
   save(); // push p/ o assinante ver o mesmo resultado
-  setTimeout(()=>{ ST.flash = null; renderRouter(); }, 4000);
+  setTimeout(()=>{ ST.flash = null; save(); renderRouter(); }, 1100);
+  renderRouter();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1680,17 +1680,15 @@ window.recalcularEmpates = function(){
 };
 
 // HTML da overlay de celebração (usado no app E no admin)
-// Overlay de resultado (GREEN/RED/BÔNUS) · aparece para admin E assinante.
+// Pop-up pequeno de resultado (GREEN/RED) · admin E assinante · some em ~1s.
 function flashOverlayHTML(){
   if(!ST.flash) return '';
   const tipo = ST.flash.tipo;
-  const cor = tipo === 'GREEN' ? '#22c55e' : tipo === 'RED' ? '#ef4444' : '#f59e0b';
-  const bg = tipo === 'GREEN' ? 'rgba(34,197,94,.96)' : tipo === 'RED' ? 'rgba(239,68,68,.96)' : 'rgba(245,158,11,.96)';
-  const icon = tipo === 'GREEN' ? '✅' : tipo === 'RED' ? '❌' : '✨';
-  return `<div style="position:fixed;inset:0;z-index:99998;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${bg};animation:flashIn .25s ease" onclick="this.remove()">
-    <div style="font-size:90px;line-height:1">${icon}</div>
-    <div style="font-size:46px;font-weight:900;font-family:var(--mono);color:#fff;letter-spacing:2px;margin-top:6px">${tipo}</div>
-    <div style="font-size:15px;color:rgba(255,255,255,.9);font-family:var(--mono);margin-top:8px;text-align:center;padding:0 20px">${ST.flash.txt.replace(/[✅❌✨]/g,'').trim()}</div>
+  const bg = tipo === 'GREEN' ? 'rgba(34,197,94,.97)' : 'rgba(239,68,68,.97)';
+  const icon = tipo === 'GREEN' ? '✅' : '❌';
+  return `<div style="position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:99998;background:${bg};padding:18px 34px;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.4);display:flex;align-items:center;gap:12px;animation:flashIn .2s ease" onclick="this.remove()">
+    <span style="font-size:32px;line-height:1">${icon}</span>
+    <span style="font-size:30px;font-weight:900;font-family:var(--mono);color:#fff;letter-spacing:2px">${tipo}</span>
   </div>`;
 }
 
@@ -1751,13 +1749,12 @@ function avisoSessaoHTML(){
   </div>`;
 }
 
-// Celebração especial para empate de alto pagamento (também marca GREEN no flash)
+// Celebração especial para empate de alto pagamento (já conta como green, sem flash extra)
 function celebraPaga(pay){
   ST.celebra = pay;
-  ST.flash = { tipo:'GREEN', txt:`✅ GREEN · empate ${pay}`, t: Date.now() };
   toast(`🔥 PAGA ${pay} 🔥`, 4500);
-  save(); // push para o Firebase → assinante vê a animação E o green
-  setTimeout(()=>{ ST.celebra = null; ST.flash = null; save(); renderRouter(); }, 4500);
+  save(); // push para o Firebase → assinante vê a animação também
+  setTimeout(()=>{ ST.celebra = null; save(); renderRouter(); }, 4500);
 }
 
 function undo(){
@@ -2193,9 +2190,9 @@ function renderApp(){
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
         ${isAdmin() ? `<button onclick="toggleCobertura()" style="width:100%;margin-top:10px;padding:12px 0;font-size:13px;font-family:var(--mono);font-weight:700;border:none;border-radius:10px;cursor:pointer;background:${ST.coberturaEmpate?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(245,158,11,.12)'};color:${ST.coberturaEmpate?'#1a1a1a':'var(--gold2)'};border:1px solid rgba(245,158,11,.4)">
-          ${ST.coberturaEmpate ? '🛡️ COBRIR EMPATE · LIGADO · clique p/ desligar' : '🛡️ COBRIR EMPATE (próximo empate = green)'}
+          ${ST.coberturaEmpate ? '🛡️ COBRIR EMPATE · LIGADO · clique p/ desligar' : '🛡️ COBRIR EMPATE'}
         </button>` : (ST.coberturaEmpate ? `<div style="margin-top:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45);border-radius:10px;text-align:center;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">
-          🛡️ COBRIR EMPATE · se bater empate, é GREEN
+          🛡️ COBRIR EMPATE
         </div>` : '')}
         ${podeRevelarCor ? `<div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
@@ -2351,7 +2348,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v11.9 · FAREJADOR EMPATE REFINADO E HONESTO</div>
+      <div class="credit">BAC BRU · v12.0 · POPUP MENOR 1S + TEXTOS LIMPOS</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}${flashOverlayHTML()}
@@ -2973,7 +2970,7 @@ window.reg = function(r){
 window.confirmEntry = confirmEntry;
 window.toggleCobertura = function(){
   ST.coberturaEmpate = !ST.coberturaEmpate;
-  toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE LIGADO · próximo empate = GREEN" : "Cobrir empate desligado", 2800);
+  toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE ligado" : "Cobrir empate desligado", 1800);
   save(); renderRouter();
 };
 window.abortCiclo = abortCiclo;
