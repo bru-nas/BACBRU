@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v11.1 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v11.9 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -24,6 +24,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(34,197,94,.3)}50%{box-shadow:0 0 16px rgba(34,197,94,.6)}}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes flashIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
 @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pagaPop{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.15);opacity:1}60%{transform:scale(.95)}100%{transform:scale(1);opacity:1}}
@@ -208,6 +209,8 @@ const DEFAULT_WEIGHTS = {
 const ST = {
   H: [],
   greens: 0, reds: 0, bonus: 0,
+  coberturaEmpate: false, // botão admin: quando ligado, empate (qualquer) conta GREEN
+  flash: null, // resultado sincronizado p/ assinante: {tipo:'GREEN'|'RED'|'BONUS', txt, t}
   weights: {...DEFAULT_WEIGHTS},
   deltaAcum: {}, countAcum: {},
   sessoes: 0,
@@ -249,6 +252,7 @@ function pushToFirebase(){
     greens: ST.greens,
     reds: ST.reds,
     bonus: ST.bonus || 0,
+    coberturaEmpate: !!ST.coberturaEmpate,
     weights: ST.weights,
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
@@ -267,6 +271,7 @@ function pushToFirebase(){
     sessaoAtiva: !!ST.sessaoAtiva,
     esperaSessao: ST.esperaSessao || 0,
     celebra: ST.celebra || null,
+    flash: ST.flash || null,
     metaAviso: ST.metaAviso || null,
     metaAvisoVisto: !!ST.metaAvisoVisto,
     updatedAt: Date.now()
@@ -297,6 +302,7 @@ function initFirebaseSync(){
     if(typeof data.greens === "number") ST.greens = data.greens;
     if(typeof data.reds === "number") ST.reds = data.reds;
     if(typeof data.bonus === "number") ST.bonus = data.bonus;
+    ST.coberturaEmpate = !!data.coberturaEmpate;
     if(data.weights) ST.weights = {...DEFAULT_WEIGHTS, ...data.weights};
     if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
     if(data.countAcum) ST.countAcum = data.countAcum;
@@ -322,6 +328,14 @@ function initFirebaseSync(){
     } else if(!novaCelebra){
       ST.celebra = null;
     }
+    // Flash de resultado (GREEN/RED/BÔNUS) sincronizado: assinante vê o mesmo que o admin.
+    const novoFlash = data.flash || null;
+    if(novoFlash && (!ST.flash || novoFlash.t !== ST.flash.t)){
+      ST.flash = novoFlash;
+      setTimeout(()=>{ ST.flash = null; renderRouter(); }, 4000);
+    } else if(!novoFlash){
+      ST.flash = null;
+    }
     // Aviso de meta/stop sincronizado: se mudou o aviso recebido, reapresenta.
     const novoAviso = data.metaAviso || null;
     const msgAntiga = ST.metaAviso ? ST.metaAviso.msg : null;
@@ -343,6 +357,15 @@ function toast(msg, dur=2200){
   clearTimeout(ST.toastT);
   ST.toastT = setTimeout(()=>{ST.toast="";renderRouter();}, dur);
   renderRouter();
+}
+
+// Flash de resultado · aparece para ADMIN e ASSINANTE (sincronizado via Firebase).
+// tipo: 'GREEN' | 'RED' | 'BONUS'. Mostra um aviso grande do resultado da rodada.
+function flashResultado(tipo, txt){
+  ST.flash = { tipo, txt, t: Date.now() };
+  toast(txt, 3500);
+  save(); // push p/ o assinante ver o mesmo resultado
+  setTimeout(()=>{ ST.flash = null; renderRouter(); }, 4000);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -590,28 +613,26 @@ function tieHunter(H, heatScore){
   }
 
   // ── Estados normais ──
+  // REFINAMENTO (baseado em medição real): o farejador só acende onde há edge
+  // de verdade — ECO (acima) e CLUSTER recente (~13-14% de acerto vs 10% do acaso).
+  // Estados por ATRASO (antes QUENTE/ABERTA) previam 8-11% — igual ou abaixo do
+  // acaso — então NÃO acendem mais: viram FECHADA. Empate é quase puro acaso;
+  // prometer "iminente" por atraso seria enganar. Melhor ficar quieto.
   if(res.cluster){
-    res.status = "PASSOU";
-    res.msg = `Cluster recente (${ties8} empates/8 rodadas) · janela se esgotou · NÃO perseguir`;
-    res.conf = 0;
-  } else if(res.dist >= res.avgGap*1.4 && res.ties30 >= 1){
-    res.status = "QUENTE";
-    res.msg = `Empate MUITO atrasado (${res.dist} rodadas · média ${res.avgGap.toFixed(0)}) · iminente`;
-    res.conf = Math.min(0.85, 0.6 + (res.dist/res.avgGap - 1.4)*0.3);
-    if(mesaFria){ res.conf = Math.min(0.9, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
-  } else if(res.atrasado && res.ties30 >= 1){
+    // cluster recente é o único "atrasado" com leve edge → acende como ABERTA leve
     res.status = "ABERTA";
-    res.msg = `Empate atrasado (${res.dist}/${res.avgGap.toFixed(0)} rodadas) · janela aberta`;
-    res.conf = Math.min(0.75, 0.45 + (res.dist/res.avgGap - 1)*0.4);
-    if(mesaFria){ res.conf = Math.min(0.85, res.conf + 0.08); res.msg += " · mesa fria reforça"; }
-  } else if(mesaFria && res.ties15 >= 2){
-    res.status = "ABERTA";
-    res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de empate ativa`;
+    res.msg = `Cluster de empates (${ties8}/8 rodadas) · mesa ecoando empate · leve tendência`;
     res.conf = 0.55;
+  } else if(mesaFria && res.ties15 >= 3){
+    // mesa muito fria com vários empates recentes → leve zona de eco
+    res.status = "ABERTA";
+    res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de eco`;
+    res.conf = 0.52;
   } else {
+    // todo o resto (inclusive atraso) → FECHADA. Sem edge real, não acende.
     res.status = "FECHADA";
-    res.msg = `Cedo para empate · ${res.dist}/${res.avgGap.toFixed(0)} rodadas desde o último`;
-    res.conf = Math.max(0.1, res.dist/res.avgGap * 0.3);
+    res.msg = `Sem padrão de empate confiável agora · ${res.dist} rodada(s) desde o último`;
+    res.conf = 0;
   }
 
   return res;
@@ -1290,8 +1311,9 @@ function fatorEmpate(cenario){
   const o = ST.tieAcum && ST.tieAcum[cenario];
   if(!o || o.c < 8) return 1;
   const taxa = (o.d / o.c + 1) / 2;
+  // Consistente com fatorAprendido: só reforça, nunca derruba (piso 1.0).
   if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
-  return Math.max(0.7, 1 - (0.5 - taxa) * 0.8);
+  return 1.0;
 }
 // Precisa de pelo menos 8 amostras para começar a influenciar (antes disso = neutro).
 function fatorAprendido(name){
@@ -1299,9 +1321,13 @@ function fatorAprendido(name){
   if(n < 8) return 1;
   const d = (ST.deltaAcum && ST.deltaAcum[name]) || 0;
   const taxa = (d / n + 1) / 2; // saldo -1..1 → taxa 0..1 (0.5 = neutro)
-  // taxa 0.5 → fator 1.0 · acima reforça (até 1.15) · abaixo derruba (até 0.7)
+  // POLÍTICA: só dá empurrãozinho pros bons, NUNCA derruba ninguém.
+  // Piso travado em 1.0 — nenhum padrão é penalizado pelo desempenho.
+  // taxa ≥ 0.5 → reforça (até 1.15) · taxa < 0.5 → mantém neutro (1.0).
+  // O aprendizado continua acumulando em TODOS os padrões (estatística viva),
+  // mas o peso nunca cai abaixo do normal.
   if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
-  return Math.max(0.7, 1 - (0.5 - taxa) * 0.8);
+  return 1.0;
 }
 
 function confirmEntry(){
@@ -1435,28 +1461,48 @@ function addRound(r, sNum){
 
   // ════════════════════════════════════════════════════════════════════════
   // EMPATE · regras definitivas:
-  // 1) Na entrada de cor (entrada/gale/aguarda_gale) → GREEN, encerra ciclo (push)
-  // 2) No farejador, fora de aposta → alto (10x+)=GREEN, baixo=BÔNUS
-  // 3) Sem farejador e sem aposta → neutro
-  // Empate NUNCA gera gale, NUNCA é loss, NUNCA deixa ciclo aberto.
+  // 1) Com aposta na mesa (entrada/gale) → GREEN, encerra ciclo (push)
+  // 2) aguarda_gale → alto+farejador=GREEN(cobre) · baixo+farejador=BÔNUS · sem farejador=neutro (gale segue)
+  // 3) Fora de aposta, farejador ATIVO → alto=GREEN · baixo=BÔNUS
+  // 4) Fora de aposta, sem farejador → neutro
+  // BÔNUS só existe com farejador ATIVO. Empate NUNCA gera gale, NUNCA é loss, NUNCA é entrada.
   // ════════════════════════════════════════════════════════════════════════
   if(r === "T"){
     const pay = payoutDaSoma(s);
     const isHighPay = ["10x","25x","88x"].includes(pay);
 
+    // ── BOTÃO COBRIR EMPATE (admin) ──
+    // Se o admin ligou a cobertura de empate, QUALQUER empate (alto ou baixo)
+    // conta GREEN imediatamente. A cobertura é consumida (desliga) após pagar.
+    // Não interfere no farejador nem nas demais regras quando está desligada.
+    if(ST.coberturaEmpate){
+      ST.greens++;
+      if(isHighPay) celebraPaga(pay);
+      flashResultado('GREEN', `✅ GREEN · empate coberto · ${pay}`);
+      ST.coberturaEmpate = false; // cobertura usada
+      if(ST.ciclo === "entrada" || ST.ciclo === "gale" || ST.ciclo === "aguarda_gale") abortCiclo();
+      else { save(); renderRouter(); }
+      return;
+    }
+
     // CASO ESPECIAL · aguarda_gale (perdeu a entrada, gale ainda não saiu):
-    //  · empate ALTO (10x/25x/88x) cobre a entrada perdida → GREEN e encerra (sem gale)
-    //  · empate BAIXO (4x/6x) NÃO cobre → o gale tem que sair. Conta bônus e mantém o ciclo.
+    //  · empate ALTO + farejador ATIVO  → GREEN (cobre a entrada, cancela o gale)
+    //  · empate BAIXO + farejador ATIVO → BÔNUS (gale segue)
+    //  · empate sem farejador ativo (alto ou baixo) → NEUTRO (gale segue, não conta bônus)
+    // BÔNUS só existe quando o farejador está ATIVO. Sem farejador, empate é neutro.
     if(ST.ciclo === "aguarda_gale"){
-      if(isHighPay){
+      if(hunterAntes && isHighPay){
         ST.greens++;
         celebraPaga(pay);
-        toast(`🔥 ${pay} cobriu a entrada perdida · GALE CANCELADO`, 4000);
+        toast(`🔥 ${pay} cobriu a entrada perdida (farejador ativo) · GALE CANCELADO`, 4000);
         abortCiclo();
-      } else {
+      } else if(hunterAntes && !isHighPay){
         ST.bonus = (ST.bonus || 0) + 1;
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE (empate baixo não cobre)`, 3500);
-        // mantém ST.ciclo em aguarda_gale → o gale será disparado normalmente
+        toast(`✨ BÔNUS · empate ${pay} (farejador ativo) · GALE SEGUE`, 3500);
+        save(); renderRouter();
+      } else {
+        // sem farejador ativo → neutro, gale segue
+        toast(`↻ Empate ${pay} · GALE SEGUE`, 2800);
         save(); renderRouter();
       }
       return;
@@ -1468,7 +1514,7 @@ function addRound(r, sNum){
       // Estava com aposta na mesa (entrada ou gale já lançado) → push, green, encerra
       ST.greens++;
       if(isHighPay) celebraPaga(pay);
-      else toast(`✅ GREEN · empate na entrada · ${pay}`, 2800);
+      else flashResultado('GREEN', `✅ GREEN · empate na entrada · ${pay}`);
       abortCiclo();
     } else if(hunterAntes && isHighPay){
       // Farejador ativo + empate alto → GREEN
@@ -1498,7 +1544,7 @@ function addRound(r, sNum){
     if(r === sig){
       ST.greens++;
       // (aprendizado agora é por rodada · aprendeRodada já creditou os padrões acima)
-      toast(`✅ GREEN · ${lbl(r)}`);
+      flashResultado('GREEN', `✅ GREEN · ${lbl(r)}`);
       abortCiclo();
     } else {
       // (aprendizado por rodada · aprendeRodada já debitou os padrões acima)
@@ -1577,11 +1623,11 @@ function addRound(r, sNum){
     const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
     if(r === galeSide){
       ST.greens++;
-      toast(`✅ GREEN GALE · ${lbl(r)}`);
+      flashResultado('GREEN', `✅ GREEN GALE · ${lbl(r)}`);
       abortCiclo();
     } else {
       ST.reds++;
-      toast(`❌ RED · entrada e gale falharam`);
+      flashResultado('RED', `❌ RED · entrada e gale falharam`);
       abortCiclo();
     }
   } else {
@@ -1634,6 +1680,20 @@ window.recalcularEmpates = function(){
 };
 
 // HTML da overlay de celebração (usado no app E no admin)
+// Overlay de resultado (GREEN/RED/BÔNUS) · aparece para admin E assinante.
+function flashOverlayHTML(){
+  if(!ST.flash) return '';
+  const tipo = ST.flash.tipo;
+  const cor = tipo === 'GREEN' ? '#22c55e' : tipo === 'RED' ? '#ef4444' : '#f59e0b';
+  const bg = tipo === 'GREEN' ? 'rgba(34,197,94,.96)' : tipo === 'RED' ? 'rgba(239,68,68,.96)' : 'rgba(245,158,11,.96)';
+  const icon = tipo === 'GREEN' ? '✅' : tipo === 'RED' ? '❌' : '✨';
+  return `<div style="position:fixed;inset:0;z-index:99998;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${bg};animation:flashIn .25s ease" onclick="this.remove()">
+    <div style="font-size:90px;line-height:1">${icon}</div>
+    <div style="font-size:46px;font-weight:900;font-family:var(--mono);color:#fff;letter-spacing:2px;margin-top:6px">${tipo}</div>
+    <div style="font-size:15px;color:rgba(255,255,255,.9);font-family:var(--mono);margin-top:8px;text-align:center;padding:0 20px">${ST.flash.txt.replace(/[✅❌✨]/g,'').trim()}</div>
+  </div>`;
+}
+
 function celebraOverlayHTML(){
   if(!ST.celebra) return '';
   const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
@@ -1691,12 +1751,13 @@ function avisoSessaoHTML(){
   </div>`;
 }
 
-// Celebração especial para empate de alto pagamento
+// Celebração especial para empate de alto pagamento (também marca GREEN no flash)
 function celebraPaga(pay){
   ST.celebra = pay;
+  ST.flash = { tipo:'GREEN', txt:`✅ GREEN · empate ${pay}`, t: Date.now() };
   toast(`🔥 PAGA ${pay} 🔥`, 4500);
-  save(); // push para o Firebase → assinante vê a animação também
-  setTimeout(()=>{ ST.celebra = null; save(); renderRouter(); }, 4500);
+  save(); // push para o Firebase → assinante vê a animação E o green
+  setTimeout(()=>{ ST.celebra = null; ST.flash = null; save(); renderRouter(); }, 4500);
 }
 
 function undo(){
@@ -1732,7 +1793,7 @@ function undo(){
 
 function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
-  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0;
+  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0; ST.coberturaEmpate = false;
   ST.deltaAcum = {}; ST.countAcum = {}; ST.tieAcum = {};
   ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
@@ -1746,6 +1807,7 @@ function finalizarSessao(){
   ST.greens = 0;
   ST.reds = 0;
   ST.bonus = 0;
+  ST.coberturaEmpate = false;
   ST.sessoes++;
   ST.ofereceParada3 = false;
   ST.sessaoAtiva = false;
@@ -2000,10 +2062,22 @@ function renderApp(){
   }).join("");
 
   // Signal main
+  // A COR só pode ser revelada quando: é admin, OU o ciclo já foi confirmado pelo
+  // admin (entrada/gale/aguarda_gale). Para o assinante em idle, NUNCA mostra a cor —
+  // mesmo que o motor já tenha um sinal, ele só aparece após a CONFIRMAÇÃO do admin.
+  const cicloConfirmado = (ST.ciclo === "entrada" || ST.ciclo === "gale" || ST.ciclo === "aguarda_gale");
+  const podeRevelarCor = isAdmin() || cicloConfirmado;
   let sigClass = "w", sigText = "AGUARDA", confColor = "#475569";
-  if(a.signal === "P"){sigClass="p";sigText="AZUL";confColor="#3b82f6";}
-  else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
-  else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
+  if(podeRevelarCor){
+    if(a.signal === "P"){sigClass="p";sigText="AZUL";confColor="#3b82f6";}
+    else if(a.signal === "B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
+    else if(a.signal === "T"){sigClass="t";sigText="EMPATE";confColor="#f59e0b";}
+  } else {
+    // assinante, sinal existe mas não confirmado → mostra ANALISANDO, sem cor
+    if(a.signal === "P" || a.signal === "B" || a.signal === "T"){
+      sigClass = "w"; sigText = "ANALISANDO"; confColor = "#475569";
+    }
+  }
 
   // Tie badge junto da entrada — dirigido pelo farejador
   let tieBadge = "";
@@ -2115,16 +2189,21 @@ function renderApp(){
 
       <!-- SIGNAL CARD -->
       <div class="card signal-card">
-        <div class="sig-status">${a.signal === "W" ? "AGUARDA" : "SINAL ATIVO"}</div>
+        <div class="sig-status">${a.signal === "W" ? "AGUARDA" : (podeRevelarCor ? "SINAL ATIVO" : "ANALISANDO A MESA")}</div>
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
-        <div class="conf-bar">
+        ${isAdmin() ? `<button onclick="toggleCobertura()" style="width:100%;margin-top:10px;padding:12px 0;font-size:13px;font-family:var(--mono);font-weight:700;border:none;border-radius:10px;cursor:pointer;background:${ST.coberturaEmpate?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(245,158,11,.12)'};color:${ST.coberturaEmpate?'#1a1a1a':'var(--gold2)'};border:1px solid rgba(245,158,11,.4)">
+          ${ST.coberturaEmpate ? '🛡️ COBRIR EMPATE · LIGADO · clique p/ desligar' : '🛡️ COBRIR EMPATE (próximo empate = green)'}
+        </button>` : (ST.coberturaEmpate ? `<div style="margin-top:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45);border-radius:10px;text-align:center;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">
+          🛡️ COBRIR EMPATE · se bater empate, é GREEN
+        </div>` : '')}
+        ${podeRevelarCor ? `<div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
         <div class="conf-txt">
           <span>CONFIANÇA</span>
           <span>${(a.conf*100).toFixed(0)}%</span>
-        </div>
+        </div>` : `<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--txt3);text-align:center;letter-spacing:1px">aguarde o sinal confirmado</div>`}
         ${entryHtml}
       </div>
 
@@ -2272,10 +2351,10 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v11.1 · BEM-VINDO COM NOME</div>
+      <div class="credit">BAC BRU · v11.9 · FAREJADOR EMPATE REFINADO E HONESTO</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
-      ${celebraOverlayHTML()}
+      ${celebraOverlayHTML()}${flashOverlayHTML()}
       ${avisoSessaoHTML()}
       ${!ST.avisoVisto ? `<div style="position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99998;display:flex;align-items:center;justify-content:center;padding:24px;animation:slideIn .25s" onclick="fecharAviso()">
         <div style="max-width:380px;background:linear-gradient(160deg,rgba(20,28,45,.98),rgba(10,14,24,.98));border:1px solid rgba(34,211,238,.3);border-radius:18px;padding:24px;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch" onclick="event.stopPropagation()">
@@ -2844,7 +2923,7 @@ function renderAdminPanel(){
     <button onclick="logoutAcesso()" style="width:100%;padding:11px;margin-top:10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;color:var(--red2);font-family:var(--mono);font-size:10px;letter-spacing:2px;cursor:pointer">SAIR DO ADMIN NESTE DISPOSITIVO</button>
 
     <div class="credit">BAC BRU · PAINEL ADMIN · GESTÃO DE ASSINATURAS</div>
-    ${celebraOverlayHTML()}
+    ${celebraOverlayHTML()}${flashOverlayHTML()}
     ${avisoSessaoHTML()}
   </div>`;
 }
@@ -2892,6 +2971,11 @@ window.reg = function(r){
   ST.somaIn = "";
 };
 window.confirmEntry = confirmEntry;
+window.toggleCobertura = function(){
+  ST.coberturaEmpate = !ST.coberturaEmpate;
+  toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE LIGADO · próximo empate = GREEN" : "Cobrir empate desligado", 2800);
+  save(); renderRouter();
+};
 window.abortCiclo = abortCiclo;
 window.undo = undo;
 window.reset = reset;
