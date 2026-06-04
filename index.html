@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v12.1 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v12.3 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -193,7 +193,7 @@ let SUPPRESS_PUSH = false;
 const DEFAULT_WEIGHTS = {
   PP5: 0.87, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
-  C21: 0.78,
+  C21: 0.62,  // confirmador: sozinho abaixo do min_conf, reforça convergência quando aparece com outros
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
   DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
@@ -467,9 +467,35 @@ function trendRoad(rd){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// PERFIL HISTÓRICO DE STREAKS · anti-armadilha
-// Analisa todos os streaks do histórico para saber QUANDO a mesa costuma quebrar
+// PERFIS HISTÓRICOS · anti-armadilha (medem QUANDO a mesa costuma quebrar)
 // ════════════════════════════════════════════════════════════════════════════
+// Mede o histórico de ALTERNÂNCIAS (xadrez P-B-P-B) para saber QUANDO costuma quebrar
+// — análogo ao streakProfile, mas para o regime de alternância em vez de repetição.
+function altProfile(col){
+  if(col.length < 8) return null;
+  // mede comprimento de cada sequência de alternância (quantas trocas seguidas)
+  const altRuns = [];
+  let cur = 1;
+  for(let i=1;i<col.length;i++){
+    if(col[i].r !== col[i-1].r) cur++;         // alternou → estende a corrente de xadrez
+    else { altRuns.push(cur); cur = 1; }        // repetiu → quebrou o xadrez
+  }
+  altRuns.push(cur);
+  const closed = altRuns.slice(0,-1).filter(r=>r>=2); // só correntes de alternância reais
+  if(closed.length < 4) return null;
+  const sorted=[...closed].sort((a,b)=>a-b);
+  const max=Math.max(...closed);
+  const avg=closed.reduce((a,b)=>a+b,0)/closed.length;
+  const p=q=>sorted[Math.min(sorted.length-1,Math.floor(sorted.length*q))];
+  function breakProbAt(L){
+    const reached=closed.filter(r=>r>=L).length;
+    const broke=closed.filter(r=>r===L).length;
+    if(reached===0)return 0.5;
+    return broke/reached;
+  }
+  return { runs:closed, avg, max, p50:p(0.50), p75:p(0.75), p90:p(0.90), count:closed.length, breakProbAt };
+}
+
 function streakProfile(col){
   if(col.length < 8) return null;
   const runs = [];
@@ -890,10 +916,27 @@ function analyze(){
   }
 
   // ZIGZAG 3 — micro-variação tipo [A,B,A] = zigzag curto, próximo = B
+  // COM TETO DE ALTERNÂNCIA: igual à proteção de streak de cor, o xadrez é seguido
+  // enquanto está abaixo da zona de quebra histórica. Perto do teto (onde a alternância
+  // costuma quebrar nesta mesa), NÃO entra — é onde vinha o red da quebra do xadrez.
   if(col.length >= 3){
     const c3 = last(col,3);
     if(c3[0].r !== c3[1].r && c3[1].r !== c3[2].r && c3[0].r === c3[2].r){
-      add("ZZ3", opos(c3[2].r), W.ZZ3, "Zigzag 3 detectado");
+      // mede há quantas rodadas o xadrez está rolando
+      let altRun = 1;
+      for(let i=col.length-1;i>0;i--){ if(col[i].r !== col[i-1].r) altRun++; else break; }
+      const ap = altProfile(col);
+      // zona de perigo: onde a alternância costuma quebrar (p75 ou 70% do máximo histórico)
+      const tetoAlt = ap ? (ap.max || ap.p90 || 7) : 7;
+      const zonaQuebraAlt = ap ? Math.max(ap.p75, Math.ceil(tetoAlt*0.7)) : 6;
+      const pertoDoTeto = ap && altRun >= zonaQuebraAlt;
+      if(pertoDoTeto){
+        // xadrez esticado perto do limite histórico → não seguir, alerta de quebra
+        out.exaustao = true;
+        out.exaustaoMotivo = `Alternância ${altRun} (xadrez) na zona de quebra (hist. quebra ~${zonaQuebraAlt}, máx ${tetoAlt}) · PARAR de seguir`;
+      } else {
+        add("ZZ3", opos(c3[2].r), W.ZZ3, `Zigzag detectado · alternância ${altRun}${ap?` (mesa estica até ${tetoAlt})`:''}`);
+      }
     }
   }
 
@@ -2346,7 +2389,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v12.1 · COBRIR EMPATE NO PAINEL ADMIN</div>
+      <div class="credit">BAC BRU · v12.3 · TETO DE ALTERNANCIA NO XADREZ</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}${flashOverlayHTML()}
