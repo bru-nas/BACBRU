@@ -399,7 +399,21 @@ function renderLock(){
     </div>
     <button onclick="window.iniciarTeste()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(245,158,11,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">🎁 TESTAR GRÁTIS · 3 DIAS</button>
     <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center">acesso completo por 3 dias · 1 por dispositivo</div>
-    <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
+    ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
+    <div class="sec-lbl" style="margin-top:14px">🕐 PRÓXIMAS LIVES</div>
+    <div class="card" style="padding:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px">
+        ${AUTH.config.sessoes.map(t=>`<div style="padding:8px 16px;background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(34,197,94,.06));border:1px solid rgba(34,211,238,.3);border-radius:10px;font-family:var(--mono);font-size:16px;font-weight:800;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
+      </div>
+      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.8;padding:0 4px">
+        🎯 <strong style="color:var(--green2)">Meta: 5 greens líquidos.</strong> Bateu? Pare.<br/>
+        🛑 <strong style="color:var(--red2)">2 loss com saldo negativo</strong> encerram a sessão.<br/>
+        💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong><br/>
+        🎲 Pegue <strong style="color:var(--txt)">3–4 sinais</strong> por sessão. Use o último pra recuperar o que cobriu nos empates.<br/>
+        🔥 <strong style="color:var(--gold2)">Na cor, aposte só o valor da cor</strong> — não misture com o que cobriu no empate.
+      </div>
+    </div>` : ''}
+        <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>`;
 }
 
@@ -429,7 +443,7 @@ function renderApp(){
   const tBeb=roadTrend(beb),tSm=roadTrend(sm),tCp=roadTrend(cp);
 
   // sinal
-  const cicloConf=ST.ciclo==="entrada"||ST.ciclo==="gale"||ST.ciclo==="aguarda_gale";
+  const cicloConf=ST.sessaoAtiva&&(ST.ciclo==="entrada"||ST.ciclo==="gale"||ST.ciclo==="aguarda_gale");
   let sigClass="w",sigText="·",confColor="#475569";
   if(cicloConf&&ST.ciclo_sinal){
     if(ST.ciclo_sinal==="P"){sigClass="p";sigText="AZUL";confColor="#3b82f6";}
@@ -442,7 +456,7 @@ function renderApp(){
   else if(ST.ciclo==="gale")entryHtml=`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--gold2);text-align:center;letter-spacing:1px">GALÉ NA MESA · aguarde resultado</div>`;
 
   // heat (recebido via Firebase do admin)
-  const h=ST.heat;
+  const h=ST.heat||null;
   const heatHtml=h?`<div class="card" style="background:linear-gradient(135deg,${
     h.state==="QUENTE"?"rgba(34,197,94,.10),rgba(34,211,238,.05)":
     h.state==="FAVORÁVEL"?"rgba(34,211,238,.08),rgba(34,197,94,.04)":
@@ -470,7 +484,7 @@ function renderApp(){
   </div>`:"";
 
   // hunter (recebido via Firebase do admin)
-  const hu=ST.hunter;
+  const hu=ST.hunter||null;
   const hunterHtml=hu?`<div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
   <div class="card" style="background:linear-gradient(135deg,${
     hu.status==="ECO"?"rgba(167,139,250,.12),rgba(245,158,11,.05)":
@@ -575,18 +589,23 @@ function renderApp(){
       <div class="road"><div class="road-hdr"><div class="road-name">SMALL ROAD (2)</div><div class="road-trend ${tSm.trend==="STABLE"?"p":tSm.trend==="VOLATILE"?"b":"n"}">${tSm.trend==="STABLE"?"● ESTÁVEL":tSm.trend==="VOLATILE"?"○ VOLÁTIL":"— MIX"}</div></div><div class="road-board">${renderDR(sm)}</div></div>
       <div class="road"><div class="road-hdr"><div class="road-name">COCKROACH PIG (3)</div><div class="road-trend ${tCp.trend==="STABLE"?"p":tCp.trend==="VOLATILE"?"b":"n"}">${tCp.trend==="STABLE"?"● ESTÁVEL":tCp.trend==="VOLATILE"?"○ VOLÁTIL":"— MIX"}</div></div><div class="road-board">${renderDR(cp)}</div></div>
     </div>
+    
+}
     ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
-    <div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div>
-    <div class="card" style="padding:18px">
-      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
-        ${AUTH.config.sessoes.map(t=>`<div style="padding:12px 20px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:20px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
+    <div class="sec-lbl" style="margin-top:14px">🕐 PRÓXIMAS LIVES</div>
+    <div class="card" style="padding:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px">
+        ${AUTH.config.sessoes.map(t=>`<div style="padding:8px 16px;background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(34,197,94,.06));border:1px solid rgba(34,211,238,.3);border-radius:10px;font-family:var(--mono);font-size:16px;font-weight:800;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
       </div>
-      <div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-        Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>
-        A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.
+      <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.8;padding:0 4px">
+        🎯 <strong style="color:var(--green2)">Meta: 5 greens líquidos.</strong> Bateu? Pare.<br/>
+        🛑 <strong style="color:var(--red2)">2 loss com saldo negativo</strong> encerram a sessão.<br/>
+        💰 <strong style="color:var(--txt)">Entrada ideal: 5% da banca.</strong><br/>
+        🎲 Pegue <strong style="color:var(--txt)">3–4 sinais</strong> por sessão. Use o último pra recuperar o que cobriu nos empates.<br/>
+        🔥 <strong style="color:var(--gold2)">Na cor, aposte só o valor da cor</strong> — não misture com o que cobriu no empate.
       </div>
     </div>` : ''}
-    <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
+        <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
 }
