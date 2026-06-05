@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <meta name="theme-color" content="#030712"/>
-<title>BAC BRU v12.3 · MÁQUINA DE GREEN</title>
+<title>BAC BRU v12.4 · MÁQUINA DE GREEN</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -2163,6 +2163,10 @@ function renderApp(){
         <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${ST.bonus||0}</div><div class="stat-l">BÔNUS ✨</div></div>
       </div>
 
+      ${ST.coberturaEmpate ? `<div style="margin-bottom:10px;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;text-align:center;font-family:var(--mono);font-weight:800;font-size:14px;color:#1a1a1a;letter-spacing:1px;box-shadow:0 2px 12px rgba(245,158,11,.4)">
+        🛡️ COBRIR EMPATE
+      </div>` : ''}
+
       <!-- META · barra de progresso (líquido ponderado: red = -3 greens) -->
       <div class="card" style="padding:12px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
@@ -2232,9 +2236,6 @@ function renderApp(){
         <div class="sig-status">${a.signal === "W" ? "AGUARDA" : (podeRevelarCor ? "SINAL ATIVO" : "ANALISANDO A MESA")}</div>
         <div class="sig-main ${sigClass}">${sigText}</div>
         ${tieBadge}
-        ${(!isAdmin() && ST.coberturaEmpate) ? `<div style="margin-top:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.45);border-radius:10px;text-align:center;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">
-          🛡️ COBRIR EMPATE
-        </div>` : ''}
         ${podeRevelarCor ? `<div class="conf-bar">
           <div class="conf-fill" style="width:${(a.conf*100).toFixed(0)}%;background:${confColor}"></div>
         </div>
@@ -2389,7 +2390,7 @@ function renderApp(){
         </div>
       </div>` : ''}
 
-      <div class="credit">BAC BRU · v12.3 · TETO DE ALTERNANCIA NO XADREZ</div>
+      <div class="credit">BAC BRU · v12.4 · COBRIR EMPATE VISIVEL PRO ASSINANTE</div>
 
       ${ST.toast ? `<div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,24,40,.95);border:1px solid var(--border);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--txt);font-family:var(--mono);z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:slideIn .2s ease">${ST.toast}</div>` : ''}
       ${celebraOverlayHTML()}${flashOverlayHTML()}
