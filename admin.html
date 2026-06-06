@@ -186,6 +186,7 @@ const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
 let SUPPRESS_PUSH = false;
+let _heatPushTimer = null;
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
@@ -1399,7 +1400,7 @@ function confirmEntry(){
   let msg = `▶ ENTRADA: ${lbl(a.signal)} · ${(a.conf*100).toFixed(0)}%`;
   if(a.tie.active) msg += ` + EMPATE ${ST.ciclo_tie}`;
   toast(msg, 2800);
-  save(); renderRouter();
+  save(); renderNow();
 }
 
 function abortCiclo(){
@@ -2023,6 +2024,13 @@ function renderApp(){
   // cache heat e hunter no ST pra serem empurrados pro Firebase
   if(a.heat) ST._heat = { state: a.heat.state, score: a.heat.score };
   if(a.hunter) ST._hunter = a.hunter;
+  // Publica heat/hunter pro index quando o ESTADO muda (sem loop: só compara string)
+  const _heatKey = (ST._heat?ST._heat.state:'') + '|' + (ST._hunter?ST._hunter.status:'');
+  if(_heatKey !== ST._lastHeatKey && AUTH.view==='app'){
+    ST._lastHeatKey = _heatKey;
+    if(typeof _heatPushTimer !== 'undefined' && _heatPushTimer) clearTimeout(_heatPushTimer);
+    _heatPushTimer = setTimeout(()=>{ pushToFirebase(); }, 250);
+  }
   const total = ST.greens + ST.reds;
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
@@ -2700,7 +2708,11 @@ document.addEventListener("focusin", e => { if(e.target.tagName==="INPUT"||e.tar
 document.addEventListener("focusout", () => { setTimeout(()=>{ _inputActive=false; }, 200); });
 function renderRouter(){
   if(_rTimer) return;
-  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 120);
+  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 60);
+}
+function renderNow(){
+  if(_rTimer){ clearTimeout(_rTimer); _rTimer=null; }
+  _doRender();
 }
 function _doRender(){
   if(_inputActive) return;
