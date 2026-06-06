@@ -351,6 +351,7 @@ function initFirebaseSync(){
     }
     SUPPRESS_PUSH = false;
     renderRouter();
+    setTimeout(pushToFirebase, 300);
   }, err => {
     SYNC_STATUS = "OFFLINE";
     renderRouter();
@@ -1868,6 +1869,8 @@ function finalizarSessao(){
 
 function injectJSON(){
   try{
+    const el=document.getElementById("injta");
+    if(el) ST.injTxt=el.value;
     const d = JSON.parse(ST.injTxt);
     // O aprendizado (deltaAcum/countAcum/tieAcum) já vem destilado no JSON, então
     // não precisamos do histórico inteiro. Mantemos só as últimas 150 rodadas para
@@ -2964,7 +2967,7 @@ function renderAdminPanel(){
     <div class="sec-lbl">CALIBRAGEM · APLICAR / COPIAR JSON</div>
     <div class="card">
       <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);line-height:1.5;margin-bottom:8px">Cole aqui o JSON exportado da última sessão para retomar o aprendizado, ou copie o JSON atual para guardar.</div>
-      <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui...">${ST.injTxt||""}</textarea>
+      <textarea id="injta" class="json-ta" placeholder="Cole o JSON da última sessão aqui..." oninput="ST.injTxt=this.value">${ST.injTxt||""}</textarea>
       <div class="json-btns">
         <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR JSON</button>
         <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
@@ -3037,7 +3040,7 @@ window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
 window.finalizarSessao = finalizarSessao;
-window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; renderApp(); };
+window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; INPUT_FOCUSED=false; renderRouter(); };
 window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
 window.fecharPaga = function(){ ST.celebra = null; renderRouter(); };
