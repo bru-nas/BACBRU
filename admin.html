@@ -232,7 +232,7 @@ try{
   const sv = localStorage.getItem("bacbru_v6");
   if(sv){
     const d = JSON.parse(sv);
-    Object.assign(ST, d);
+    Object.assign(ST, d); ST.avisoVisto = true;
   }
 }catch(e){}
 
