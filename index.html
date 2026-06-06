@@ -632,6 +632,7 @@ function renderApp(){
     ${hunterHtml}
     <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
     <div class="card road"><div class="bead-grid">${beadCells.join("")}</div></div>
+    ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
