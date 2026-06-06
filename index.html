@@ -470,9 +470,9 @@ function renderApp(){
   // sinal
   const cicloConf=ST.sessaoAtiva&&(ST.ciclo==="entrada"||ST.ciclo==="gale"||ST.ciclo==="aguarda_gale");
   const signalCardHtml=(()=>{
-    if(!ST.sessaoAtiva)return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px"><div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div><div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">A sessão só começa quando o app identificar um bom momento na mesa. Agora a mesa está '+(ST.heat?ST.heat.state:'em análise')+' — não operamos. No rodapé tem o horário da próxima sessão ao vivo. Avisamos com 30 minutos de antecedência.</div></div>';
-    if(ST.ciclo==="entrada")return cardSinalGrande("▶ ENTRADA ATIVA",ST.ciclo_sinal,(ST.ciclo_conf*100).toFixed(0)+'% confiança · aguarde resultado',ST.ciclo_tie);
-    if(ST.ciclo==="aguarda_gale"){var cnt=ST.ciclo_aguarda_count||0;return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center"><div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div><div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">'+cnt+'/3 rodadas</div><div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">Motor refinando para evitar red. Entrada anterior: '+lbl(ST.ciclo_sinal)+'</div></div>';}
+    if(!ST.sessaoAtiva)return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px"><div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div><div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">A sessão só começa quando o app identificar um bom momento na mesa. Agora a mesa está '+(ST.heat?ST.heat.state:'em análise')+' — não operamos. No rodapé tem o horário da próxima sessão ao vivo.</div></div>';
+    if(ST.ciclo==="entrada")return cardSinalGrande('▶ ENTRADA ATIVA',ST.ciclo_sinal,(ST.ciclo_conf*100).toFixed(0)+'% confiança · aguarde resultado',ST.ciclo_tie);
+    if(ST.ciclo==="aguarda_gale"){var cnt=ST.ciclo_aguarda_count||0;return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center"><div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div><div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">'+cnt+'/3 rodadas</div></div>';}
     if(ST.ciclo==="gale")return cardSinalGrande('⚡ GALE · ENTRAR AGORA',ST.ciclo_gale_sinal||opos(ST.ciclo_sinal),'Decisão: '+(ST.ciclo_gale_dec||'INVERTER')+' · entrada anterior foi '+lbl(ST.ciclo_sinal),ST.ciclo_gale_tie);
     return'<div style="margin-top:10px;padding:14px;text-align:center;font-size:12px;color:var(--txt3);font-family:var(--mono)">⏳ SESSÃO ATIVA · aguardando sinal</div>';
   })()
@@ -584,38 +584,13 @@ function renderApp(){
       <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">cada red consome 3 greens · 2 loss encerram · empate alto=green, baixo=bônus</div>
     </div>
     ${heatHtml}
-    ${!ST.sessaoAtiva && ST.heat && ST.heat.state !== 'QUENTE' && ST.heat.state !== 'FAVORÁVEL' ? `
-    <div style="margin-bottom:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
-      <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
-      <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-        A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
-        Agora a mesa está <strong style="color:var(--txt)">${ST.heat?ST.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
-        👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
-      </div>
-    </div>` : ''}
+    
     ${signalCardHtml}
     ${hunterHtml}
     <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
     <div class="card road"><div class="bead-grid">${beadCells.join("")}</div></div>
     <div class="sec-lbl">BIG ROAD · COLORIDAS</div>
     <div class="card road"><div class="road-board">${bigCells}</div></div>
-    <div class="sec-lbl">DERIVADAS · BIG EYE · SMALL · COCKROACH</div>
-    <div class="card" style="display:grid;gap:8px">
-      <div class="road"><div class="road-hdr"><div class="road-name">BIG EYE BOY (1)</div><div class="road-trend ${tBeb.trend==="STABLE"?"p":tBeb.trend==="VOLATILE"?"b":"n"}">${tBeb.trend==="STABLE"?"● ESTÁVEL":tBeb.trend==="VOLATILE"?"○ VOLÁTIL":"— MIX"}</div></div><div class="road-board">${renderDR(beb)}</div></div>
-      <div class="road"><div class="road-hdr"><div class="road-name">SMALL ROAD (2)</div><div class="road-trend ${tSm.trend==="STABLE"?"p":tSm.trend==="VOLATILE"?"b":"n"}">${tSm.trend==="STABLE"?"● ESTÁVEL":tSm.trend==="VOLATILE"?"○ VOLÁTIL":"— MIX"}</div></div><div class="road-board">${renderDR(sm)}</div></div>
-      <div class="road"><div class="road-hdr"><div class="road-name">COCKROACH PIG (3)</div><div class="road-trend ${tCp.trend==="STABLE"?"p":tCp.trend==="VOLATILE"?"b":"n"}">${tCp.trend==="STABLE"?"● ESTÁVEL":tCp.trend==="VOLATILE"?"○ VOLÁTIL":"— MIX"}</div></div><div class="road-board">${renderDR(cp)}</div></div>
-    </div>
-    ${AUTH.config && AUTH.config.sessoes && AUTH.config.sessoes.length ? `
-    <div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div>
-    <div class="card" style="padding:18px">
-      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
-        ${AUTH.config.sessoes.map(t=>`<div style="padding:12px 20px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:20px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}
-      </div>
-      <div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-        Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>
-        A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.
-      </div>
-    </div>` : ''}
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
