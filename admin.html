@@ -348,6 +348,8 @@ function initFirebaseSync(){
     }
     SUPPRESS_PUSH = false;
     renderRouter();
+    // Publica heat/hunter imediatamente para o index sem precisar de rodada
+    setTimeout(pushToFirebase, 300);
   }, err => {
     SYNC_STATUS = "OFFLINE";
     renderRouter();
@@ -1604,6 +1606,7 @@ function addRound(r, sNum){
         let gmsg = `⚡ GALE ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
         if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
         toast(gmsg, 3500);
+        save();
       } else {
         // Motor incerto → aguarda gale com TETO de 2 rodadas
         ST.ciclo = "aguarda_gale";
@@ -1629,6 +1632,7 @@ function addRound(r, sNum){
       let gmsg = `⚡ ENTRAR no GALE · ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
       toast(gmsg, 3800);
+      save();
     } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
       // ════════════════════════════════════════════════════════════════
       // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
@@ -1659,6 +1663,7 @@ function addRound(r, sNum){
       let gmsg = `⚡ GALE ${lbl(galeSide)} · ${dec} · ${motivo}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
       toast(gmsg, 4500);
+      save();
     } else {
       // Continua aguardando (ainda dentro do teto)
       toast(`⏳ Aguardando gale · ${ST.ciclo_aguarda_count}/${MAX_AGUARDA} rodadas`, 2500);
