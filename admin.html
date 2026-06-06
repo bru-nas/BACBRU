@@ -185,6 +185,9 @@ const db = firebase.database();
 const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
+let INPUT_FOCUSED = false;
+document.addEventListener("focusin", ()=>{ INPUT_FOCUSED=true; });
+document.addEventListener("focusout", ()=>{ INPUT_FOCUSED=false; });
 let SUPPRESS_PUSH = false;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2687,7 +2690,7 @@ window.logoutAcesso = function(){
 };
 
 // ── Render do roteador ──
-function renderRouter(){
+function renderRouter(){if(INPUT_FOCUSED)return;
   if(AUTH.view === "app"){ renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
