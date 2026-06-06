@@ -506,22 +506,66 @@ function renderApp(){
 
   // hunter (recebido via Firebase do admin)
   const hu=ST.hunter;
-  const hunterHtml=hu?`<div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
-  <div class="card" style="background:linear-gradient(135deg,${
-    hu.status==="ECO"?"rgba(167,139,250,.12),rgba(245,158,11,.05)":
-    hu.status==="ABERTA"?"rgba(245,158,11,.08),rgba(34,211,238,.03)":
-    "rgba(148,163,184,.04),rgba(0,0,0,.2)"
-  });border-color:${
-    hu.status==="ECO"?"rgba(167,139,250,.45)":hu.status==="ABERTA"?"rgba(245,158,11,.3)":"var(--border)"
-  }">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:2px">FAREJADOR · EMPATE</div>
-      <div style="font-size:13px;font-weight:800;font-family:var(--mono);color:${
-        hu.status==="ECO"?"var(--purple)":hu.status==="ABERTA"?"var(--gold2)":"var(--txt3)"
-      }">${hu.status==="ECO"?"🔮":hu.status==="ABERTA"?"👃":"🔕"} ${hu.status}</div>
-    </div>
-    <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);line-height:1.5">${hu.msg||""}</div>
-    ${hu.payoutProvavel?`<div style="margin-top:8px;padding:6px 10px;background:rgba(245,158,11,.1);border-radius:8px;font-size:11px;font-family:var(--mono);color:var(--gold2)">🎯 Payout provável: ${hu.payoutProvavel}</div>`:""}</div>`:"";
+  const tieRows=[["88x","2,12"],["25x","3,11"],["10x","4,10"],["6x","5,9"],["4x","6,7,8"]];
+  const hunterOpen=hu&&(hu.status==="ABERTA"||hu.status==="QUENTE"||hu.status==="ECO");
+  const tieProvavel=hu&&hu.payoutProvavel?[hu.payoutProvavel]:[];
+  const tiePays=tieRows.map(function(row){var n=row[0],t=row[1];var isHi=hunterOpen&&tieProvavel.indexOf(n)>=0;return '<div class="pay-cell '+(isHi?'hot':'')+'"><div class="pay-num">'+n+'</div><div class="pay-pct">'+t+'</div></div>';}).join("");
+  const hunterHtml=hu?`<!-- FAREJADOR DE EMPATES -->
+      <div class="sec-lbl">🐕 FAREJADOR DE EMPATES</div>
+      <div class="card" style="background:linear-gradient(135deg,${
+        hu && hu.status==='QUENTE' ? 'rgba(245,158,11,.12),rgba(239,68,68,.05)' :
+        hu && hu.status==='ECO' ? 'rgba(167,139,250,.12),rgba(245,158,11,.05)' :
+        hu && hu.status==='ABERTA' ? 'rgba(245,158,11,.08),rgba(34,211,238,.03)' :
+        hu && hu.status==='PASSOU' ? 'rgba(239,68,68,.06),rgba(0,0,0,.2)' :
+        'rgba(148,163,184,.04),rgba(0,0,0,.2)'
+      });border-color:${
+        hu && hu.status==='QUENTE' ? 'rgba(245,158,11,.45)' :
+        hu && hu.status==='ECO' ? 'rgba(167,139,250,.45)' :
+        hu && hu.status==='ABERTA' ? 'rgba(245,158,11,.3)' :
+        hu && hu.status==='PASSOU' ? 'rgba(239,68,68,.3)' :
+        'var(--border)'
+      }">
+        ${hu ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:${
+            hu.status==='QUENTE' ? 'var(--gold2)' :
+            hu.status==='ECO' ? 'var(--purple)' :
+            hu.status==='ABERTA' ? 'var(--gold2)' :
+            hu.status==='PASSOU' ? 'var(--red2)' :
+            'var(--txt2)'
+          }">
+            ${hu.status==='QUENTE'?'🔥 QUENTE':hu.status==='ECO'?'🔁 ECO · QUINA':hu.status==='ABERTA'?'🟢 JANELA ABERTA':hu.status==='PASSOU'?'🛑 PASSOU':hu.status==='FECHADA'?'⏳ FECHADA':'○ COLETANDO'}
+          </div>
+          <div style="font-size:12px;font-family:var(--mono);color:var(--txt2)">${(hu.conf*100).toFixed(0)}%</div>
+        </div>
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6;margin-bottom:10px">${hu.msg}</div>
+        ${hu.echo && hu.status!=='ECO' ? `<div style="font-size:10px;color:var(--purple);font-family:var(--mono);margin-bottom:8px">🔁 Mesa de eco detectada · ${(hu.echoRate*100).toFixed(0)}% dos empates vêm na quina</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--cyan)">${hu.dist}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">SEM EMPATE</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--txt)">${hu.avgGap.toFixed(0)}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">MÉDIA GAP</div>
+          </div>
+          <div style="padding:8px;background:rgba(0,0,0,.3);border-radius:8px;text-align:center">
+            <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--purple)">${hu.ties30}</div>
+            <div style="font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:1px">EM 30</div>
+          </div>
+        </div>
+        ${(hu.status==='ABERTA'||hu.status==='QUENTE'||hu.status==='ECO') ? `
+        <div style="padding:9px 11px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;font-size:11px;color:var(--gold2);font-family:var(--mono);line-height:1.5">
+          💰 Payout provável: <strong>${hu.payoutProvavel||'4x'}</strong> · soma média recente: ${(hu&&hu.sumAvg||8.0).toFixed(1)}<br/>
+          <span style="font-size:10px;color:var(--txt2)">Apostar no empate agora tem valor de bônus</span>
+        </div>` : ''}
+        ${hu.ultimosPay && hu.ultimosPay.length ? `
+        <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono)">
+          Últimos empates: ${hu.ultimosPay.map(p=>`<span style="color:${p.pay==='88x'||p.pay==='25x'?'var(--gold2)':'var(--txt3)'}">${p.pay}</span>`).join(' · ')}
+        </div>` : ''}
+        ` : '<div style="color:var(--txt3);font-size:11px;text-align:center;padding:12px;font-family:var(--mono)">Coletando histórico de empates...</div>'}
+        <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
+      </div>`:"";
 
   // período de teste
   const rec=AUTH.key&&AUTH.keys[AUTH.key];
@@ -583,15 +627,7 @@ function renderApp(){
       <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">cada red consome 3 greens · 2 loss encerram · empate alto=green, baixo=bônus</div>
     </div>
     ${heatHtml}
-    ${!ST.sessaoAtiva && ST.heat && ST.heat.state !== 'QUENTE' && ST.heat.state !== 'FAVORÁVEL' ? `
-    <div style="margin-bottom:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
-      <div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div>
-      <div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">
-        A sessão só começa quando o app identificar um <strong style="color:var(--txt)">bom momento</strong> na mesa.<br/>
-        Agora a mesa está <strong style="color:var(--txt)">${ST.heat?ST.heat.state:'em análise'}</strong> — não operamos.<br/><br/>
-        👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
-      </div>
-    </div>` : ''}
+    
     ${signalCardHtml}
     ${hunterHtml}
     <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>

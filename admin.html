@@ -185,9 +185,6 @@ const db = firebase.database();
 const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
-let INPUT_FOCUSED = false;
-document.addEventListener("focusin", ()=>{ INPUT_FOCUSED=true; });
-document.addEventListener("focusout", ()=>{ INPUT_FOCUSED=false; });
 let SUPPRESS_PUSH = false;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -278,7 +275,7 @@ function pushToFirebase(){
     metaAviso: ST.metaAviso || null,
     metaAvisoVisto: !!ST.metaAvisoVisto,
     heat: ST._heat || null,
-    hunter: ST._hunter ? { status: ST._hunter.status, msg: ST._hunter.msg, conf: ST._hunter.conf, payoutProvavel: ST._hunter.payoutProvavel||null } : null,
+    hunter: ST._hunter || null,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -351,7 +348,6 @@ function initFirebaseSync(){
     }
     SUPPRESS_PUSH = false;
     renderRouter();
-    setTimeout(pushToFirebase, 300);
   }, err => {
     SYNC_STATUS = "OFFLINE";
     renderRouter();
@@ -2698,7 +2694,16 @@ window.logoutAcesso = function(){
 };
 
 // ── Render do roteador ──
-function renderRouter(){ if(INPUT_FOCUSED) return;
+let _rTimer = null;
+let _inputActive = false;
+document.addEventListener("focusin", e => { if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") _inputActive=true; });
+document.addEventListener("focusout", () => { setTimeout(()=>{ _inputActive=false; }, 200); });
+function renderRouter(){
+  if(_rTimer) return;
+  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 120);
+}
+function _doRender(){
+  if(_inputActive) return;
   if(AUTH.view === "app"){ if(!ST.jsonOpen) renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
