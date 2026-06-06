@@ -195,6 +195,7 @@ function renderRouter(){
 document.addEventListener("focusin", ()=>{ INPUT_FOCUSED=true; });
 document.addEventListener("focusout", ()=>{ INPUT_FOCUSED=false; });
 let SUPPRESS_PUSH = false;
+let FIRST_LOAD_DONE = false;
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
@@ -357,7 +358,10 @@ function initFirebaseSync(){
     }
     SUPPRESS_PUSH = false;
     renderRouter();
-    setTimeout(pushToFirebase, 300);
+    if(!FIRST_LOAD_DONE){
+      FIRST_LOAD_DONE = true;
+      setTimeout(()=>{ if(AUTH.view==="app") pushToFirebase(); }, 800);
+    }
   }, err => {
     SYNC_STATUS = "OFFLINE";
     renderRouter();
