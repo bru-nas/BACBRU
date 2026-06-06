@@ -369,15 +369,27 @@ function avisoSessaoHTML(){
 }
 
 function celebraHTML(){
-  if(!ST.celebra)return"";
-  const lvl=ST.celebra==="88x"?3:ST.celebra==="25x"?2:1;
-  const cols=["#fbbf24","#f59e0b","#ef4444","#22c55e","#22d3ee","#a78bfa"];
-  let conf="";const n=lvl===3?60:lvl===2?30:0;
-  for(let i=0;i<n;i++){const c=cols[i%cols.length];conf+=`<div style="position:absolute;left:${Math.random()*100}%;top:-20px;width:8px;height:8px;background:${c};border-radius:${Math.random()>.5?"50%":"2px"};animation:confFall ${1.5+Math.random()*2}s ${Math.random()*.5}s ease-in forwards"></div>`;}
-  const emojis=lvl===3?"🎊🔥💎":lvl===2?"🎉✨":"🎊";
-  const txt=lvl===3?"EMPATE 88X!!! MÁXIMO PAGAMENTO":lvl===2?"EMPATE 25X! PAGAMENTO ALTO":"EMPATE 10X! PAGOU BEM";
-  return`<div style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(3,7,18,.92);overflow:hidden">${conf}<div style="font-size:${lvl===3?72:54}px;animation:pagaPop .5s ease;z-index:1">${emojis}</div><div style="font-size:${lvl===3?22:18}px;font-weight:900;font-family:var(--mono);color:var(--gold2);text-align:center;margin-top:10px;z-index:1;letter-spacing:2px">${ST.celebra}</div><div style="font-size:12px;color:rgba(255,255,255,.7);font-family:var(--mono);margin-top:6px;z-index:1">${txt}</div></div>`;
+  if(!ST.celebra) return '';
+  const lvl = ST.celebra==='88x' ? 3 : ST.celebra==='25x' ? 2 : 1;
+  const confCount = lvl===3 ? 60 : lvl===2 ? 30 : 0;
+  const cols = ['#fbbf24','#f59e0b','#ef4444','#22c55e','#22d3ee','#a78bfa'];
+  let conf = '';
+  for(let i=0;i<confCount;i++){
+    const left = Math.random()*100;
+    const dur = 1.6 + Math.random()*1.8;
+    const delay = Math.random()*1.2;
+    const c = cols[i % cols.length];
+    conf += `<div class="confetti" style="left:${left}%;background:${c};animation-duration:${dur}s;animation-delay:${delay}s"></div>`;
+  }
+  const rings = lvl>=2 ? `<div class="paga-ring"></div><div class="paga-ring r2"></div>${lvl===3?'<div class="paga-ring r3"></div>':''}` : '';
+  return `<div class="paga-overlay lvl${lvl}" onclick="fecharPaga()">
+    ${rings}${conf}
+    <div class="paga-big">🔥 PAGA 🔥</div>
+    <div class="paga-x">${ST.celebra}</div>
+    <div class="paga-sub">EMPATE PAGO · TOQUE PARA FECHAR</div>
+  </div>`;
 }
+
 function flashHTML(){
   if(!ST.flash)return"";
   const tipo=ST.flash.tipo;
