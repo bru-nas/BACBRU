@@ -186,6 +186,12 @@ const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
 let INPUT_FOCUSED = false;
+let _renderTimer = null;
+function renderRouter(){
+  if(INPUT_FOCUSED) return;
+  if(_renderTimer) return;
+  _renderTimer = setTimeout(function(){ _renderTimer=null; _renderRouterImpl(); }, 100);
+}
 document.addEventListener("focusin", ()=>{ INPUT_FOCUSED=true; });
 document.addEventListener("focusout", ()=>{ INPUT_FOCUSED=false; });
 let SUPPRESS_PUSH = false;
@@ -2697,7 +2703,7 @@ window.logoutAcesso = function(){
 };
 
 // ── Render do roteador ──
-function renderRouter(){ if(INPUT_FOCUSED) return;
+function _renderRouterImpl(){
   if(AUTH.view === "app"){ renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
