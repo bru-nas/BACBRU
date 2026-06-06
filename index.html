@@ -317,9 +317,20 @@ function initSync(){
 
 function checkAuth(){
   if(AUTH.key&&keyIsValid(AUTH.keys[AUTH.key])){
+    const jaEraApp = AUTH.view==="app";
     if(AUTH.view==="loading"||AUTH.view==="lock")AUTH.view="app";
     const rec=AUTH.keys[AUTH.key];
     if(!AUTH.nome){AUTH.nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.nome!=="Teste 3 dias")?rec.nome:"";if(AUTH.nome)localStorage.setItem("bacbru_nome",AUTH.nome);}
+    // Registrar entrada no Firebase (só na primeira vez que entra)
+    if(!jaEraApp){
+      const devId=getDeviceId();
+      db.ref("entradas/"+devId).set({
+        nome: AUTH.nome||"sem nome",
+        chave: AUTH.key,
+        tipo: rec&&rec.tipo||"desconhecido",
+        entradaEm: Date.now()
+      });
+    }
   }else if(AUTH.view==="app")AUTH.view="lock";
   if(AUTH.view==="loading")AUTH.view="lock";
   render();
@@ -405,6 +416,31 @@ function renderLock(){
   </div>`;
 }
 
+const lbl=c=>c==="P"?"AZUL":c==="B"?"VERMELHO":c==="T"?"EMPATE":"AGUARDA";
+const opos=c=>c==="P"?"B":"P";
+function fecharPaga(){ST.celebra=null;renderRouter();}
+
+function cardSinalGrande(titulo, lado, sub, tieInfo, mostrarDica){
+    const bg = lado === "P" ? "rgba(59,130,246,.15),rgba(59,130,246,.04)" :
+               lado === "B" ? "rgba(239,68,68,.15),rgba(239,68,68,.04)" :
+               "rgba(245,158,11,.12),rgba(245,158,11,.04)";
+    const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
+    const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
+    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
+      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
+      ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
+      ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
+      <div style="margin-top:12px;padding:10px 12px;background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.2);border-radius:10px;text-align:left;${mostrarDica?'':'display:none'}">
+        <div style="font-size:10px;color:var(--cyan);font-family:var(--mono);letter-spacing:2px;margin-bottom:5px;font-weight:700">💡 COMO OPERAR</div>
+        <div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">
+          Pegue entre <strong style="color:var(--txt)">3 e 4 sinais</strong> por sessão. Use o <strong style="color:var(--txt)">último sinal</strong> para recuperar o que gastou cobrindo os empates, caso nenhum empate tenha batido.<br/>
+          <strong style="color:var(--gold2)">Na cor, aposte só o valor da cor</strong> — não inclua o que você usou para cobrir o empate. Misturar os dois aumenta a perda se vier um loss.
+        </div>
+      </div>
+    </div>`;
+  }
+
 function renderApp(){
   const root=document.getElementById("root");
   const total=ST.greens+ST.reds;
@@ -431,17 +467,14 @@ function renderApp(){
   const tBeb=roadTrend(beb),tSm=roadTrend(sm),tCp=roadTrend(cp);
 
   // sinal
-  const cicloConf=ST.ciclo==="entrada"||ST.ciclo==="gale"||ST.ciclo==="aguarda_gale";
-  let sigClass="w",sigText="·",confColor="#475569";
-  if(cicloConf&&ST.ciclo_sinal){
-    if(ST.ciclo_sinal==="P"){sigClass="p";sigText="AZUL";confColor="#3b82f6";}
-    else if(ST.ciclo_sinal==="B"){sigClass="b";sigText="VERMELHO";confColor="#ef4444";}
-  }
-  const tieBadge=(cicloConf&&(ST.ciclo_gale_tie||ST.ciclo_tie))?`<div class="tie-badge">🎯 ${ST.ciclo_gale_tie||ST.ciclo_tie}</div>`:"";
-  let entryHtml="";
-  if(ST.ciclo==="entrada")entryHtml=`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--cyan);text-align:center;letter-spacing:1px">ENTRADA CONFIRMADA · aguarde resultado</div>`;
-  else if(ST.ciclo==="aguarda_gale")entryHtml=`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--gold2);text-align:center;letter-spacing:1px">ENTRADA PERDIDA · GALÉ a caminho</div>`;
-  else if(ST.ciclo==="gale")entryHtml=`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--gold2);text-align:center;letter-spacing:1px">GALÉ NA MESA · aguarde resultado</div>`;
+  const cicloConf=ST.sessaoAtiva&&(ST.ciclo==="entrada"||ST.ciclo==="gale"||ST.ciclo==="aguarda_gale");
+  const signalCardHtml=(()=>{
+    if(!ST.sessaoAtiva)return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px"><div style="font-size:14px;color:var(--gold2);font-family:var(--mono);font-weight:700;margin-bottom:8px">⏸ FORA DE SESSÃO</div><div style="font-size:12px;color:var(--txt2);font-family:var(--mono);line-height:1.7">A sessão só começa quando o app identificar um bom momento na mesa. Agora a mesa está '+(ST.heat?ST.heat.state:'em análise')+' — não operamos.<br/><br/>👇 No rodapé tem o horário da próxima sessão ao vivo. Avisamos com 30 minutos de antecedência.</div></div>';
+    if(ST.ciclo==="entrada")return cardSinalGrande('▶ ENTRADA ATIVA',ST.ciclo_sinal,(ST.ciclo_conf*100).toFixed(0)+'% confiança · aguarde resultado',ST.ciclo_tie);
+    if(ST.ciclo==="aguarda_gale"){var cnt=ST.ciclo_aguarda_count||0;return'<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(148,163,184,.08),rgba(0,0,0,.3));border:2px dashed rgba(148,163,184,.35);border-radius:14px;text-align:center"><div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">⏳ AGUARDANDO GALE</div><div style="font-size:22px;font-weight:900;color:var(--gold2);font-family:var(--mono);margin:4px 0">'+cnt+'/3 rodadas</div><div style="font-size:11px;color:var(--txt2);font-family:var(--mono);line-height:1.6">Motor refinando. Entrada anterior: '+lbl(ST.ciclo_sinal)+'</div></div>';}
+    if(ST.ciclo==="gale")return cardSinalGrande('⚡ GALE · ENTRAR AGORA',ST.ciclo_gale_sinal||opos(ST.ciclo_sinal),'Decisão: '+(ST.ciclo_gale_dec||'INVERTER')+' · entrada anterior foi '+lbl(ST.ciclo_sinal),ST.ciclo_gale_tie);
+    return'<div style="margin-top:10px;padding:14px;text-align:center;font-size:12px;color:var(--txt3);font-family:var(--mono)">⏳ SESSÃO ATIVA · aguardando sinal</div>';
+  })()
 
   // heat (recebido via Firebase do admin)
   const h=ST.heat;
@@ -559,13 +592,7 @@ function renderApp(){
         👇 No rodapé tem o horário da <strong style="color:var(--cyan)">próxima sessão ao vivo</strong>. Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.
       </div>
     </div>` : ''}
-    <div class="card signal-card">
-      <div class="sig-status">${cicloConf?"SINAL ATIVO":"ANALISANDO A MESA"}</div>
-      <div class="sig-main ${sigClass}">${cicloConf?sigText:"·"}</div>
-      ${tieBadge}
-      ${cicloConf?`<div class="conf-bar"><div class="conf-fill" style="width:${(ST.ciclo_conf*100).toFixed(0)}%;background:${confColor}"></div></div><div class="conf-txt"><span>CONFIANÇA</span><span>${(ST.ciclo_conf*100).toFixed(0)}%</span></div>`:`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--txt3);text-align:center;letter-spacing:1px">aguarde o sinal confirmado</div>`}
-      ${entryHtml}
-    </div>
+    ${signalCardHtml}
     ${hunterHtml}
     <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
     <div class="card road"><div class="bead-grid">${beadCells.join("")}</div></div>

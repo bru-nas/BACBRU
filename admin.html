@@ -1607,6 +1607,7 @@ function addRound(r, sNum){
         let gmsg = `⚡ GALE ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
         if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
         toast(gmsg, 3500);
+        save();
       } else {
         // Motor incerto → aguarda gale com TETO de 2 rodadas
         ST.ciclo = "aguarda_gale";
@@ -1632,6 +1633,7 @@ function addRound(r, sNum){
       let gmsg = `⚡ ENTRAR no GALE · ${lbl(a2.signal)} · ${ST.ciclo_gale_dec}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
       toast(gmsg, 3800);
+      save();
     } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
       // ════════════════════════════════════════════════════════════════
       // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
@@ -1662,6 +1664,7 @@ function addRound(r, sNum){
       let gmsg = `⚡ GALE ${lbl(galeSide)} · ${dec} · ${motivo}`;
       if(a2.tie.active) gmsg += ` + EMPATE ${ST.ciclo_gale_tie}`;
       toast(gmsg, 4500);
+      save();
     } else {
       // Continua aguardando (ainda dentro do teto)
       toast(`⏳ Aguardando gale · ${ST.ciclo_aguarda_count}/${MAX_AGUARDA} rodadas`, 2500);
@@ -2466,6 +2469,12 @@ function keyIsValid(rec){
 }
 
 function initAuth(){
+  // Carrega entradas de assinantes
+  db.ref("entradas").on("value", s => {
+    AUTH.entradas = s.val() || {};
+    renderRouter();
+  });
+
   // Carrega config (sessões + admins) e chaves
   db.ref("config").on("value", s => {
     const c = s.val() || {};
@@ -2917,11 +2926,24 @@ function renderAdminPanel(){
     <div class="sec-lbl">CHAVES · ${keys.length}</div>
     <div class="card" style="max-height:340px;overflow-y:auto">${keyRows}</div>
 
+    <div class="sec-lbl">👥 ENTRADAS RECENTES</div>
+    <div class="card" style="max-height:280px;overflow-y:auto">
+      ${Object.entries(AUTH.entradas).length===0?'<div style="font-size:11px;color:var(--txt3);font-family:var(--mono);text-align:center;padding:12px">nenhuma entrada registrada</div>':
+        Object.entries(AUTH.entradas).sort((a,b)=>b[1].entradaEm-a[1].entradaEm).map(([devId,e])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div>
+            <div style="font-size:12px;color:var(--txt);font-family:var(--mono);font-weight:700">${e.nome||'sem nome'}</div>
+            <div style="font-size:10px;color:var(--txt3);font-family:var(--mono)">${e.chave||''} · ${e.tipo||''}</div>
+          </div>
+          <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);text-align:right">${new Date(e.entradaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        </div>`).join('')}
+    </div>
+
     <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
     <div class="card">
       ${sessoesRows}
       <div style="display:flex;gap:7px;margin-top:8px">
-        <input id="newSessao" placeholder="HH:MM (ex: 20:00)" value="${AUTH.newSessao}" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
+        <input id="newSessao" placeholder="HH:MM (ex: 20:00)" oninput="AUTH.newSessao=this.value" onkeydown="if(event.key==='Enter')addSessao()" style="flex:1;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none"/>
         <button onclick="addSessao()" style="padding:11px 18px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);border-radius:9px;color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:700;cursor:pointer">+</button>
       </div>
     </div>
