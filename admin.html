@@ -186,16 +186,9 @@ const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
 let INPUT_FOCUSED = false;
-let _renderTimer = null;
-function renderRouter(){
-  if(INPUT_FOCUSED) return;
-  if(_renderTimer) return;
-  _renderTimer = setTimeout(function(){ _renderTimer=null; _renderRouterImpl(); }, 100);
-}
 document.addEventListener("focusin", ()=>{ INPUT_FOCUSED=true; });
 document.addEventListener("focusout", ()=>{ INPUT_FOCUSED=false; });
 let SUPPRESS_PUSH = false;
-let FIRST_LOAD_DONE = false;
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
@@ -358,10 +351,7 @@ function initFirebaseSync(){
     }
     SUPPRESS_PUSH = false;
     renderRouter();
-    if(!FIRST_LOAD_DONE){
-      FIRST_LOAD_DONE = true;
-      setTimeout(()=>{ if(AUTH.view==="app") pushToFirebase(); }, 800);
-    }
+    setTimeout(pushToFirebase, 300);
   }, err => {
     SYNC_STATUS = "OFFLINE";
     renderRouter();
@@ -1914,11 +1904,12 @@ function injectJSON(){
     if(d.countAcum) ST.countAcum = d.countAcum;
     if(d.tieAcum) ST.tieAcum = d.tieAcum;
     if(typeof d.sessoes === "number") ST.sessoes = d.sessoes + 1;
-    save();
-    toast(`✓ ${ST.H.length} rodadas carregadas · ${ST.greens}/${ST.reds}`);
     ST.injTxt = "";
     ST.jsonOpen = false;
-    renderRouter();
+    save();
+    if(_renderTimer){ clearTimeout(_renderTimer); _renderTimer=null; }
+    renderApp();
+    toast(`✓ ${ST.H.length} rodadas carregadas · pesos atualizados`);
   }catch(e){
     toast("❌ JSON inválido");
   }
@@ -2707,8 +2698,8 @@ window.logoutAcesso = function(){
 };
 
 // ── Render do roteador ──
-function _renderRouterImpl(){
-  if(AUTH.view === "app"){ renderApp(); return; }
+function renderRouter(){ if(INPUT_FOCUSED) return;
+  if(AUTH.view === "app"){ if(!ST.jsonOpen) renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
     root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
