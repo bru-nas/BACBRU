@@ -2715,36 +2715,39 @@ window.logoutAcesso = function(){
 
 // ── Render do roteador ──
 let _rTimer = null;
-let _inputActive = false;
-document.addEventListener("focusin", e => { if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") _inputActive=true; });
-document.addEventListener("focusout", () => { setTimeout(()=>{ _inputActive=false; }, 200); });
 function renderRouter(){
   if(_rTimer) return;
-  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 60);
+  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 50);
 }
 function renderNow(){
   if(_rTimer){ clearTimeout(_rTimer); _rTimer=null; }
   _doRender();
 }
 function _doRender(){
-  if(_inputActive) return;
+  // Nunca re-renderiza enquanto o painel JSON está aberto (perderia o texto colado)
   if(AUTH.view === "app"){ if(!ST.jsonOpen) renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
     root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
     return;
   }
+  // Se o usuário está digitando num campo, não destruir a tela (evita piscar/perder foco)
+  const ae = document.activeElement;
+  const digitando = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
   if(AUTH.view === "lock"){
+    if(digitando) return;
     root.innerHTML = renderLock();
     bindAuthInputs();
     return;
   }
   if(AUTH.view === "adminLogin"){
+    if(digitando) return;
     root.innerHTML = renderAdminLogin();
     bindAuthInputs();
     return;
   }
   if(AUTH.view === "admin"){
+    if(digitando) return;
     root.innerHTML = renderAdminPanel();
     bindAuthInputs();
     return;
