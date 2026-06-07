@@ -348,6 +348,18 @@ function initFirebaseSync(){
       ST.metaAvisoVisto = !!data.metaAvisoVisto;
     }
     SUPPRESS_PUSH = false;
+    // Recalcular e publicar heat/hunter se estado mudou
+    if(AUTH.view === 'app'){
+      const _a = analyze();
+      if(_a.heat) ST._heat = { state: _a.heat.state, score: _a.heat.score };
+      if(_a.hunter) ST._hunter = _a.hunter;
+      const _hk = (ST._heat?ST._heat.state:'') + '|' + (ST._hunter?ST._hunter.status:'');
+      if(_hk !== ST._lastHeatKey){
+        ST._lastHeatKey = _hk;
+        if(_heatPushTimer) clearTimeout(_heatPushTimer);
+        _heatPushTimer = setTimeout(()=>{ pushToFirebase(); }, 300);
+      }
+    }
     renderRouter();
   }, err => {
     SYNC_STATUS = "OFFLINE";
