@@ -348,8 +348,8 @@ function initFirebaseSync(){
       ST.metaAvisoVisto = !!data.metaAvisoVisto;
     }
     SUPPRESS_PUSH = false;
-    // Recalcular e publicar heat/hunter se estado mudou
-    if(AUTH.view === 'app'){
+    // Recalcular e publicar heat/hunter se estado mudou (qualquer tela do admin)
+    if(isAdmin() || AUTH.view === 'app' || AUTH.view === 'admin'){
       const _a = analyze();
       if(_a.heat) ST._heat = { state: _a.heat.state, score: _a.heat.score };
       if(_a.hunter) ST._hunter = _a.hunter;
@@ -3064,6 +3064,7 @@ window.reg = function(r){
 window.confirmEntry = confirmEntry;
 window.toggleCobertura = function(){
   ST.coberturaEmpate = !ST.coberturaEmpate;
+  if(ST.coberturaEmpate) ST.sessaoAtiva = true; // cobrir empate = sessão ativa
   toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE ligado" : "Cobrir empate desligado", 1800);
   save(); renderRouter();
 };
