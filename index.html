@@ -317,6 +317,14 @@ function initSync(){
 
 function checkAuth(){
   if(AUTH.key&&keyIsValid(AUTH.keys[AUTH.key])){
+    const _rec=AUTH.keys[AUTH.key];
+    const _dev=getDeviceId();
+    // Se a chave está vinculada a OUTRO aparelho, expulsa
+    if(_rec.deviceId && _rec.deviceId!==_dev){
+      AUTH.key="";localStorage.removeItem("bacbru_key");
+      AUTH.msg="Esta chave já está em uso em outro aparelho.";
+      AUTH.view="lock";render();return;
+    }
     const jaEraApp = AUTH.view==="app";
     if(AUTH.view==="loading"||AUTH.view==="lock")AUTH.view="app";
     const rec=AUTH.keys[AUTH.key];
@@ -656,6 +664,16 @@ window.entrar=function(){
   if(!k){AUTH.msg="Digite sua chave";render();return;}
   const rec=AUTH.keys[k];
   if(keyIsValid(rec)){
+    const devId=getDeviceId();
+    const donoDev=rec.deviceId||null;
+    if(donoDev && donoDev!==devId){
+      AUTH.msg="Esta chave já está em uso em outro aparelho.";
+      render();return;
+    }
+    // Primeira vez: vincula a chave a este dispositivo
+    if(!donoDev){
+      db.ref("keys/"+k+"/deviceId").set(devId);
+    }
     AUTH.key=k;
     const nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.nome!=="Teste 3 dias")?rec.nome:"";
     AUTH.nome=nome;if(nome)localStorage.setItem("bacbru_nome",nome);
