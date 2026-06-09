@@ -887,17 +887,22 @@ function analyze(){
   } else if(st.len >= 5){
     const teto = prof ? (prof.max || prof.p90 || 7) : 7;
     const zonaPerigo = prof ? prof.p90 : 6;
+    const vS = volSoma(last(col, Math.min(st.len,5)));   // surf limpo = volatilidade baixa
+    const surfLimpo = vS <= 4;                            // somas próximas → mesa "travada" numa cor
     if(prof && st.len < Math.ceil(teto * 0.75) && st.len < zonaPerigo){
       // Streak forte ainda na zona SAUDÁVEL (longe do máximo) → SEGUE a continuação.
-      // É o "padrão super forte no meio" que o operador quer pegar.
-      add("SK5C", st.side, Math.min(0.88, W.SK4C + 0.05), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
+      add("SK5C", st.side, Math.min(0.90, W.SK4C + 0.07), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
     } else if(prof && st.len < prof.max && st.len < zonaPerigo){
-      // chegando perto mas ainda não no perigo → continua mas sem reforço
-      add("SK5C", st.side, W.SK4C, `Streak ${st.len} ${st.side} · ainda dentro do range → continuar`);
+      // chegando perto mas ainda não no perigo → continua com reforço se surf limpo
+      add("SK5C", st.side, surfLimpo ? Math.min(0.88, W.SK4C+0.04) : W.SK4C, `Streak ${st.len} ${st.side} · dentro do range${surfLimpo?' · surf limpo':''} → continuar`, surfLimpo);
+    } else if(surfLimpo && st.len <= teto + 1){
+      // SURF FORTE no/acima do recorde MAS limpo (somas convergindo) → o operador quer pegar isso.
+      // Surf dominante pode estender o recorde; só não perseguimos se a volatilidade explodir.
+      add("SK5C", st.side, Math.min(0.86, W.SK4C+0.03), `Streak ${st.len} ${st.side} · surf dominante e limpo (vol${vS}) → seguir com cautela`, true);
     } else {
-      // zona de perigo / no máximo → PARAR (não perseguir continuação nem quebra)
+      // zona de perigo + volatilidade alta → PARAR
       out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · zona de perigo (hist máx ${prof?prof.max:'?'}) · PARAR`;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão (hist máx ${prof?prof.max:'?'}, vol${vS}) · PARAR`;
     }
   }
 
@@ -1068,8 +1073,11 @@ function analyze(){
   if(out.regimeFatigado){ heat -= 16; heatReasons.push(`${out.fatigue.regime} maduro`); }
 
   // [7c] Zona de perigo de quebra (streak no p90 histórico)
-  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
+  const _surfSeguindo = patterns.some(p => (p.name==="SK5C"||p.name==="SK4C"||p.name==="SK3C") && p.sig===out.streakSide && p.hi);
+  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4 && !_surfSeguindo){
     heat -= 12; heatReasons.push("streak na zona de perigo");
+  } else if(_surfSeguindo){
+    heat += 8; heatReasons.push("surf forte · seguir continuação");
   }
 
   // [8] Big Road clean signals
