@@ -348,8 +348,8 @@ function initFirebaseSync(){
       ST.metaAvisoVisto = !!data.metaAvisoVisto;
     }
     SUPPRESS_PUSH = false;
-    // Recalcular e publicar heat/hunter se estado mudou
-    if(AUTH.view === 'app'){
+    // Recalcular e publicar heat/hunter se estado mudou (qualquer tela do admin)
+    if(isAdmin() || AUTH.view === 'app' || AUTH.view === 'admin'){
       const _a = analyze();
       if(_a.heat) ST._heat = { state: _a.heat.state, score: _a.heat.score };
       if(_a.hunter) ST._hunter = _a.hunter;
@@ -902,10 +902,11 @@ function analyze(){
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // PADRÕES DE BLOCO (validados nos históricos acumulados)
+  // PADRÕES DE BLOCO — cada um com assinatura distinta (não se atropelam)
+  // Validados estatisticamente nos históricos acumulados.
   // ══════════════════════════════════════════════════════════════════════
   (function(){
-    // monta blocos reais (comprimento de cada coluna da big road, sem teto)
+    // monta blocos reais (comprimento de cada coluna, sem teto)
     const bl = [];
     if(col.length){
       let cs = col[0].r, cl = 1;
@@ -913,33 +914,60 @@ function analyze(){
       bl.push({side:cs,len:cl});
     }
     if(bl.length < 2) return;
-    const ult = bl[bl.length-1];   // bloco em formação (atual)
+    const ult = bl[bl.length-1];   // bloco em formação
     const ant = bl[bl.length-2];   // bloco anterior fechado
 
-    // ── PADRÃO 2-2 · após 2+2 alternados, o próximo bloco VOLTA à cor do 1º bloco ──
-    // Validado: 100% (5/5) nos históricos. Ex: B2·P2 → vem B. P2·B2 → vem P.
-    // Dispara quando: bloco anterior teve len 2, e o atual acabou de virar (len 1, cor oposta).
-    if(bl.length >= 3){
-      const b1 = bl[bl.length-3], b2 = bl[bl.length-2];
-      if(b1.len===2 && b2.len===2 && b1.side!==b2.side && ult.len===1 && ult.side!==b2.side){
-        // ult é a volta esperada à cor de b1 — confirma e aposta continuação curta dela
-        add("P22", b1.side, 0.84, `Padrão 2-2 · ${b1.side}2 ${b2.side}2 → volta ${b1.side}`, true);
+    // dominância nas últimas 12 jogadas (filtro de segurança)
+    function domDe(side){ return col.slice(-13,-1).filter(x=>x.r===side).length; }
+
+    // ── 1) ESCADA DECRESCENTE ALTERNADA · 5B1P 4B1P 3B1P 2B1P (ou 4P3B2P1B) ──
+    // Blocos da cor dominante DIMINUINDO, separados por isolados de 1 da outra cor.
+    // Entrada: quando o isolado sai, a dominante volta (controle mantido enquanto decresce).
+    if(bl.length >= 5 && ult.len === 1){
+      const d = [bl[bl.length-2], bl[bl.length-4], bl[bl.length-6]].filter(Boolean);
+      if(d.length === 3 && d[0].side===d[1].side && d[1].side===d[2].side){
+        // d[0] mais recente, d[2] mais antigo → decrescente significa d[2]>d[1]>d[0]
+        const decr = d[2].len > d[1].len && d[1].len > d[0].len;
+        const isolados = bl[bl.length-3].len===1 && bl[bl.length-5].len===1;
+        if(decr && isolados && ult.side!==d[0].side){
+          add("ESCD", d[0].side, 0.87, `Escada decrescente · ${d[2].side}${d[2].len}→${d[1].len}→${d[0].len} alternada → volta ${d[0].side}`, true);
+          return; // padrão forte e específico identificado, não mistura com outros
+        }
       }
     }
 
-    // ── PADRÃO ESCADA · bloco + isolado da cor oposta → volta da dominante ──
-    // Validado: 100% nos históricos. Reforço extra quando blocos vêm decrescentes.
+    // ── 2) ESCADA SIMPLES · bloco + isolado + DOMINÂNCIA forte → volta dominante (88%) ──
     if(ult.len === 1 && ant.side !== ult.side && ant.len >= 2){
-      const domSide = ant.side;
-      const domLens = bl.filter(b=>b.side===domSide).map(b=>b.len);
-      let escadaDecr = false;
-      if(domLens.length >= 3){ const u=domLens.slice(-3); escadaDecr = u[0] > u[1] && u[1] >= u[2]; }
-      add("ESC", domSide, escadaDecr ? 0.86 : 0.80, `Escada · ${domSide}${ant.len} + isolado ${ult.side} → volta ${domSide}${escadaDecr?' (decrescente)':''}`, escadaDecr);
+      const nDom = domDe(ant.side);
+      if(nDom >= 8){
+        const conf = ant.len === 2 ? 0.86 : 0.82;
+        add("ESC", ant.side, conf, `Volta dominante · ${ant.side}${ant.len} + isolado · dom ${nDom}/12 → ${ant.side}`, true);
+        return;
+      }
+    }
+
+    // ── 3) PADRÃO 2-2 · após 2+2 alternados → volta à cor do 1º bloco ──
+    if(bl.length >= 3){
+      const b1 = bl[bl.length-3], b2 = bl[bl.length-2];
+      if(b1.len===2 && b2.len===2 && b1.side!==b2.side && ult.len===1 && ult.side!==b2.side){
+        add("P22", b1.side, 0.84, `Padrão 2-2 · ${b1.side}2 ${b2.side}2 → volta ${b1.side}`, true);
+        return;
+      }
+    }
+
+    // ── 4) PADRÃO 2-1-2-1 · blocos alternando 2 e 1 → mantém o ritmo ──
+    // Validado: depois de 2,1,2,1 o próximo quebra o bloco de 2 (vira 1). Aposta na alternância.
+    if(bl.length >= 4){
+      const q = bl.slice(-4); // [2,1,2,1] esperado
+      if(q[0].len===2 && q[1].len===1 && q[2].len===2 && q[3].len===1){
+        // ritmo 2-1 confirmado → próximo bloco começa cor de q[2] (oposta a q[3])
+        add("P21", q[2].side, 0.82, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
+        return;
+      }
     }
   })();
 
-  // ── SURF SEGURO · só streak >=5 COM somas convergindo (vol<=4) ──
-  // Validado: streak 5-6 limpo = 100% (4/4); sujo = 67%; streak 3-4 = 40% (NÃO entra).
+  // ── 5) SURF SEGURO · streak >=5 COM somas convergindo (vol<=4) ──
   (function(){
     const stx = streak(col);
     if(stx.len >= 5){
@@ -947,13 +975,12 @@ function analyze(){
       if(janela.length >= 4){
         const vol = Math.max(...janela) - Math.min(...janela);
         if(vol <= 4){
-          // surf limpo confirmado → continua na cor; cancela exaustão e remove padrões opostos
           add("SURF", stx.side, vol<=2 ? 0.86 : 0.83, `Surf limpo · ${stx.len} ${stx.side} · somas convergindo (vol${vol}) → seguir`, true);
           out.exaustao = false; out.exaustaoMotivo = null;
         }
       }
     }
-  })();
+  })();;
 
   // ── PADRÃO PAGANTE MADURO · fadiga de regime ──
   const fatigue = patternFatigue(col);
@@ -1213,7 +1240,7 @@ function analyze(){
   // Validados estatisticamente nos históricos. Entram direto, sem depender de
   // temperatura da mesa — MAS só se nenhum padrão FORTE (>=0.80) apostar contra.
   const _verifList = patterns
-    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="P22") && p.hi && p.conf>=0.80)
+    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="P22"||p.name==="P21") && p.hi && p.conf>=0.80)
     .sort((a,b)=>b.conf-a.conf);
   const _verif = _verifList[0];
   if(_verif){
@@ -1223,7 +1250,7 @@ function analyze(){
     // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
     const _contra = patterns.some(p =>
       p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
-      !(p.name==="SURF"||p.name==="ESC"||p.name==="P22"));
+      !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="P22"||p.name==="P21"));
     if(!_contra){
       out.signal = _verif.sig;
       out.conf = _verif.conf;
@@ -2590,7 +2617,7 @@ function initAuth(){
   // Carrega entradas de assinantes
   db.ref("entradas").on("value", s => {
     AUTH.entradas = s.val() || {};
-    renderRouter();
+    // não re-renderiza aqui (evita piscar); a lista atualiza no próximo render natural
   });
 
   // Carrega config (sessões + admins) e chaves
@@ -2818,15 +2845,18 @@ document.addEventListener("focusin", e => { if(e.target.tagName==="INPUT"||e.tar
 document.addEventListener("focusout", () => { setTimeout(()=>{ _inputActive=false; }, 200); });
 function renderRouter(){
   if(_rTimer) return;
-  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 60);
+  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 30);
 }
 function renderNow(){
   if(_rTimer){ clearTimeout(_rTimer); _rTimer=null; }
   _doRender();
 }
 function _doRender(){
-  if(_inputActive) return;
+  // App: renderiza sempre (nunca descarta — evita lag). JSON aberto é a única exceção.
   if(AUTH.view === "app"){ if(!ST.jsonOpen) renderApp(); return; }
+  // Telas de login: não destrói enquanto digita (evita piscar/perder foco)
+  const _ae = document.activeElement;
+  if(_ae && (_ae.tagName === "INPUT" || _ae.tagName === "TEXTAREA")) return;
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
     root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
@@ -3159,8 +3189,10 @@ window.reg = function(r){
 window.confirmEntry = confirmEntry;
 window.toggleCobertura = function(){
   ST.coberturaEmpate = !ST.coberturaEmpate;
+  // Cobrir empate ligado = sessão ativa (some o "fora de sessão" no index)
+  if(ST.coberturaEmpate) ST.sessaoAtiva = true;
   toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE ligado" : "Cobrir empate desligado", 1800);
-  save(); renderRouter();
+  save(); renderNow();
 };
 window.abortCiclo = abortCiclo;
 window.undo = undo;
