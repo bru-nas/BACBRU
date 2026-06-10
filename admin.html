@@ -348,8 +348,8 @@ function initFirebaseSync(){
       ST.metaAvisoVisto = !!data.metaAvisoVisto;
     }
     SUPPRESS_PUSH = false;
-    // Recalcular e publicar heat/hunter se estado mudou (qualquer tela do admin)
-    if(isAdmin() || AUTH.view === 'app' || AUTH.view === 'admin'){
+    // Recalcular e publicar heat/hunter se estado mudou
+    if(AUTH.view === 'app'){
       const _a = analyze();
       if(_a.heat) ST._heat = { state: _a.heat.state, score: _a.heat.score };
       if(_a.hunter) ST._hunter = _a.hunter;
@@ -887,24 +887,73 @@ function analyze(){
   } else if(st.len >= 5){
     const teto = prof ? (prof.max || prof.p90 || 7) : 7;
     const zonaPerigo = prof ? prof.p90 : 6;
-    const vS = volSoma(last(col, Math.min(st.len,5)));   // surf limpo = volatilidade baixa
-    const surfLimpo = vS <= 4;                            // somas próximas → mesa "travada" numa cor
     if(prof && st.len < Math.ceil(teto * 0.75) && st.len < zonaPerigo){
       // Streak forte ainda na zona SAUDÁVEL (longe do máximo) → SEGUE a continuação.
-      add("SK5C", st.side, Math.min(0.90, W.SK4C + 0.07), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
+      // É o "padrão super forte no meio" que o operador quer pegar.
+      add("SK5C", st.side, Math.min(0.88, W.SK4C + 0.05), `Streak ${st.len} ${st.side} forte · mesa estica até ${teto} → continuar`, true);
     } else if(prof && st.len < prof.max && st.len < zonaPerigo){
-      // chegando perto mas ainda não no perigo → continua com reforço se surf limpo
-      add("SK5C", st.side, surfLimpo ? Math.min(0.88, W.SK4C+0.04) : W.SK4C, `Streak ${st.len} ${st.side} · dentro do range${surfLimpo?' · surf limpo':''} → continuar`, surfLimpo);
-    } else if(surfLimpo && st.len <= teto + 1){
-      // SURF FORTE no/acima do recorde MAS limpo (somas convergindo) → o operador quer pegar isso.
-      // Surf dominante pode estender o recorde; só não perseguimos se a volatilidade explodir.
-      add("SK5C", st.side, Math.min(0.86, W.SK4C+0.03), `Streak ${st.len} ${st.side} · surf dominante e limpo (vol${vS}) → seguir com cautela`, true);
+      // chegando perto mas ainda não no perigo → continua mas sem reforço
+      add("SK5C", st.side, W.SK4C, `Streak ${st.len} ${st.side} · ainda dentro do range → continuar`);
     } else {
-      // zona de perigo + volatilidade alta → PARAR
+      // zona de perigo / no máximo → PARAR (não perseguir continuação nem quebra)
       out.exaustao = true;
-      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · exaustão (hist máx ${prof?prof.max:'?'}, vol${vS}) · PARAR`;
+      out.exaustaoMotivo = `Streak ${st.len} ${st.side} · zona de perigo (hist máx ${prof?prof.max:'?'}) · PARAR`;
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PADRÕES DE BLOCO (validados nos históricos acumulados)
+  // ══════════════════════════════════════════════════════════════════════
+  (function(){
+    // monta blocos reais (comprimento de cada coluna da big road, sem teto)
+    const bl = [];
+    if(col.length){
+      let cs = col[0].r, cl = 1;
+      for(let i=1;i<col.length;i++){ if(col[i].r===cs) cl++; else { bl.push({side:cs,len:cl}); cs=col[i].r; cl=1; } }
+      bl.push({side:cs,len:cl});
+    }
+    if(bl.length < 2) return;
+    const ult = bl[bl.length-1];   // bloco em formação (atual)
+    const ant = bl[bl.length-2];   // bloco anterior fechado
+
+    // ── PADRÃO 2-2 · após 2+2 alternados, o próximo bloco VOLTA à cor do 1º bloco ──
+    // Validado: 100% (5/5) nos históricos. Ex: B2·P2 → vem B. P2·B2 → vem P.
+    // Dispara quando: bloco anterior teve len 2, e o atual acabou de virar (len 1, cor oposta).
+    if(bl.length >= 3){
+      const b1 = bl[bl.length-3], b2 = bl[bl.length-2];
+      if(b1.len===2 && b2.len===2 && b1.side!==b2.side && ult.len===1 && ult.side!==b2.side){
+        // ult é a volta esperada à cor de b1 — confirma e aposta continuação curta dela
+        add("P22", b1.side, 0.84, `Padrão 2-2 · ${b1.side}2 ${b2.side}2 → volta ${b1.side}`, true);
+      }
+    }
+
+    // ── PADRÃO ESCADA · bloco + isolado da cor oposta → volta da dominante ──
+    // Validado: 100% nos históricos. Reforço extra quando blocos vêm decrescentes.
+    if(ult.len === 1 && ant.side !== ult.side && ant.len >= 2){
+      const domSide = ant.side;
+      const domLens = bl.filter(b=>b.side===domSide).map(b=>b.len);
+      let escadaDecr = false;
+      if(domLens.length >= 3){ const u=domLens.slice(-3); escadaDecr = u[0] > u[1] && u[1] >= u[2]; }
+      add("ESC", domSide, escadaDecr ? 0.86 : 0.80, `Escada · ${domSide}${ant.len} + isolado ${ult.side} → volta ${domSide}${escadaDecr?' (decrescente)':''}`, escadaDecr);
+    }
+  })();
+
+  // ── SURF SEGURO · só streak >=5 COM somas convergindo (vol<=4) ──
+  // Validado: streak 5-6 limpo = 100% (4/4); sujo = 67%; streak 3-4 = 40% (NÃO entra).
+  (function(){
+    const stx = streak(col);
+    if(stx.len >= 5){
+      const janela = last(col, stx.len).map(x=>x.s||0).filter(x=>x>0);
+      if(janela.length >= 4){
+        const vol = Math.max(...janela) - Math.min(...janela);
+        if(vol <= 4){
+          // surf limpo confirmado → continua na cor; cancela exaustão e remove padrões opostos
+          add("SURF", stx.side, vol<=2 ? 0.86 : 0.83, `Surf limpo · ${stx.len} ${stx.side} · somas convergindo (vol${vol}) → seguir`, true);
+          out.exaustao = false; out.exaustaoMotivo = null;
+        }
+      }
+    }
+  })();
 
   // ── PADRÃO PAGANTE MADURO · fadiga de regime ──
   const fatigue = patternFatigue(col);
@@ -1073,11 +1122,8 @@ function analyze(){
   if(out.regimeFatigado){ heat -= 16; heatReasons.push(`${out.fatigue.regime} maduro`); }
 
   // [7c] Zona de perigo de quebra (streak no p90 histórico)
-  const _surfSeguindo = patterns.some(p => (p.name==="SK5C"||p.name==="SK4C"||p.name==="SK3C") && p.sig===out.streakSide && p.hi);
-  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4 && !_surfSeguindo){
+  if(out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4){
     heat -= 12; heatReasons.push("streak na zona de perigo");
-  } else if(_surfSeguindo){
-    heat += 8; heatReasons.push("surf forte · seguir continuação");
   }
 
   // [8] Big Road clean signals
@@ -1163,6 +1209,31 @@ function analyze(){
   // CRITÉRIO DE MESA (opção B): entrada normal só em QUENTE/FAVORÁVEL/NEUTRA.
   // Em FRIA/CONGELADA aguarda — a entrada defensiva (mais abaixo) ainda cobre
   // o caso de a mesa esfriar no MEIO de uma sessão já ativa.
+  // ── ENTRADA DIRETA · PADRÕES VERIFICADOS (SURF/ESC/P22) ──
+  // Validados estatisticamente nos históricos. Entram direto, sem depender de
+  // temperatura da mesa — MAS só se nenhum padrão FORTE (>=0.80) apostar contra.
+  const _verifList = patterns
+    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="P22") && p.hi && p.conf>=0.80)
+    .sort((a,b)=>b.conf-a.conf);
+  const _verif = _verifList[0];
+  if(_verif){
+    // Só bloqueia se um padrão NÃO-verificado forte apostar contra.
+    // Entre padrões verificados, o de maior confiança vence (não se anulam).
+    // Só bloqueia se o padrão contrário for MAIS forte que o verificado.
+    // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
+    const _contra = patterns.some(p =>
+      p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
+      !(p.name==="SURF"||p.name==="ESC"||p.name==="P22"));
+    if(!_contra){
+      out.signal = _verif.sig;
+      out.conf = _verif.conf;
+      out.reason = _verif.reason;
+      out.patterns = patterns;
+      if(!out.tie) out.tie = {active:false};
+      return out;
+    }
+  }
+
   const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
@@ -1574,15 +1645,34 @@ function addRound(r, sNum){
       return;
     }
 
-    const temAposta = (ST.ciclo === "entrada" || ST.ciclo === "gale");
-
-    if(temAposta){
-      // Estava com aposta na mesa (entrada ou gale já lançado) → push, green, encerra
+    // GALE já lançado: aposta na mesa → empate green/push, encerra
+    if(ST.ciclo === "gale"){
       ST.greens++;
       if(isHighPay) celebraPaga(pay);
-      else flashResultado('GREEN', `✅ GREEN · empate na entrada · ${pay}`);
+      else flashResultado('GREEN', `✅ GREEN · empate no gale · ${pay}`);
       abortCiclo();
-    } else if(hunterAntes && isHighPay){
+      return;
+    }
+    // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
+    //  · farejador ativo + alto  → GREEN (encerra)
+    //  · farejador ativo + baixo → BÔNUS (ciclo SEGUE pro gale)
+    //  · sem farejador           → nada (ciclo SEGUE pro gale)
+    if(ST.ciclo === "entrada"){
+      if(hunterAntes && isHighPay){
+        ST.greens++; celebraPaga(pay);
+        toast(`🔥 GREEN · empate alto ${pay} (farejador ativo)`, 3800);
+        abortCiclo();
+      } else if(hunterAntes && !isHighPay){
+        ST.bonus = (ST.bonus || 0) + 1;
+        toast(`✨ BÔNUS · empate ${pay} (farejador ativo) · ENTRADA SEGUE`, 3500);
+        save(); renderRouter();
+      } else {
+        toast(`↻ Empate ${pay} · ENTRADA SEGUE`, 2800);
+        save(); renderRouter();
+      }
+      return;
+    }
+    if(hunterAntes && isHighPay){
       // Farejador ativo + empate alto → GREEN
       ST.greens++;
       celebraPaga(pay);
@@ -2690,12 +2780,6 @@ window.renovarChave = function(k){
   db.ref("keys/" + k + "/ativo").set(true);
 };
 
-window.desvincular = function(k){
-  if(confirm("Liberar a chave "+k+" para um novo aparelho? O aparelho atual perderá o acesso.")){
-    db.ref("keys/"+k+"/deviceId").remove();
-    toast("🔓 Chave "+k+" desvinculada", 2000);
-  }
-};
 window.removerChave = function(k){
   if(!confirm("Remover a chave " + k + "?")) return;
   db.ref("keys/" + k).remove();
@@ -2729,39 +2813,36 @@ window.logoutAcesso = function(){
 
 // ── Render do roteador ──
 let _rTimer = null;
+let _inputActive = false;
+document.addEventListener("focusin", e => { if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") _inputActive=true; });
+document.addEventListener("focusout", () => { setTimeout(()=>{ _inputActive=false; }, 200); });
 function renderRouter(){
   if(_rTimer) return;
-  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 50);
+  _rTimer = setTimeout(()=>{ _rTimer=null; _doRender(); }, 60);
 }
 function renderNow(){
   if(_rTimer){ clearTimeout(_rTimer); _rTimer=null; }
   _doRender();
 }
 function _doRender(){
-  // Nunca re-renderiza enquanto o painel JSON está aberto (perderia o texto colado)
+  if(_inputActive) return;
   if(AUTH.view === "app"){ if(!ST.jsonOpen) renderApp(); return; }
   const root = document.getElementById("root");
   if(AUTH.view === "loading"){
     root.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--txt3);font-family:var(--mono);font-size:12px">carregando...</div>`;
     return;
   }
-  // Se o usuário está digitando num campo, não destruir a tela (evita piscar/perder foco)
-  const ae = document.activeElement;
-  const digitando = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
   if(AUTH.view === "lock"){
-    if(digitando) return;
     root.innerHTML = renderLock();
     bindAuthInputs();
     return;
   }
   if(AUTH.view === "adminLogin"){
-    if(digitando) return;
     root.innerHTML = renderAdminLogin();
     bindAuthInputs();
     return;
   }
   if(AUTH.view === "admin"){
-    if(digitando) return;
     root.innerHTML = renderAdminPanel();
     bindAuthInputs();
     return;
@@ -2854,11 +2935,9 @@ function renderAdminPanel(){
         <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
       </div>
       <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
-      <div style="font-size:9px;color:${r.deviceId?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:3px">${r.deviceId?'🔒 vinculada a 1 aparelho':'🔓 sem aparelho vinculado'}</div>
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
         ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
-        ${r.deviceId?`<button onclick="desvincular('${k}')" style="flex:1;padding:7px 0;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.2);border-radius:7px;color:var(--cyan);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">DESVINCULAR</button>`:''}
         <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
       </div>
     </div>`;
@@ -3080,7 +3159,6 @@ window.reg = function(r){
 window.confirmEntry = confirmEntry;
 window.toggleCobertura = function(){
   ST.coberturaEmpate = !ST.coberturaEmpate;
-  if(ST.coberturaEmpate) ST.sessaoAtiva = true; // cobrir empate = sessão ativa
   toast(ST.coberturaEmpate ? "🛡️ COBRIR EMPATE ligado" : "Cobrir empate desligado", 1800);
   save(); renderRouter();
 };
