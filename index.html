@@ -297,6 +297,7 @@ function initSync(){
     ST.ciclo_gale_tie=data.ciclo_gale_tie||null;
     ST.ciclo_aguarda_count=data.ciclo_aguarda_count||0;
     ST.sessaoAtiva=!!data.sessaoAtiva;
+    ST.publicado=!!data.publicado;
     ST.esperaSessao=data.esperaSessao||0;
     ST.heat=data.heat||null;
     ST.hunter=data.hunter||null;
@@ -463,6 +464,14 @@ function cardSinalGrande(titulo, lado, sub, tieInfo, mostrarDica){
 
 function renderApp(){
   const root=document.getElementById("root");
+  // Se a mesa NÃO está publicada pelo admin, mostra tudo zerado (mas mantém fora de sessão + horários).
+  // Salva os valores reais e restaura no fim, pra não afetar o estado.
+  const _naoPublicado = !ST.publicado && !ST.sessaoAtiva;
+  let _bk=null;
+  if(_naoPublicado){
+    _bk={H:ST.H,heat:ST.heat,hunter:ST.hunter,greens:ST.greens,reds:ST.reds,bonus:ST.bonus,ciclo:ST.ciclo};
+    ST.H=[]; ST.heat=null; ST.hunter=null; ST.greens=0; ST.reds=0; ST.bonus=0; ST.ciclo="idle";
+  }
   const total=ST.greens+ST.reds;
   const rate=total>0?Math.round(100*ST.greens/total):0;
 
@@ -656,6 +665,11 @@ function renderApp(){
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
+  // restaura os valores reais (foram zerados só pra renderizar a tela neutra)
+  if(_naoPublicado && _bk){
+    ST.H=_bk.H; ST.heat=_bk.heat; ST.hunter=_bk.hunter;
+    ST.greens=_bk.greens; ST.reds=_bk.reds; ST.bonus=_bk.bonus; ST.ciclo=_bk.ciclo;
+  }
 }
 
 // tentarChave IDÊNTICO ao admin

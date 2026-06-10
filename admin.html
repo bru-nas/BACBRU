@@ -223,7 +223,7 @@ const ST = {
   ciclo_razao: "",
   ciclo_patterns: [],
   esperaSessao: 0,
-  jsonOpen: false, viewOpen: false, injTxt: "",
+  jsonOpen: false, publicado: false, viewOpen: false, injTxt: "",
   toast: "",
   toastT: 0
 };
@@ -277,6 +277,7 @@ function pushToFirebase(){
     metaAvisoVisto: !!ST.metaAvisoVisto,
     heat: ST._heat || null,
     hunter: ST._hunter || null,
+    publicado: !!ST.publicado,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -1996,6 +1997,7 @@ function finalizarSessao(){
   ST.sessaoAtiva = false;
   ST.esperaSessao = 0;
   ST.metaAviso = null;
+  ST.publicado = false;
   abortCiclo();
   toast(`✓ Sessão finalizada · ${rate}% rate · JSON copiado`, 3500);
   save();
@@ -2965,6 +2967,7 @@ function renderAdminPanel(){
         <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
       </div>
       <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
+      <div style="font-size:9px;color:${r.deviceId?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:2px">${r.deviceId?'🔒 em uso · 1 aparelho':'🔓 livre'}</div>
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
         ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
@@ -3130,6 +3133,7 @@ function renderAdminPanel(){
         <button class="json-btn blue" onclick="injectJSON()">↑ APLICAR JSON</button>
         <button class="json-btn" onclick="copyJSON()">↓ COPIAR ATUAL</button>
       </div>
+      <button onclick="publicarMesa()" style="width:100%;margin-top:8px;padding:13px 0;font-size:13px;font-family:var(--mono);font-weight:700;border-radius:10px;cursor:pointer;background:${ST.publicado?'linear-gradient(135deg,#22c55e,#16a34a)':'rgba(34,197,94,.15)'};border:1px solid rgba(34,197,94,.4);color:${ST.publicado?'#fff':'var(--green2)'}">${ST.publicado?'✓ MESA PUBLICADA (ao vivo no app)':'📡 PUBLICAR MESA PARA ASSINANTES'}</button>
       <button class="util-btn" style="width:100%;margin-top:7px" onclick="toggleView()">${ST.viewOpen?'▲ Ocultar JSON':'👁 Ver JSON Atual'}</button>
       ${ST.viewOpen ? `<textarea class="json-ta view" readonly onclick="this.select()">${exportJSON()}</textarea>` : ''}
       <button onclick="recalcularEmpates()" style="width:100%;padding:12px;margin-top:8px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(167,139,250,.06));border:1px solid rgba(245,158,11,.3);border-radius:9px;color:var(--gold2);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:2px;cursor:pointer">🔄 RECALCULAR EMPATES DO HISTÓRICO</button>
@@ -3200,6 +3204,11 @@ window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
 window.finalizarSessao = finalizarSessao;
+window.publicarMesa = function(){
+  ST.publicado = !ST.publicado;
+  toast(ST.publicado ? "📡 Mesa publicada — assinantes veem agora" : "🔒 Mesa oculta dos assinantes", 2500);
+  save(); renderNow();
+};
 window.toggleJson = function(){ ST.jsonOpen = !ST.jsonOpen; INPUT_FOCUSED=false; renderRouter(); };
 window.toggleView = function(){ ST.viewOpen = !ST.viewOpen; renderApp(); };
 window.abrirAdminApp = function(){ AUTH.view = "admin"; renderRouter(); };
