@@ -1641,10 +1641,18 @@ function addRound(r, sNum){
     // conta GREEN imediatamente. A cobertura é consumida (desliga) após pagar.
     // Não interfere no farejador nem nas demais regras quando está desligada.
     if(ST.coberturaEmpate){
-      ST.greens++;
-      if(isHighPay) celebraPaga(pay);
-      flashResultado('GREEN', `✅ GREEN · empate coberto · ${pay}`);
+      // Botão COBRIR EMPATE apertado (qualquer momento):
+      //  · empate ALTO (10x/25x/88x) → GREEN + celebração
+      //  · empate BAIXO (4x/6x)      → BÔNUS
       ST.coberturaEmpate = false; // cobertura usada
+      if(isHighPay){
+        ST.greens++;
+        celebraPaga(pay);
+        toast(`🔥 GREEN · empate coberto ${pay}!`, 3800);
+      } else {
+        ST.bonus = (ST.bonus || 0) + 1;
+        flashResultado('GREEN', `✨ BÔNUS · empate coberto · ${pay}`);
+      }
       if(ST.ciclo === "entrada" || ST.ciclo === "gale" || ST.ciclo === "aguarda_gale") abortCiclo();
       else { save(); renderRouter(); }
       return;
@@ -1656,17 +1664,20 @@ function addRound(r, sNum){
     //  · empate sem farejador ativo (alto ou baixo) → NEUTRO (gale segue, não conta bônus)
     // BÔNUS só existe quando o farejador está ATIVO. Sem farejador, empate é neutro.
     if(ST.ciclo === "aguarda_gale"){
+      // Entre entrada e gale (farejador ativo):
+      //  · empate ALTO  → cobre o gale (GREEN, cancela o gale, celebra)
+      //  · empate BAIXO → BÔNUS, o GALE SEGUE
+      //  · sem farejador → neutro, gale segue
       if(hunterAntes && isHighPay){
         ST.greens++;
         celebraPaga(pay);
-        toast(`🔥 ${pay} cobriu a entrada perdida (farejador ativo) · GALE CANCELADO`, 4000);
+        toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
       } else if(hunterAntes && !isHighPay){
         ST.bonus = (ST.bonus || 0) + 1;
-        toast(`✨ BÔNUS · empate ${pay} (farejador ativo) · GALE SEGUE`, 3500);
+        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
         save(); renderRouter();
       } else {
-        // sem farejador ativo → neutro, gale segue
         toast(`↻ Empate ${pay} · GALE SEGUE`, 2800);
         save(); renderRouter();
       }
@@ -1686,18 +1697,17 @@ function addRound(r, sNum){
     //  · farejador ativo + baixo → BÔNUS (ciclo SEGUE pro gale)
     //  · sem farejador           → nada (ciclo SEGUE pro gale)
     if(ST.ciclo === "entrada"){
-      if(hunterAntes && isHighPay){
-        ST.greens++; celebraPaga(pay);
-        toast(`🔥 GREEN · empate alto ${pay} (farejador ativo)`, 3800);
-        abortCiclo();
-      } else if(hunterAntes && !isHighPay){
-        ST.bonus = (ST.bonus || 0) + 1;
-        toast(`✨ BÔNUS · empate ${pay} (farejador ativo) · ENTRADA SEGUE`, 3500);
-        save(); renderRouter();
+      // Empate na ENTRADA (cor) = GREEN sempre. A entrada cobre o empate junto.
+      //  · empate ALTO (10x/25x/88x) → GREEN + celebração
+      //  · empate BAIXO (4x/6x)      → GREEN normal
+      ST.greens++;
+      if(isHighPay){
+        celebraPaga(pay);
+        toast(`🔥 GREEN · empate alto ${pay}!`, 3800);
       } else {
-        toast(`↻ Empate ${pay} · ENTRADA SEGUE`, 2800);
-        save(); renderRouter();
+        flashResultado('GREEN', `✅ GREEN · empate ${pay}`);
       }
+      abortCiclo();
       return;
     }
     if(hunterAntes && isHighPay){
