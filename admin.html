@@ -914,6 +914,19 @@ function analyze(){
     }
   }
 
+  // ── LEITURA DE TENDÊNCIA DA MESA (usada pelos padrões aproximados e pelo FLX) ──
+  (function(){
+    const u12 = col.slice(-12);
+    out.tendenciaTrocas = null;
+    out.emTendencia = false;
+    if(u12.length >= 10){
+      let trocas = 0;
+      for(let z=1; z<u12.length; z++) if(u12[z].r !== u12[z-1].r) trocas++;
+      out.tendenciaTrocas = trocas;
+      out.emTendencia = trocas <= 4;
+    }
+  })();
+
   // ══════════════════════════════════════════════════════════════════════
   // PADRÕES DE BLOCO — cada um com assinatura distinta (não se atropelam)
   // Validados estatisticamente nos históricos acumulados.
@@ -940,7 +953,10 @@ function analyze(){
       const d = [bl[bl.length-2], bl[bl.length-4], bl[bl.length-6]].filter(Boolean);
       if(d.length === 3 && d[0].side===d[1].side && d[1].side===d[2].side){
         // d[0] mais recente, d[2] mais antigo → decrescente significa d[2]>d[1]>d[0]
-        const decr = d[2].len > d[1].len && d[1].len > d[0].len;
+        // estrita OU aproximada (1 degrau igual) quando a mesa está em tendência
+        const decrEstrita = d[2].len > d[1].len && d[1].len > d[0].len;
+        const decrAprox = out.emTendencia && (d[2].len >= d[1].len && d[1].len >= d[0].len && d[2].len > d[0].len);
+        const decr = decrEstrita || decrAprox;
         const isolados = bl[bl.length-3].len===1 && bl[bl.length-5].len===1;
         if(decr && isolados && ult.side!==d[0].side){
           add("ESCD", d[0].side, 0.87, `Escada decrescente · ${d[2].side}${d[2].len}→${d[1].len}→${d[0].len} alternada → volta ${d[0].side}`, true);
@@ -954,7 +970,8 @@ function analyze(){
     // Dispara quando o bloco atual da dominante é MAIOR que o anterior da mesma cor.
     if(bl.length >= 3){
       const _b2=bl[bl.length-3], _iso=bl[bl.length-2], _atual=bl[bl.length-1];
-      if(_b2.s===_atual.s && _iso.l===1 && _iso.s!==_atual.s && _atual.l>_b2.l && _atual.l>=2){
+      const _cresceOk = _atual.l>_b2.l || (out.emTendencia && _atual.l===_b2.l && _atual.l>=2);
+      if(_b2.s===_atual.s && _iso.l===1 && _iso.s!==_atual.s && _cresceOk && _atual.l>=2){
         add("ESCC", _atual.s, 0.80, `Escada crescente · ${_atual.s}${_b2.l}→${_atual.l} entre isolados → continua ${_atual.s}`, true);
         return;
       }
@@ -998,6 +1015,20 @@ function analyze(){
         add("P21", q[2].side, 0.82, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
         return;
       }
+    }
+  })();
+
+  // ── FLUXO DE TENDÊNCIA (denominador comum · validado na base completa) ──
+  // Mesa em TENDÊNCIA = <=4 trocas de cor nas últimas 12 jogadas coloridas.
+  // Tendência + já repetindo (streak>=2) → SEGUIR o fluxo: 58.4% (n=197, ±7.1) na
+  // base de 1158 rodadas. Com streak>=3: 58.9% (n=129). É a essência comum de
+  // surf/escada/dominante — pega o padrão mesmo quando o formato exato não fecha.
+  (function(){
+    if(!out.emTendencia) return;
+    const stx = streak(col);
+    if(stx.len >= 2){
+      const conf = stx.len >= 3 ? 0.81 : 0.78;
+      add("FLX", stx.side, conf, `Fluxo de tendência · mesa em ritmo (${out.tendenciaTrocas} trocas/12) · ${stx.len} ${stx.side} → seguir`, stx.len>=3);
     }
   })();
 
@@ -1273,7 +1304,7 @@ function analyze(){
   // Conta quantos padrões VALIDADOS (direção comprovada) apontam a mesma cor do melhor sinal.
   // Dados sugerem 2+ convergindo ~62% vs 52% sozinho. Boost leve + indicador visual.
   // NÃO muda quem entra — só reforça e destaca quando há convergência real.
-  const _direcionais = ["SURF","P22","ESC","ESCD","ESCC","B31","PP5","DOM12","P21"];
+  const _direcionais = ["SURF","P22","ESC","ESCD","ESCC","B31","PP5","DOM12","P21","FLX"];
   if(bestSide && bestSide !== "T"){
     const _conv = (patterns||[]).filter(p => p.sig===bestSide && _direcionais.includes(p.name));
     out.convergencia = _conv.length;
@@ -1295,7 +1326,7 @@ function analyze(){
   // Validados estatisticamente nos históricos. Entram direto, sem depender de
   // temperatura da mesa — MAS só se nenhum padrão FORTE (>=0.80) apostar contra.
   const _verifList = patterns
-    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21") && p.hi && p.conf>=0.80)
+    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"||p.name==="FLX") && p.hi && p.conf>=0.80)
     .sort((a,b)=>b.conf-a.conf);
   const _verif = _verifList[0];
   if(_verif){
@@ -1303,9 +1334,14 @@ function analyze(){
     // Entre padrões verificados, o de maior confiança vence (não se anulam).
     // Só bloqueia se o padrão contrário for MAIS forte que o verificado.
     // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
+    // CONVERGÊNCIA MANDA: se 2+ direcionais apontam a mesma cor do verificado
+    // (validado 62% na base), um padrão neutro contrário sozinho NÃO veta.
+    const _dirNames = ["SURF","ESC","ESCD","ESCC","P22","P21","FLX","B31","PP5","DOM12"];
+    const _dirAFavor = patterns.filter(p => p.sig===_verif.sig && _dirNames.includes(p.name)).length;
     const _contra = patterns.some(p =>
       p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
-      !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"));
+      !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"||p.name==="FLX")) &&
+      _dirAFavor < 2;
     if(!_contra){
       out.signal = _verif.sig;
       out.conf = _verif.conf;
@@ -1540,12 +1576,19 @@ function fatorAprendido(name){
   if(n < 8) return 1;
   const d = (ST.deltaAcum && ST.deltaAcum[name]) || 0;
   const taxa = (d / n + 1) / 2; // saldo -1..1 → taxa 0..1 (0.5 = neutro)
-  // POLÍTICA: só dá empurrãozinho pros bons, NUNCA derruba ninguém.
-  // Piso travado em 1.0 — nenhum padrão é penalizado pelo desempenho.
-  // taxa ≥ 0.5 → reforça (até 1.15) · taxa < 0.5 → mantém neutro (1.0).
-  // O aprendizado continua acumulando em TODOS os padrões (estatística viva),
-  // mas o peso nunca cai abaixo do normal.
+  // LEITOR SEGURO (v2) · usa TODO o aprendizado acumulado, inclusive o que NÃO deu certo:
+  //  · taxa ≥ 0.5 → reforça (até 1.15), como antes.
+  //  · taxa < 0.5 COM AMOSTRA GRANDE (n>=60) → redução suave (piso 0.90).
+  //    Só reduz quando a fraqueza é estatisticamente consistente — amostra pequena
+  //    continua neutra (1.0) para não punir por azar de curto prazo.
+  //  · Auto-regulável: se o padrão melhorar nas próximas sessões, recupera sozinho.
   if(taxa >= 0.5) return Math.min(1.15, 1 + (taxa - 0.5) * 0.6);
+  if(n >= 60){
+    const ep = 0.5 / Math.sqrt(n);              // 1 erro-padrão da proporção
+    if((0.5 - taxa) > ep){                      // fraqueza além de 1 EP → redução suave
+      return Math.max(0.90, 1 - (0.5 - taxa) * 0.5);
+    }
+  }
   return 1.0;
 }
 
