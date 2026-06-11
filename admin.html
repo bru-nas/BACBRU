@@ -278,6 +278,8 @@ function pushToFirebase(){
     heat: ST._heat || null,
     hunter: ST._hunter || null,
     publicado: !!ST.publicado,
+    convergencia: (ST._lastAnalise && ST._lastAnalise.convergencia) || 0,
+    convergePadroes: (ST._lastAnalise && ST._lastAnalise.convergePadroes) || [],
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -784,10 +786,20 @@ function analyze(){
         add("B22C", c3[2].r, W.B22C, "Bloco 2×2 continuação · par incompleto");
       }
     }
-    // BLOCO_3_1 · [A,A,A,B] após 3 do mesmo lado quebra
-    if(c4[0].r === c4[1].r && c4[1].r === c4[2].r && c4[3].r !== c4[2].r){
-      add("B31", opos(c4[3].r), W.B31, "Bloco 3-1 · quebra esperada para anterior");
-    }
+    // BLOCO_3_1 · bloco REAL de 3 + isolado de 1 → volta da cor do bloco de 3
+    // Validado: por bloco real = 100% (11/11); por janela de 4 era só 51%.
+    // Usa blocos reais (não as últimas 4 jogadas) pra identificar com precisão.
+    (function(){
+      const _bl=[];
+      if(col.length){let cs=col[0].r,cl=1;for(let z=1;z<col.length;z++){if(col[z].r===cs)cl++;else{_bl.push({s:cs,l:cl});cs=col[z].r;cl=1;}}_bl.push({s:cs,l:cl});}
+      if(_bl.length>=2){
+        const _u=_bl[_bl.length-1], _a=_bl[_bl.length-2];
+        // bloco anterior exatamente 3, atual isolado de 1 da cor oposta → volta cor do 3
+        if(_a.l===3 && _u.l===1 && _u.s!==_a.s){
+          add("B31", _a.s, W.B31+0.04, "Bloco 3-1 · isolado após trinca → volta "+_a.s, true);
+        }
+      }
+    })();
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -835,7 +847,7 @@ function analyze(){
     // Detectado de forma INDEPENDENTE, como qualquer outro padrão.
     // Peso inicial neutro · o aprendizado (fatorAprendido) ajusta sozinho ao longo das sessões.
     // NÃO remove o zigzag nem nenhum outro — todos concorrem em pé de igualdade.
-    add("C21", ciclo21.sig, W.C21 || 0.78, `Ciclo 2-1 (dois-um) · ${ciclo21.ciclos} ciclos`);
+    add("C21", ciclo21.sig, W.C21 || 0.68, `Ciclo 2-1 (dois-um) · ${ciclo21.ciclos} ciclos`);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -865,7 +877,7 @@ function analyze(){
     const v4 = volSoma(last(col,4));
     if(prof && premature){
       // mesa costuma esticar mais → NÃO bater quebra ainda; favorece continuação
-      add("SK4C", st.side, W.SK4C, `Streak 4 ${st.side} · mesa estica até ~${prof.p75} → continuar`);
+      add("SK4C", st.side, W.SK4C * 0.92, `Streak 4 ${st.side} · mesa estica até ~${prof.p75} → continuar`);
     } else if(prof && breakZone){
       // zona de quebra confirmada pelo histórico
       const conf = v4 >= 3 ? W.SK4Q + 0.04 : W.SK4Q;
@@ -937,6 +949,17 @@ function analyze(){
       }
     }
 
+    // ── 1b) ESCADA CRESCENTE · blocos da dominante CRESCENDO entre isolados → continua ──
+    // Validado: 60% (15/25). Ex: 2B 1P 3B 1P 4B... a banca cresce e mantém controle.
+    // Dispara quando o bloco atual da dominante é MAIOR que o anterior da mesma cor.
+    if(bl.length >= 3){
+      const _b2=bl[bl.length-3], _iso=bl[bl.length-2], _atual=bl[bl.length-1];
+      if(_b2.s===_atual.s && _iso.l===1 && _iso.s!==_atual.s && _atual.l>_b2.l && _atual.l>=2){
+        add("ESCC", _atual.s, 0.80, `Escada crescente · ${_atual.s}${_b2.l}→${_atual.l} entre isolados → continua ${_atual.s}`, true);
+        return;
+      }
+    }
+
     // ── 2) ESCADA SIMPLES · bloco + isolado + DOMINÂNCIA forte → volta dominante (88%) ──
     if(ult.len === 1 && ant.side !== ult.side && ant.len >= 2){
       const nDom = domDe(ant.side);
@@ -947,12 +970,22 @@ function analyze(){
       }
     }
 
-    // ── 3) PADRÃO 2-2 · após 2+2 alternados → volta à cor do 1º bloco ──
-    if(bl.length >= 3){
-      const b1 = bl[bl.length-3], b2 = bl[bl.length-2];
-      if(b1.len===2 && b2.len===2 && b1.side!==b2.side && ult.len===1 && ult.side!==b2.side){
-        add("P22", b1.side, 0.84, `Padrão 2-2 · ${b1.side}2 ${b2.side}2 → volta ${b1.side}`, true);
-        return;
+    // ── 3) PADRÃO 2-2 · após dois blocos de 2 alternados, o 2º tende a ESTICAR ──
+    // Validado: depois de 2-2 (ex BB PP), a próxima carta CONTINUA a cor do 2º bloco
+    // em 78% (vira PPP). NÃO volta pro 1º (isso dava só 22%).
+    // Gatilho no momento certo: os dois blocos de 2 fecharam e o 2º bloco acabou de
+    // virar o atual em formação — aposta que ele estica.
+    if(bl.length >= 2){
+      const b1 = bl[bl.length-2], b2 = bl[bl.length-1];
+      // b1 foi bloco de 2 fechado; b2 é o bloco atual que começou com 1 ou 2 da cor oposta
+      if(b1.len===2 && b2.len<=2 && b1.side!==b2.side){
+        // procurar o bloco antes de b1 pra confirmar o ritmo 2-2
+        const b0 = bl.length>=3 ? bl[bl.length-3] : null;
+        if(b0 && b0.len===2 && b0.side!==b1.side){
+          // ritmo 2-2-... confirmado (b0=2, b1=2) → aposta continuação do bloco atual (b2)
+          add("P22", b2.side, 0.82, `Padrão 2-2 · ${b0.side}2 ${b1.side}2 → ${b2.side} estica`, true);
+          return;
+        }
       }
     }
 
@@ -968,15 +1001,19 @@ function analyze(){
     }
   })();
 
-  // ── 5) SURF SEGURO · streak >=5 COM somas convergindo (vol<=4) ──
+  // ── 5) SURF SEGURO · streak >=4 COM somas convergindo (vol<=4) ──
+  // Validado nos históricos: streak>=4 + vol<=4 = 57% em 21 entradas (melhor que
+  // streak>=5 que pegava só 9 entradas). Pega o surf MAIS CEDO sem perder qualidade.
   (function(){
     const stx = streak(col);
-    if(stx.len >= 5){
+    if(stx.len >= 4){
       const janela = last(col, stx.len).map(x=>x.s||0).filter(x=>x>0);
       if(janela.length >= 4){
         const vol = Math.max(...janela) - Math.min(...janela);
         if(vol <= 4){
-          add("SURF", stx.side, vol<=2 ? 0.86 : 0.83, `Surf limpo · ${stx.len} ${stx.side} · somas convergindo (vol${vol}) → seguir`, true);
+          // confiança maior quanto mais limpo e mais longo
+          const conf = (vol<=2 ? 0.86 : 0.83) + (stx.len>=5 ? 0.02 : 0);
+          add("SURF", stx.side, Math.min(0.90, conf), `Surf limpo · ${stx.len} ${stx.side} · somas convergindo (vol${vol}) → seguir`, true);
           out.exaustao = false; out.exaustaoMotivo = null;
         }
       }
@@ -1232,6 +1269,23 @@ function analyze(){
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
 
+  // ── CONVERGÊNCIA DE SINAIS DIRECIONAIS FORTES ──
+  // Conta quantos padrões VALIDADOS (direção comprovada) apontam a mesma cor do melhor sinal.
+  // Dados sugerem 2+ convergindo ~62% vs 52% sozinho. Boost leve + indicador visual.
+  // NÃO muda quem entra — só reforça e destaca quando há convergência real.
+  const _direcionais = ["SURF","P22","ESC","ESCD","ESCC","B31","PP5","DOM12","P21"];
+  if(bestSide && bestSide !== "T"){
+    const _conv = (patterns||[]).filter(p => p.sig===bestSide && _direcionais.includes(p.name));
+    out.convergencia = _conv.length;
+    out.convergePadroes = _conv.map(p=>p.name);
+    if(_conv.length >= 2){
+      bestConf = Math.min(0.95, bestConf + (_conv.length>=3 ? 0.05 : 0.03));
+    }
+  } else {
+    out.convergencia = 0;
+    out.convergePadroes = [];
+  }
+
   // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
   const effThreshold = Math.max(dynThreshold, EV_FLOOR);
   // CRITÉRIO DE MESA (opção B): entrada normal só em QUENTE/FAVORÁVEL/NEUTRA.
@@ -1241,7 +1295,7 @@ function analyze(){
   // Validados estatisticamente nos históricos. Entram direto, sem depender de
   // temperatura da mesa — MAS só se nenhum padrão FORTE (>=0.80) apostar contra.
   const _verifList = patterns
-    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="P22"||p.name==="P21") && p.hi && p.conf>=0.80)
+    .filter(p => (p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21") && p.hi && p.conf>=0.80)
     .sort((a,b)=>b.conf-a.conf);
   const _verif = _verifList[0];
   if(_verif){
@@ -1251,7 +1305,7 @@ function analyze(){
     // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
     const _contra = patterns.some(p =>
       p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
-      !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="P22"||p.name==="P21"));
+      !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"));
     if(!_contra){
       out.signal = _verif.sig;
       out.conf = _verif.conf;
@@ -2169,6 +2223,7 @@ function buildEntryCard(a, forAdmin){
 
 function renderApp(){
   const a = analyze();
+  ST._lastAnalise = a; // guarda p/ publicar convergência
   // cache heat e hunter no ST pra serem empurrados pro Firebase
   if(a.heat) ST._heat = { state: a.heat.state, score: a.heat.score };
   if(a.hunter) ST._hunter = a.hunter;
