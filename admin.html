@@ -210,6 +210,12 @@ const DEFAULT_WEIGHTS = {
 const ST = {
   H: [],
   greens: 0, reds: 0, bonus: 0,
+  // PLACAR DETALHADO (categorias separadas):
+  pSG: 0,        // green seco · bateu a cor na 1ª entrada
+  pG1: 0,        // green no gale · bateu a cor no G1
+  pEmp: 0,       // green por empate coberto na entrada (entrada cobre o empate)
+  pEmpG1: 0,     // green por empate alto que cobriu durante aguarda_gale
+  pEmpDetalhe: {},  // contagem por multiplicador: {"4x":2,"10x":1,...}
   coberturaEmpate: false, // botão admin: quando ligado, empate (qualquer) conta GREEN
   flash: null, // resultado sincronizado p/ assinante: {tipo:'GREEN'|'RED'|'BONUS', txt, t}
   weights: {...DEFAULT_WEIGHTS},
@@ -279,6 +285,8 @@ function pushToFirebase(){
     hunter: ST._hunter || null,
     publicado: !!ST.publicado,
     convergencia: (ST._lastAnalise && ST._lastAnalise.convergencia) || 0,
+    boaOportunidade: (ST._lastAnalise && ST._lastAnalise.boaOportunidade) || false,
+    mesaLimpa: (ST._lastAnalise && ST._lastAnalise.mesaLimpa) || false,
     convergePadroes: (ST._lastAnalise && ST._lastAnalise.convergePadroes) || [],
     updatedAt: Date.now()
   };
@@ -919,11 +927,19 @@ function analyze(){
     const u12 = col.slice(-12);
     out.tendenciaTrocas = null;
     out.emTendencia = false;
+    out.nBlocos12 = null;
+    out.mesaLimpa = false;     // 1-4 blocos = padrão real / tendência clara
+    out.mesaPicotada = false;  // 5-7 blocos = picote (padrão vale menos)
     if(u12.length >= 10){
       let trocas = 0;
       for(let z=1; z<u12.length; z++) if(u12[z].r !== u12[z-1].r) trocas++;
       out.tendenciaTrocas = trocas;
       out.emTendencia = trocas <= 4;
+      // nº de blocos = trocas + 1
+      const nb = trocas + 1;
+      out.nBlocos12 = nb;
+      out.mesaLimpa = nb <= 4;
+      out.mesaPicotada = nb >= 5 && nb <= 7;
     }
   })();
 
@@ -1040,13 +1056,18 @@ function analyze(){
   // streak 4 continua só 42% (QUEBRA — não vale entrar). Por isso exige 5+.
   (function(){
     const stx = streak(col);
-    if(stx.len >= 5){
+    // ANÁLISE (base 1308+71): surf no streak 5 sangra (líq -7); a partir de 6 vira
+    // positivo (líq +6) e 7+ é ouro (líq +25). Por isso só entra de 6 em diante.
+    if(stx.len >= 6){
       const janela = last(col, stx.len).map(x=>x.s||0).filter(x=>x>0);
       if(janela.length >= 4){
         const vol = Math.max(...janela) - Math.min(...janela);
-        // surf limpo (somas convergindo) reforça; mas mesmo sem, 5+ já segue 61%
-        const conf = vol<=4 ? (vol<=2 ? 0.86 : 0.83) : 0.80;
-        add("SURF", stx.side, Math.min(0.90, conf), `Surf · ${stx.len} ${stx.side} seguidas${vol<=4?' · somas convergindo':''} → seguir`, true);
+        let conf = vol<=4 ? (vol<=2 ? 0.88 : 0.85) : 0.83;
+        // PULO DO GATO: surf em mesa LIMPA (1-4 blocos) é BOA oportunidade (66-77%) → reforça.
+        // Em mesa picotada, NÃO corta (você não perde a chance), mas não reforça.
+        let etiqueta = "";
+        if(out.mesaLimpa){ conf += 0.04; etiqueta = " · mesa limpa ⭐"; }
+        add("SURF", stx.side, Math.min(0.94, conf), `Surf forte · ${stx.len} ${stx.side} seguidas${etiqueta} → seguir`, true);
         out.exaustao = false; out.exaustaoMotivo = null;
       }
     }
@@ -1301,6 +1322,9 @@ function analyze(){
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
 
+  // ── BOA OPORTUNIDADE · sinal direcional forte em mesa limpa (padrão real, não picote) ──
+  out.boaOportunidade = false;
+
   // ── CONVERGÊNCIA DE SINAIS DIRECIONAIS FORTES ──
   // Conta quantos padrões VALIDADOS (direção comprovada) apontam a mesma cor do melhor sinal.
   // Dados sugerem 2+ convergindo ~62% vs 52% sozinho. Boost leve + indicador visual.
@@ -1313,9 +1337,32 @@ function analyze(){
     if(_conv.length >= 2){
       bestConf = Math.min(0.95, bestConf + (_conv.length>=3 ? 0.05 : 0.03));
     }
+    // boa oportunidade: mesa limpa + pelo menos 1 padrão direcional forte a favor
+    if(out.mesaLimpa && _conv.length >= 1) out.boaOportunidade = true;
   } else {
     out.convergencia = 0;
     out.convergePadroes = [];
+  }
+
+  // ── CRITÉRIO DE CONFIRMAÇÃO POR PADRÃO (analista sênior · validado base 1458) ──
+  // Padrões FRACOS (líquido negativo no acumulado) só entram SOZINHOS com confirmação:
+  // convergência 2+ OU mesa limpa. Sem isso, NÃO disparam (mas seguem lidos/aprendendo).
+  // Fortes entram normal. Resultado provado: 81%→84%, líquido 103→118, -72 entradas fracas.
+  // NÃO corta o padrão — só evita entrar nele no escuro.
+  if(bestSide && bestSide !== "T"){
+    const _FRACOS = ["C21","ZZ3","SK3C","B22T","SK3Q","RE7"];
+    const _gatilho = (patterns||[])
+      .filter(p => p.sig === bestSide)
+      .sort((a,b)=>b.conf-a.conf)
+      .map(p => p.name)[0];
+    if(_FRACOS.includes(_gatilho)){
+      const _temConfirmacao = (out.convergencia >= 2) || out.mesaLimpa;
+      if(!_temConfirmacao){
+        out.criterioBloqueou = _gatilho;  // registra que segurou por falta de confirmação
+        bestSide = null;                    // não entra sozinho no escuro
+        bestConf = 0;
+      }
+    }
   }
 
   // ── DECISÃO FINAL · COM HEAT + ANTI-ARMADILHA + EV GATE ──
@@ -1593,6 +1640,10 @@ function fatorAprendido(name){
   return 1.0;
 }
 
+function regEmpMult(pay){
+  if(!ST.pEmpDetalhe) ST.pEmpDetalhe = {};
+  ST.pEmpDetalhe[pay] = (ST.pEmpDetalhe[pay]||0) + 1;
+}
 function confirmEntry(){
   const a = analyze();
   if(!a.signal || a.signal === "W") return;
@@ -1687,6 +1738,7 @@ function addRound(r, sNum){
   if(!ST.undoStack) ST.undoStack = [];
   ST.undoStack.push({
     greens: ST.greens, reds: ST.reds, bonus: ST.bonus,
+    pSG: ST.pSG||0, pG1: ST.pG1||0, pEmp: ST.pEmp||0, pEmpG1: ST.pEmpG1||0, pEmpDetalhe: ST.pEmpDetalhe||{},
     ciclo: ST.ciclo, ciclo_sinal: ST.ciclo_sinal, ciclo_conf: ST.ciclo_conf,
     ciclo_razao: ST.ciclo_razao, ciclo_tie: ST.ciclo_tie,
     ciclo_gale_sinal: ST.ciclo_gale_sinal, ciclo_gale_dec: ST.ciclo_gale_dec,
@@ -1747,7 +1799,7 @@ function addRound(r, sNum){
       //  · empate ALTO → GREEN + celebração
       //  · empate BAIXO → GREEN
       ST.coberturaEmpate = false; // cobertura usada
-      ST.greens++;
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
       if(isHighPay){
         celebraPaga(pay);
         toast(`🔥 GREEN · empate coberto ${pay}!`, 3800);
@@ -1770,7 +1822,7 @@ function addRound(r, sNum){
       //  · empate BAIXO → BÔNUS, o GALE SEGUE
       //  · sem farejador → neutro, gale segue
       if(hunterAntes && isHighPay){
-        ST.greens++;
+        ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay);
         celebraPaga(pay);
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
@@ -1787,7 +1839,7 @@ function addRound(r, sNum){
 
     // GALE já lançado: aposta na mesa → empate green/push, encerra
     if(ST.ciclo === "gale"){
-      ST.greens++;
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
       if(isHighPay) celebraPaga(pay);
       else flashResultado('GREEN', `✅ GREEN · empate no gale · ${pay}`);
       abortCiclo();
@@ -1801,7 +1853,7 @@ function addRound(r, sNum){
       // Empate na ENTRADA (cor) = GREEN sempre. A entrada cobre o empate junto.
       //  · empate ALTO (10x/25x/88x) → GREEN + celebração
       //  · empate BAIXO (4x/6x)      → GREEN normal
-      ST.greens++;
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
       if(isHighPay){
         celebraPaga(pay);
         toast(`🔥 GREEN · empate alto ${pay}!`, 3800);
@@ -1813,7 +1865,7 @@ function addRound(r, sNum){
     }
     if(hunterAntes && isHighPay){
       // Farejador ativo + empate alto → GREEN
-      ST.greens++;
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
       celebraPaga(pay);
       save(); renderRouter();
     } else if(hunterAntes && !isHighPay){
@@ -1837,9 +1889,9 @@ function addRound(r, sNum){
   if(ST.ciclo === "entrada"){
     const sig = ST.ciclo_sinal;
     if(r === sig){
-      ST.greens++;
+      ST.greens++; ST.pSG = (ST.pSG||0)+1;
       // (aprendizado agora é por rodada · aprendeRodada já creditou os padrões acima)
-      flashResultado('GREEN', `✅ GREEN · ${lbl(r)}`);
+      flashResultado('GREEN', `✅ GREEN SECO · ${lbl(r)}`);
       abortCiclo();
     } else {
       // (aprendizado por rodada · aprendeRodada já debitou os padrões acima)
@@ -1920,8 +1972,8 @@ function addRound(r, sNum){
   } else if(ST.ciclo === "gale"){
     const galeSide = ST.ciclo_gale_sinal || opos(ST.ciclo_sinal);
     if(r === galeSide){
-      ST.greens++;
-      flashResultado('GREEN', `✅ GREEN GALE · ${lbl(r)}`);
+      ST.greens++; ST.pG1 = (ST.pG1||0)+1;
+      flashResultado('GREEN', `✅ GREEN G1 · ${lbl(r)}`);
       abortCiclo();
     } else {
       ST.reds++;
@@ -2088,7 +2140,7 @@ function undo(){
 
 function reset(){
   if(!confirm("Zerar tudo? (histórico, placar)")) return;
-  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0; ST.coberturaEmpate = false;
+  ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0; ST.pSG = 0; ST.pG1 = 0; ST.pEmp = 0; ST.pEmpG1 = 0; ST.pEmpDetalhe = {}; ST.coberturaEmpate = false;
   ST.deltaAcum = {}; ST.countAcum = {}; ST.tieAcum = {};
   ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
@@ -2102,6 +2154,7 @@ function finalizarSessao(){
   ST.greens = 0;
   ST.reds = 0;
   ST.bonus = 0;
+  ST.pSG = 0; ST.pG1 = 0; ST.pEmp = 0; ST.pEmpG1 = 0; ST.pEmpDetalhe = {};
   ST.coberturaEmpate = false;
   ST.sessoes++;
   ST.ofereceParada3 = false;
@@ -3153,6 +3206,25 @@ function renderAdminPanel(){
       <div class="stat"><div class="stat-v r" style="font-size:22px">${ST.reds}</div><div class="stat-l">RED</div></div>
       <div class="stat"><div class="stat-v y" style="font-size:22px">${rate}%</div><div class="stat-l">RATE</div></div>
       <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:22px">${ST.bonus||0}</div><div class="stat-l">BÔNUS</div></div>
+    </div>
+    <!-- PLACAR DETALHADO -->
+    <div class="card" style="padding:10px;margin-bottom:12px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--txt3);margin-bottom:8px;letter-spacing:1px">PLACAR DETALHADO</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+        <div style="padding:6px 4px;background:rgba(34,197,94,.08);border-radius:8px">
+          <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--green2)">${ST.pSG||0}</div>
+          <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">GREEN SECO</div></div>
+        <div style="padding:6px 4px;background:rgba(34,197,94,.06);border-radius:8px">
+          <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--green2)">${ST.pG1||0}</div>
+          <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">GREEN G1</div></div>
+        <div style="padding:6px 4px;background:rgba(245,158,11,.08);border-radius:8px">
+          <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--gold2)">${ST.pEmp||0}</div>
+          <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">G. EMPATE</div></div>
+        <div style="padding:6px 4px;background:rgba(245,158,11,.06);border-radius:8px">
+          <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--gold2)">${ST.pEmpG1||0}</div>
+          <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">G. EMP G1</div></div>
+      </div>
+      ${(ST.pEmpDetalhe && Object.keys(ST.pEmpDetalhe).length)?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);font-size:10px;font-family:var(--mono);color:var(--txt2);text-align:center">empates: ${Object.entries(ST.pEmpDetalhe).map(([k,v])=>`${v}×${k}`).join(' · ')}</div>`:''}
     </div>
     <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds*3)>=5?'rgba(34,197,94,.12)':(ST.reds>=2&&(ST.greens-ST.reds*3)<0)?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
       <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5 líquidos (red = -3) · saldo: </span>
