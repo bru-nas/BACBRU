@@ -1026,27 +1026,28 @@ function analyze(){
   (function(){
     if(!out.emTendencia) return;
     const stx = streak(col);
+    // ANÁLISE SÊNIOR (base 1308): em tendência, streak 2-3 segue (56-60%), 5+ forte (69%),
+    // mas streak 4 é ZONA DE QUEBRA (39%) → o fluxo PULA o streak 4.
+    if(stx.len === 4) return;
     if(stx.len >= 2){
-      const conf = stx.len >= 3 ? 0.81 : 0.78;
+      const conf = stx.len >= 5 ? 0.84 : (stx.len === 3 ? 0.81 : 0.78);
       add("FLX", stx.side, conf, `Fluxo de tendência · mesa em ritmo (${out.tendenciaTrocas} trocas/12) · ${stx.len} ${stx.side} → seguir`, stx.len>=3);
     }
   })();
 
-  // ── 5) SURF SEGURO · streak >=4 COM somas convergindo (vol<=4) ──
-  // Validado nos históricos: streak>=4 + vol<=4 = 57% em 21 entradas (melhor que
-  // streak>=5 que pegava só 9 entradas). Pega o surf MAIS CEDO sem perder qualidade.
+  // ── 5) SURF SEGURO · streak >=5 (ANÁLISE SÊNIOR · base 1308 rodadas) ──
+  // CORREÇÃO baseada em toda a base: streak 5+ continua 61% (SEGUE de verdade);
+  // streak 4 continua só 42% (QUEBRA — não vale entrar). Por isso exige 5+.
   (function(){
     const stx = streak(col);
-    if(stx.len >= 4){
+    if(stx.len >= 5){
       const janela = last(col, stx.len).map(x=>x.s||0).filter(x=>x>0);
       if(janela.length >= 4){
         const vol = Math.max(...janela) - Math.min(...janela);
-        if(vol <= 4){
-          // confiança maior quanto mais limpo e mais longo
-          const conf = (vol<=2 ? 0.86 : 0.83) + (stx.len>=5 ? 0.02 : 0);
-          add("SURF", stx.side, Math.min(0.90, conf), `Surf limpo · ${stx.len} ${stx.side} · somas convergindo (vol${vol}) → seguir`, true);
-          out.exaustao = false; out.exaustaoMotivo = null;
-        }
+        // surf limpo (somas convergindo) reforça; mas mesmo sem, 5+ já segue 61%
+        const conf = vol<=4 ? (vol<=2 ? 0.86 : 0.83) : 0.80;
+        add("SURF", stx.side, Math.min(0.90, conf), `Surf · ${stx.len} ${stx.side} seguidas${vol<=4?' · somas convergindo':''} → seguir`, true);
+        out.exaustao = false; out.exaustaoMotivo = null;
       }
     }
   })();;
@@ -1646,18 +1647,22 @@ function checarMetaStop(estadoMesa){
   if(!ST.sessaoAtiva) return;
   // Líquido PONDERADO: cada red vale -3 greens.
   const liquido = ST.greens - (ST.reds * PESO_RED);
-  // STOP · 2 loss e líquido ainda negativo (greens não recuperaram os reds) → encerra
-  if(ST.reds >= STOP_LOSS && liquido < 0){
-    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP · ${ST.reds} loss · saldo ponderado ${liquido} (cada red = -3 greens) · sessão encerrada para proteger a banca` };
+  // STOP (saldo da sessão = greens - reds, sem ponderar):
+  //  · o PRIMEIRO red pode deixar o saldo negativo → segue (ainda sem gordura).
+  //  · do SEGUNDO red em diante, se o saldo ficar NEGATIVO → AVISA FORTE (não trava).
+  //    A decisão de parar é da operadora — o app só alerta.
+  const saldoSessao = ST.greens - ST.reds;
+  if(ST.reds >= 2 && saldoSessao < 0){
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP LOSS · ${ST.reds} loss · saldo da sessão ${saldoSessao} (negativo) · recomendado PARAR para proteger a banca. Você decide.` };
     ST.metaAvisoVisto = false;
-    ST.sessaoAtiva = false;
+    // NÃO encerra automaticamente — só avisa.
     return;
   }
-  // META · 5 greens líquidos ponderados (já descontados os reds)
-  if(liquido >= META_LIQUIDO){
-    ST.metaAviso = { tipo:"meta", msg:`🎯 META BATIDA · ${liquido} greens líquidos · pare no lucro!` };
+  // META · 5 líquidos (greens - reds) → AVISA que bateu a meta. NÃO encerra sozinho.
+  if(saldoSessao >= META_LIQUIDO){
+    ST.metaAviso = { tipo:"meta", msg:`🏆 STOP WIN · ${saldoSessao} líquidos batidos! Você pode parar no lucro ou continuar. Você decide.` };
     ST.metaAvisoVisto = false;
-    ST.sessaoAtiva = false;
+    // NÃO encerra automaticamente.
     return;
   }
   // PARADA OPCIONAL · +3 líquido → SÓ oferece quando a MESA está RUIM (fria/congelada).
