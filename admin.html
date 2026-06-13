@@ -55,7 +55,7 @@ button:active{transform:scale(.97)}
 .tg{background:linear-gradient(270deg,#22c55e,#22d3ee,#a78bfa,#22c55e);background-size:300% 300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 6s ease infinite;font-weight:800;letter-spacing:3px}
 .app{max-width:520px;margin:0 auto;padding:14px 12px 80px;min-height:100vh;background:radial-gradient(1200px 600px at 50% -10%,rgba(59,130,246,.05),transparent 60%)}
 .hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
-.hdr-l{font-size:16px;font-family:var(--mono)}
+.hdr-l{font-size:17px;font-family:var(--mono);font-weight:700;letter-spacing:.5px}
 .hdr-r{font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px}
 .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;margin-right:5px;vertical-align:middle}
 .card{background:linear-gradient(155deg,var(--bg2) 0%,var(--bg3) 100%);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;animation:slideIn .3s ease;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 8px 24px -12px rgba(0,0,0,.6);position:relative}
@@ -160,8 +160,8 @@ button:active{transform:scale(.97)}
 /* STATS BAR */
 .stats-bar{display:flex;justify-content:space-between;padding:8px 12px;background:linear-gradient(155deg,rgba(10,18,32,.6),rgba(3,7,18,.4));border:1px solid var(--border);border-radius:14px;margin-bottom:10px;box-shadow:0 1px 0 rgba(255,255,255,.05) inset,0 6px 20px -14px rgba(0,0,0,.7)}
 .stat{text-align:center;flex:1}
-.stat-v{font-size:14px;font-weight:800;font-family:var(--mono)}
-.stat-l{font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;margin-top:2px}
+.stat-v{font-size:14px;font-weight:800;font-family:var(--mono);text-shadow:0 0 16px currentColor;letter-spacing:.5px;filter:saturate(1.1)}
+.stat-l{font-size:8px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px;margin-top:2px;letter-spacing:1.5px;text-transform:uppercase;opacity:.85}
 .stat-v.g{color:var(--green2)}
 .stat-v.r{color:var(--red2)}
 .stat-v.y{color:var(--cyan)}
@@ -1349,11 +1349,12 @@ function analyze(){
     out.convergePadroes = [];
   }
 
-  // ── CRITÉRIO DE CONFIRMAÇÃO POR PADRÃO (analista sênior · validado base 1458) ──
-  // Padrões FRACOS (líquido negativo no acumulado) só entram SOZINHOS com confirmação:
-  // convergência 2+ OU mesa limpa. Sem isso, NÃO disparam (mas seguem lidos/aprendendo).
-  // Fortes entram normal. Resultado provado: 81%→84%, líquido 103→118, -72 entradas fracas.
-  // NÃO corta o padrão — só evita entrar nele no escuro.
+  // ── CRITÉRIO EQUILIBRADO · nem trava, nem solto (validado base 1608) ──
+  // Padrão FORTE → entra sempre (lê e entra, sem segurar).
+  // Padrão FRACO → entra se tiver QUALQUER respaldo: 2+ sinais convergindo OU mesa limpa.
+  //   Só segura no caso ruim de verdade: fraco + totalmente sozinho + mesa picotada.
+  // Resultado: 84% · líquido 121 · seqMax 3 · segura só ~30 entradas ruins (não 182).
+  // Isso resolve "mesa com padrão e motor sem entrar": agora só não entra no fraco solto.
   if(bestSide && bestSide !== "T"){
     const _FRACOS = ["C21","SK4C","SK3C","B31","ESCD","P21","RE7","RE8","SURF"];
     const _gatilho = (patterns||[])
@@ -1361,10 +1362,11 @@ function analyze(){
       .sort((a,b)=>b.conf-a.conf)
       .map(p => p.name)[0];
     if(_FRACOS.includes(_gatilho)){
-      const _temConfirmacao = (out.convergencia >= 2) || out.mesaLimpa;
-      if(!_temConfirmacao){
-        out.criterioBloqueou = _gatilho;  // registra que segurou por falta de confirmação
-        bestSide = null;                    // não entra sozinho no escuro
+      const _temRespaldo = (out.convergencia >= 2) || out.mesaLimpa;
+      if(!_temRespaldo){
+        out.criterioBloqueou = _gatilho;
+        out.aguardandoConfirma = `Lendo ${_gatilho} (${lbl(bestSide)}) · aguardando 2º sinal confirmar`;
+        bestSide = null;
         bestConf = 0;
       }
     }
@@ -2167,11 +2169,22 @@ function undo(){
 }
 
 function reset(){
-  if(!confirm("Zerar tudo? (histórico, placar)")) return;
+  if(!confirm("Zerar o HISTÓRICO e o PLACAR desta sessão?\n\n✅ O APRENDIZADO é MANTIDO (pesos das 73+ sessões ficam intactos)\n• Só limpa: rodadas da tela, placar e log de entradas")) return;
   ST.H = []; ST.greens = 0; ST.reds = 0; ST.bonus = 0; ST.pSG = 0; ST.pG1 = 0; ST.pEmp = 0; ST.pEmpG1 = 0; ST.pEmpDetalhe = {}; ST.logEntradas = []; ST.coberturaEmpate = false;
-  ST.deltaAcum = {}; ST.countAcum = {}; ST.tieAcum = {};
+  // APRENDIZADO PRESERVADO · deltaAcum/countAcum/tieAcum NÃO são tocados aqui
   ST.metaAviso = null; ST.sessaoAtiva = false; ST.esperaSessao = 0;
   abortCiclo();
+  toast("✓ Histórico e placar zerados · aprendizado preservado", 3000);
+}
+
+function resetAprendizado(){
+  const totalSessoes = ST.sessoes || 0;
+  if(!confirm("⚠️ ATENÇÃO · APAGAR O APRENDIZADO?\n\nIsto vai APAGAR tudo que o motor aprendeu em "+totalSessoes+" sessões:\n• Os pesos ajustados de cada padrão\n• O acumulado de acertos/erros (deltaAcum/countAcum)\n• A memória do farejador de empate\n\nO motor volta a operar do ZERO, como recém-instalado.\nIsso PODE PIORAR as leituras até reaprender tudo de novo.\n\nTem CERTEZA?")) return;
+  if(!confirm("Última confirmação.\n\nApagar DEFINITIVAMENTE o aprendizado de "+totalSessoes+" sessões?\n\nNão dá pra desfazer.")) return;
+  ST.deltaAcum = {}; ST.countAcum = {}; ST.tieAcum = {};
+  save();
+  toast("Aprendizado apagado · motor recomeça do zero", 3500);
+  renderRouter();
 }
 
 function finalizarSessao(){
@@ -2291,9 +2304,11 @@ function buildEntryCard(a, forAdmin){
                "rgba(245,158,11,.12),rgba(245,158,11,.04)";
     const bd = lado === "P" ? "rgba(59,130,246,.45)" : lado === "B" ? "rgba(239,68,68,.45)" : "rgba(245,158,11,.45)";
     const cor = lado === "P" ? "var(--blue2)" : lado === "B" ? "var(--red2)" : "var(--gold2)";
-    return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,${bg});border:2px solid ${bd};border-radius:14px;text-align:center">
-      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:3px;margin-bottom:6px">${titulo}</div>
-      <div style="font-size:30px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:2px">${lbl(lado)}</div>
+    const glow = lado === "P" ? "rgba(59,130,246,.35)" : lado === "B" ? "rgba(239,68,68,.35)" : "rgba(245,158,11,.35)";
+    return `<div style="margin-top:10px;padding:22px 16px;background:linear-gradient(160deg,${bg});border:1.5px solid ${bd};border-radius:20px;text-align:center;position:relative;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 18px 40px -20px ${glow},0 2px 0 rgba(255,255,255,.05) inset">
+      <div style="position:absolute;top:-40%;left:50%;transform:translateX(-50%);width:160%;height:80%;background:radial-gradient(ellipse at center,${glow},transparent 70%);opacity:.5;pointer-events:none"></div>
+      <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:4px;margin-bottom:8px;position:relative">${titulo}</div>
+      <div style="font-size:42px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:3px;position:relative;text-shadow:0 0 24px ${glow},0 2px 8px rgba(0,0,0,.4)">${lbl(lado)}</div>
       ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
       ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
       <div style="margin-top:12px;padding:10px 12px;background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.2);border-radius:10px;text-align:left;${mostrarDica?'':'display:none'}">
@@ -2325,7 +2340,8 @@ function buildEntryCard(a, forAdmin){
         </div>
       </div>`;
     } else {
-      return `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar'}</div></div>`;
+      const _aviso = a.aguardandoConfirma ? `👁 ${a.aguardandoConfirma}` : (ST.sessaoAtiva?'SESSÃO ATIVA · aguardando próxima oportunidade':'Bom momento · aguardando padrão confirmar');
+      return `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ ${_aviso}</div></div>`;
     }
   } else if(ST.ciclo === "entrada"){
     return cardSinalGrande("▶ ENTRADA ATIVA", ST.ciclo_sinal,
@@ -3238,7 +3254,7 @@ function renderAdminPanel(){
     <!-- RESULTADO DE CADA ENTRADA -->
     ${(ST.logEntradas && ST.logEntradas.length)?`<div class="card" style="padding:10px;margin-bottom:12px">
       <div style="font-size:10px;font-family:var(--mono);color:var(--txt3);margin-bottom:8px;letter-spacing:1px">📋 RESULTADO DAS ENTRADAS</div>
-      <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
+      <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
         ${ST.logEntradas.slice().reverse().map(e=>{
           const resHex = e.res==="G"?"var(--green2)":"var(--red2)";
           // texto exato do que bateu
@@ -3281,7 +3297,8 @@ function renderAdminPanel(){
       </button>
       <div class="foot-btns" style="margin-top:8px">
         <button class="util-btn" onclick="undo()">↩ DESFAZER</button>
-        <button class="util-btn" onclick="reset()">◌ ZERAR HISTÓRICO</button>
+        <button class="util-btn" onclick="reset()">◌ ZERAR PLACAR</button>
+        <button class="util-btn" onclick="resetAprendizado()" style="color:var(--red2);border-color:rgba(239,68,68,.3)">⚠ APAGAR APRENDIZADO</button>
       </div>
     </div>
 
@@ -3419,6 +3436,7 @@ window.reset = reset;
 window.injectJSON = injectJSON;
 window.copyJSON = copyJSON;
 window.finalizarSessao = finalizarSessao;
+window.resetAprendizado = resetAprendizado;
 window.publicarMesa = function(){
   ST.publicado = !ST.publicado;
   toast(ST.publicado ? "📡 Mesa publicada — assinantes veem agora" : "🔒 Mesa oculta dos assinantes", 2500);
