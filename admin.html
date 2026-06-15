@@ -3072,6 +3072,16 @@ window.renovarChave = function(k){
   db.ref("keys/" + k + "/ativo").set(true);
 };
 
+window.mais3dias = function(k){
+  const rec = AUTH.keys[k];
+  if(!rec) return;
+  // soma 3 dias a partir do vencimento atual (se ainda válido) ou de agora (se já expirou)
+  const base = (rec.expiraEm && rec.expiraEm > Date.now()) ? rec.expiraEm : Date.now();
+  db.ref("keys/" + k + "/expiraEm").set(base + 3*24*60*60*1000);
+  db.ref("keys/" + k + "/ativo").set(true);
+  toast("✓ +3 dias adicionados", 2500);
+};
+
 window.removerChave = function(k){
   if(!confirm("Remover a chave " + k + "?")) return;
   db.ref("keys/" + k).remove();
@@ -3234,6 +3244,7 @@ function renderAdminPanel(){
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
         ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
+        ${r.tipo==='teste'?`<button onclick="mais3dias('${k}')" style="flex:1;padding:7px 0;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:7px;color:var(--purple);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+3 DIAS</button>`:''}
         <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
       </div>
     </div>`;
