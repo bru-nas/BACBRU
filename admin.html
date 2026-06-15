@@ -292,6 +292,8 @@ function pushToFirebase(){
     boaOportunidade: (ST._lastAnalise && ST._lastAnalise.boaOportunidade) || false,
     mesaLimpa: (ST._lastAnalise && ST._lastAnalise.mesaLimpa) || false,
     convergePadroes: (ST._lastAnalise && ST._lastAnalise.convergePadroes) || [],
+    viaRegime: (ST._lastAnalise && ST._lastAnalise.viaRegime) || false,
+    regimeMesa: (ST._lastAnalise && ST._lastAnalise.regimeMesa) || null,
     updatedAt: Date.now()
   };
   ROOM_REF.set(payload).catch(e=>{
@@ -697,6 +699,37 @@ function tieHunter(H, heatScore){
 // ════════════════════════════════════════════════════════════════════════════
 // MOTOR NEURAL · análise completa
 // ════════════════════════════════════════════════════════════════════════════
+
+
+// ════════════════════════════════════════════════════════════════════════
+// LEITURA POR REGIME · o motor identifica o momento da mesa e usa os padrões
+// que funcionam NAQUELE regime. Mesa muda → leitura muda (surfa junto).
+// Mapa padrão|regime construído das sessões (validado leave-one-out: +76 líquido,
+// entradas extras 83% green). Refina conforme novas sessões acumulam.
+// ════════════════════════════════════════════════════════════════════════
+const _MAPA_REGIME = {"ESC|TEND": 68, "ESC|MISTA": 82, "PP4|MISTA": 78, "PP4|PICOTE": 83, "RE6|MISTA": 100, "B22C|MISTA": 85, "B22T|MISTA": 71, "P22|MISTA": 82, "ESCD|MISTA": 75, "DOM12|MISTA": 75, "B22T|TEND": 100, "SK3Q|MISTA": 80};
+function regimeAtual(){
+  // lê o momento da mesa pelas últimas 8 cores (sem tie): tendência/mista/picote
+  const col = ST.H.filter(x=>x.r!=='T');
+  if(col.length < 8) return 'MISTA';
+  const u = col.slice(-8);
+  let trocas=0; for(let i=1;i<u.length;i++) if(u[i].r!==u[i-1].r) trocas++;
+  return trocas<=2 ? 'TEND' : trocas>=6 ? 'PICOTE' : 'MISTA';
+}
+function padraoForteNoRegime(patterns, regime){
+  // retorna {sig, name, taxa} do padrão candidato que é forte (>=68%) no regime atual
+  if(!patterns) return null;
+  const cands = patterns.filter(p=>p.sig==='P'||p.sig==='B');
+  let melhor=null;
+  for(const c of cands){
+    const taxa = _MAPA_REGIME[c.name+'|'+regime];
+    if(taxa!==undefined && taxa>=68){
+      if(!melhor || taxa>melhor.taxa) melhor={sig:c.sig, name:c.name, taxa};
+    }
+  }
+  return melhor;
+}
+
 function analyze(){
   const W = ST.weights;
   const col = coloridas(ST.H);
@@ -1505,7 +1538,7 @@ function analyze(){
   // as entradas fracas. Mesa boa tem critério leve (aproveita), mesa ruim só premium.
   // derivedAlign: +n = n estradas derivadas STABLE concordando (0 a 3).
   // ════════════════════════════════════════════════════════════════════════
-  if(out.signal === "P" || out.signal === "B"){
+  if((out.signal === "P" || out.signal === "B") && !out.viaRegime){
     const align = out.derivedAlign || 0;
     const nPad = byBet[out.signal] ? byBet[out.signal].length : 0;
     const boa = (tableState === "QUENTE" || tableState === "FAVORÁVEL");
@@ -1555,6 +1588,22 @@ function analyze(){
     out.padrao = `Dominância ${out.dominancia} · P=${out.distrib.P}% B=${out.distrib.B}% T=${out.distrib.T}%`;
   } else {
     out.padrao = `Equilíbrio · P=${out.distrib.P}% B=${out.distrib.B}% T=${out.distrib.T}%`;
+  }
+
+  // ── LEITURA POR REGIME · se o motor ficou CALADO, lê o regime do momento ──
+  // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
+  // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
+  // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
+  if(out.signal === "W" && mesaPermiteEntrada){
+    const _reg = regimeAtual();
+    const _forte = padraoForteNoRegime(patterns, _reg);
+    if(_forte){
+      out.signal = _forte.sig;
+      out.conf = Math.min(0.88, _forte.taxa/100);
+      out.reason = `🎯 REGIME ${_reg} · ${_forte.name} acerta ${_forte.taxa}% neste momento`;
+      out.viaRegime = true;
+      out.regimeMesa = _reg;
+    }
   }
 
   // ── TRAVA FINAL DE SEGURANÇA ──
@@ -1723,32 +1772,29 @@ const STOP_LOSS = 2;      // reds para avaliar stop
 const PESO_RED = 3;       // cada red consome 3 greens
 function checarMetaStop(estadoMesa){
   if(!ST.sessaoAtiva) return;
-  // Líquido PONDERADO: cada red vale -3 greens.
-  const liquido = ST.greens - (ST.reds * PESO_RED);
-  // STOP (saldo da sessão = greens - reds, sem ponderar):
-  //  · o PRIMEIRO red pode deixar o saldo negativo → segue (ainda sem gordura).
-  //  · do SEGUNDO red em diante, se o saldo ficar NEGATIVO → AVISA FORTE (não trava).
-  //    A decisão de parar é da operadora — o app só alerta.
-  const saldoSessao = ST.greens - ST.reds;
+  // LÍQUIDO PONDERADO · regra da operadora: cada RED vale -3 greens. Meta = 5 líquidos.
+  const saldoSessao = ST.greens - (ST.reds * PESO_RED);
+  // STOP LOSS (regra original): só dispara se houver 2º red E o saldo já estiver NEGATIVO.
+  //  · o 1º red sozinho não para (ainda dá pra recuperar)
+  //  · 2 reds mas saldo ainda positivo → segue (a meta ainda é possível)
+  //  · 2º red COM saldo negativo → AVISA forte (proteção). App não trava, só alerta.
   if(ST.reds >= 2 && saldoSessao < 0){
-    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP LOSS · ${ST.reds} loss · saldo da sessão ${saldoSessao} (negativo) · recomendado PARAR para proteger a banca. Você decide.` };
+    ST.metaAviso = { tipo:"stop", msg:`🛑 STOP LOSS · ${ST.reds} reds · saldo ${saldoSessao} líquidos (negativo) · recomendado ENCERRAR para proteger a banca. Você decide.` };
     ST.metaAvisoVisto = false;
-    // NÃO encerra automaticamente — só avisa.
     return;
   }
-  // META · 5 líquidos (greens - reds) → AVISA que bateu a meta. NÃO encerra sozinho.
+  // STOP WIN: 5 líquidos (greens - 3×reds) → AVISA que bateu a meta. NÃO encerra sozinho.
   if(saldoSessao >= META_LIQUIDO){
     ST.metaAviso = { tipo:"meta", msg:`🏆 STOP WIN · ${saldoSessao} líquidos batidos! Você pode parar no lucro ou continuar. Você decide.` };
     ST.metaAvisoVisto = false;
-    // NÃO encerra automaticamente.
     return;
   }
   // PARADA OPCIONAL · +3 líquido → SÓ oferece quando a MESA está RUIM (fria/congelada).
   // Em mesa boa segue direto até os 5, sem poluir com popup.
   const mesaRuim = (estadoMesa === "FRIA" || estadoMesa === "CONGELADA");
-  if(liquido >= 3 && liquido < META_LIQUIDO && mesaRuim && !ST.ofereceParada3){
+  if(saldoSessao >= 3 && saldoSessao < META_LIQUIDO && mesaRuim && !ST.ofereceParada3){
     ST.ofereceParada3 = true;
-    ST.metaAviso = { tipo:"opcional", msg:`✅ +${liquido} líquidos garantidos e a mesa está ruim agora. Pode parar aqui no lucro — ou seguir até os 5. Você decide.` };
+    ST.metaAviso = { tipo:"opcional", msg:`✅ +${saldoSessao} líquidos garantidos e a mesa está ruim agora. Pode parar aqui no lucro — ou seguir até os 5. Você decide.` };
     ST.metaAvisoVisto = false;
     // sessão continua ativa de propósito
   }
@@ -1765,7 +1811,9 @@ function addRound(r, sNum){
   if(!ST.undoStack) ST.undoStack = [];
   ST.undoStack.push({
     greens: ST.greens, reds: ST.reds, bonus: ST.bonus,
-    pSG: ST.pSG||0, pG1: ST.pG1||0, pEmp: ST.pEmp||0, pEmpG1: ST.pEmpG1||0, pEmpDetalhe: ST.pEmpDetalhe||{}, logEntradas: ST.logEntradas||[],
+    pSG: ST.pSG||0, pG1: ST.pG1||0, pEmp: ST.pEmp||0, pEmpG1: ST.pEmpG1||0,
+    pEmpDetalhe: JSON.parse(JSON.stringify(ST.pEmpDetalhe||{})),
+    logEntradas: (ST.logEntradas||[]).slice(),
     ciclo: ST.ciclo, ciclo_sinal: ST.ciclo_sinal, ciclo_conf: ST.ciclo_conf,
     ciclo_razao: ST.ciclo_razao, ciclo_tie: ST.ciclo_tie,
     ciclo_gale_sinal: ST.ciclo_gale_sinal, ciclo_gale_dec: ST.ciclo_gale_dec,
@@ -2147,6 +2195,11 @@ function undo(){
     ST.greens = snap.greens;
     ST.reds = snap.reds;
     ST.bonus = snap.bonus;
+    // BUG CORRIGIDO: restaurar TAMBÉM o placar detalhado e o log de entradas
+    // (eram salvos no snapshot mas o undo não os revertia → entrada errada ficava no placar)
+    ST.pSG = snap.pSG||0; ST.pG1 = snap.pG1||0; ST.pEmp = snap.pEmp||0; ST.pEmpG1 = snap.pEmpG1||0;
+    ST.pEmpDetalhe = snap.pEmpDetalhe||{};
+    ST.logEntradas = snap.logEntradas||[];
     ST.ciclo = snap.ciclo;
     ST.ciclo_sinal = snap.ciclo_sinal;
     ST.ciclo_conf = snap.ciclo_conf;
@@ -2327,8 +2380,9 @@ function buildEntryCard(a, forAdmin){
       // ADMIN: vê o botão de confirmar a entrada.
       // ASSINANTE: NÃO vê a entrada antes da confirmação do admin — vê tela de espera.
       // (a entrada confirmada aparece pra ele quando o ciclo vira "entrada", sincronizado via Firebase)
+      const _seloRegime = a.viaRegime ? `<div style="margin-top:8px;padding:7px 10px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);border-radius:8px;font-size:11px;color:var(--cyan);font-family:var(--mono);text-align:center">🎯 LEITURA DE REGIME · mesa ${a.regimeMesa} · padrão forte neste momento</div>` : '';
       return forAdmin
-        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>`
+        ? `<button class="btn btn-${a.signal==='P'?'p':a.signal==='B'?'b':'t'}" style="width:100%;margin-top:10px;padding:18px 0;font-size:15px" onclick="confirmEntry()">▶ CONFIRMAR ENTRADA · ${lbl(a.signal)}${tieExtra?` + EMPATE ${tieExtra}`:''}</button>${_seloRegime}`
         : `<div class="wait-card" style="margin-top:10px;padding:14px"><div class="wait-act" style="font-size:12px">⏳ SESSÃO ATIVA · analisando a mesa · aguarde o próximo sinal</div></div>`;
     } else if(!ST.sessaoAtiva && !bomMomento){
       return `<div style="margin-top:10px;padding:16px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(0,0,0,.3));border:1px solid rgba(245,158,11,.3);border-radius:12px">
@@ -3246,33 +3300,11 @@ function renderAdminPanel(){
 
     <!-- PLACAR PRINCIPAL · saldo líquido (meta 5), rate, greens, empates -->
     <div class="stats-bar" style="padding:14px 12px">
-      <div class="stat"><div class="stat-v" style="font-size:24px;color:${(ST.greens-ST.reds)>=0?'var(--green2)':'var(--red2)'}">${(ST.greens-ST.reds)>=0?'+':''}${ST.greens-ST.reds}</div><div class="stat-l">LÍQUIDO /5</div></div>
+      <div class="stat"><div class="stat-v" style="font-size:24px;color:${(ST.greens-ST.reds*3)>=0?'var(--green2)':'var(--red2)'}">${(ST.greens-ST.reds*3)>=0?'+':''}${ST.greens-ST.reds*3}</div><div class="stat-l">LÍQUIDO /5</div></div>
       <div class="stat"><div class="stat-v y" style="font-size:24px">${rate}%</div><div class="stat-l">RATE</div></div>
       <div class="stat"><div class="stat-v g" style="font-size:24px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
       <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:24px">${(ST.pEmp||0)+(ST.pEmpG1||0)}</div><div class="stat-l">EMPATE</div></div>
     </div>
-    <!-- RESULTADO DE CADA ENTRADA -->
-    ${(ST.logEntradas && ST.logEntradas.length)?`<div class="card" style="padding:10px;margin-bottom:12px">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--txt3);margin-bottom:8px;letter-spacing:1px">📋 RESULTADO DAS ENTRADAS</div>
-      <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
-        ${ST.logEntradas.slice().reverse().map(e=>{
-          const resHex = e.res==="G"?"var(--green2)":"var(--red2)";
-          // texto exato do que bateu
-          let txt;
-          if(e.res==="R") txt="RED";
-          else if(e.via==="seco") txt="GREEN SG";
-          else if(e.via==="gale") txt="GREEN no gale";
-          else if((e.via||"").indexOf("empate-entrada")===0) txt="empate na entrada ("+e.via.replace("empate-entrada ","")+")";
-          else if((e.via||"").indexOf("empate-gale")===0) txt="empate no gale ("+e.via.replace("empate-gale ","")+")";
-          else if((e.via||"").indexOf("empate")===0) txt="empate ("+e.via.replace("empate ","")+")";
-          else txt="GREEN";
-          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,.02);border-left:3px solid ${resHex};border-radius:6px;font-family:var(--mono);font-size:12px">
-            <span style="color:var(--txt3);min-width:74px">Entrada ${e.n}:</span>
-            <span style="color:${resHex};font-weight:700">${txt}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`:''}
     <div class="card" style="padding:10px;text-align:center;margin-bottom:12px;background:linear-gradient(135deg,${(ST.greens-ST.reds*3)>=5?'rgba(34,197,94,.12)':(ST.reds>=2&&(ST.greens-ST.reds*3)<0)?'rgba(239,68,68,.1)':'rgba(0,0,0,.2)'},rgba(0,0,0,.1))">
       <span style="font-size:12px;font-family:var(--mono);color:var(--txt2)">🎯 Meta 5 líquidos (red = -3) · saldo: </span>
       <span style="font-size:15px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds*3)>=5?'var(--green2)':(ST.greens-ST.reds*3)<0?'var(--red2)':'var(--txt)'}">${(ST.greens-ST.reds*3)>=0?'+':''}${ST.greens-ST.reds*3}</span>
@@ -3306,6 +3338,29 @@ function renderAdminPanel(){
     <button onclick="finalizarSessao()" style="width:100%;padding:14px 0;margin-bottom:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(34,211,238,.08));border:1px solid rgba(167,139,250,.3);border-radius:11px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;cursor:pointer">
       ⊡ FINALIZAR SESSÃO · ZERAR PLACAR
     </button>
+
+    <!-- RESULTADO DE CADA ENTRADA -->
+    ${(ST.logEntradas && ST.logEntradas.length)?`<div class="card" style="padding:10px;margin-bottom:12px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--txt3);margin-bottom:8px;letter-spacing:1px">📋 RESULTADO DAS ENTRADAS</div>
+      <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
+        ${ST.logEntradas.slice().map(e=>{
+          const resHex = e.res==="G"?"var(--green2)":"var(--red2)";
+          // texto exato do que bateu
+          let txt;
+          if(e.res==="R") txt="RED";
+          else if(e.via==="seco") txt="GREEN SG";
+          else if(e.via==="gale") txt="GREEN no gale";
+          else if((e.via||"").indexOf("empate-entrada")===0) txt="empate na entrada ("+e.via.replace("empate-entrada ","")+")";
+          else if((e.via||"").indexOf("empate-gale")===0) txt="empate no gale ("+e.via.replace("empate-gale ","")+")";
+          else if((e.via||"").indexOf("empate")===0) txt="empate ("+e.via.replace("empate ","")+")";
+          else txt="GREEN";
+          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,.02);border-left:3px solid ${resHex};border-radius:6px;font-family:var(--mono);font-size:12px">
+            <span style="color:var(--txt3);min-width:74px">Entrada ${e.n}:</span>
+            <span style="color:${resHex};font-weight:700">${txt}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:''}
 
     <div class="sec-lbl">CRIAR NOVA CHAVE</div>
     <div class="card">

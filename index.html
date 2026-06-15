@@ -270,7 +270,7 @@ function renderDR(rd){
 
 function logEntradasHtml(){
   if(!ST.logEntradas || !ST.logEntradas.length) return "";
-  var linhas = ST.logEntradas.slice().reverse().map(function(e){
+  var linhas = ST.logEntradas.slice().map(function(e){
     var resHex = e.res==="G" ? "var(--green2)" : "var(--red2)";
     var txt;
     if(e.res==="R") txt="RED";
@@ -319,6 +319,8 @@ function initSync(){
     ST.sessaoAtiva=!!data.sessaoAtiva;
     ST.publicado=!!data.publicado;
     ST.convergencia=data.convergencia||0;
+    ST.viaRegime=data.viaRegime||false;
+    ST.regimeMesa=data.regimeMesa||null;
     ST.boaOportunidade=!!data.boaOportunidade;
     ST.convergePadroes=data.convergePadroes||[];
     ST.esperaSessao=data.esperaSessao||0;
@@ -457,8 +459,6 @@ function renderLock(){
 
     ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
 
-    ${logEntradasHtml()}
-
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>`;
 }
@@ -478,8 +478,6 @@ function cardSinalGrande(titulo, lado, sub, tieInfo, mostrarDica){
       <div style="position:absolute;top:-40%;left:50%;transform:translateX(-50%);width:160%;height:80%;background:radial-gradient(ellipse at center,${glow},transparent 70%);opacity:.5;pointer-events:none"></div>
       <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);letter-spacing:4px;margin-bottom:8px;position:relative">${titulo}</div>
       <div style="font-size:42px;font-weight:900;color:${cor};font-family:var(--mono);letter-spacing:3px;position:relative;text-shadow:0 0 24px ${glow},0 2px 8px rgba(0,0,0,.4)">${lbl(lado)}</div>
-      ${(ST.convergencia>=2)?`<div style="margin-top:7px;display:inline-block;padding:4px 12px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);border-radius:20px;font-size:11px;color:var(--green2);font-family:var(--mono);font-weight:700">⚡ ${ST.convergencia} PADRÕES CONFIRMAM</div>`:''}
-      ${ST.boaOportunidade?`<div style="margin-top:7px;display:inline-block;padding:4px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.45);border-radius:20px;font-size:11px;color:var(--gold2);font-family:var(--mono);font-weight:700">⭐ BOA OPORTUNIDADE · mesa limpa</div>`:''}
       ${sub?`<div style="margin-top:6px;font-size:11px;color:var(--txt2);font-family:var(--mono)">${sub}</div>`:''}
       ${tieInfo?`<div style="margin-top:8px;display:inline-block;padding:5px 12px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--gold2);font-family:var(--mono);font-weight:700">🔥 + EMPATE ${tieInfo}</div>`:''}
       <div style="margin-top:12px;padding:10px 12px;background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.2);border-radius:10px;text-align:left;${mostrarDica?'':'display:none'}">
@@ -692,6 +690,7 @@ function renderApp(){
     <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
     <div class="card road"><div class="bead-grid">${beadCells.join("")}</div></div>
     ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
+    ${logEntradasHtml()}
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
