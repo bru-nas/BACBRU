@@ -281,19 +281,7 @@ function logEntradasHtml(){
     else if((e.via||"").indexOf("empate-gale")===0) txt="GREEN · empate no gale ("+e.via.replace("empate-gale ","")+")";
     else if((e.via||"").indexOf("empate")===0) txt="GREEN · empate seco ("+e.via.replace("empate ","")+")";
     else txt="GREEN";
-    var corHex = e.cor==="P" ? "var(--blue2)" : (e.cor==="B" ? "var(--red2)" : "var(--txt3)");
-    var corLbl = e.cor==="P" ? "AZUL" : (e.cor==="B" ? "VERMELHO" : "—");
-    var padrao = e.padrao || "?";
-    return '<div style="padding:8px 10px;background:rgba(255,255,255,.02);border-left:3px solid '+resHex+';border-radius:6px;font-family:var(--mono);font-size:12px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
-        +'<span style="color:var(--txt3)">Entrada '+e.n+'</span>'
-        +'<span style="color:'+resHex+';font-weight:700">'+txt+'</span>'
-      +'</div>'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-top:5px;font-size:11px">'
-        +'<span style="color:var(--txt3)">'+padrao+'</span>'
-        +'<span style="color:'+corHex+';font-weight:700">'+corLbl+'</span>'
-      +'</div>'
-    +'</div>';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,.02);border-left:3px solid '+resHex+';border-radius:6px;font-family:var(--mono);font-size:12px"><span style="color:var(--txt3);min-width:74px">Entrada '+e.n+':</span><span style="color:'+resHex+';font-weight:700">'+txt+'</span></div>';
   }).join("");
   return '<div class="sec-lbl" style="margin-top:12px;font-size:11px">📋 RESULTADO DAS ENTRADAS</div><div class="card" style="padding:10px"><div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">'+linhas+'</div></div>';
 }
