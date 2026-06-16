@@ -1914,7 +1914,7 @@ function addRound(r, sNum){
 
     // GALE já lançado: aposta na mesa → empate green/push, encerra
     if(ST.ciclo === "gale"){
-      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
       if(isHighPay) celebraPaga(pay);
       else flashResultado('GREEN', `✅ GREEN · empate no gale · ${pay}`);
       abortCiclo();
@@ -1940,7 +1940,7 @@ function addRound(r, sNum){
     }
     if(hunterAntes && isHighPay){
       // Farejador ativo + empate alto → GREEN
-      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay);
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog("FAREJADOR", null, (a.hunter&&a.hunter.conf)||0, "G", "empate "+pay);
       celebraPaga(pay);
       save(); renderRouter();
     } else if(hunterAntes && !isHighPay){
@@ -3361,13 +3361,24 @@ function renderAdminPanel(){
           if(e.res==="R") txt="RED";
           else if(e.via==="seco") txt="GREEN SG";
           else if(e.via==="gale") txt="GREEN no gale";
-          else if((e.via||"").indexOf("empate-entrada")===0) txt="empate na entrada ("+e.via.replace("empate-entrada ","")+")";
-          else if((e.via||"").indexOf("empate-gale")===0) txt="empate no gale ("+e.via.replace("empate-gale ","")+")";
-          else if((e.via||"").indexOf("empate")===0) txt="empate ("+e.via.replace("empate ","")+")";
+          else if((e.via||"").indexOf("empate-entrada")===0) txt="GREEN · empate na entrada ("+e.via.replace("empate-entrada ","")+")";
+          else if((e.via||"").indexOf("empate-gale")===0) txt="GREEN · empate no gale ("+e.via.replace("empate-gale ","")+")";
+          else if((e.via||"").indexOf("empate")===0) txt="GREEN · empate seco ("+e.via.replace("empate ","")+")";
           else txt="GREEN";
-          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,.02);border-left:3px solid ${resHex};border-radius:6px;font-family:var(--mono);font-size:12px">
-            <span style="color:var(--txt3);min-width:74px">Entrada ${e.n}:</span>
-            <span style="color:${resHex};font-weight:700">${txt}</span>
+          const corHex = e.cor==="P"?"var(--blue2)":(e.cor==="B"?"var(--red2)":"var(--txt3)");
+          const corLbl = e.cor==="P"?"AZUL":(e.cor==="B"?"VERMELHO":"—");
+          const padrao = e.padrao || "?";
+          const conf = (e.conf!=null) ? e.conf+"%" : "";
+          return `<div style="padding:8px 10px;background:rgba(255,255,255,.02);border-left:3px solid ${resHex};border-radius:6px;font-family:var(--mono);font-size:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="color:var(--txt3)">Entrada ${e.n}</span>
+              <span style="color:${resHex};font-weight:700">${txt}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:5px;font-size:11px">
+              <span style="color:var(--txt3)">${padrao}</span>
+              <span style="color:${corHex};font-weight:700">${corLbl}</span>
+              ${conf?`<span style="color:var(--txt3);margin-left:auto">conf ${conf}</span>`:''}
+            </div>
           </div>`;
         }).join('')}
       </div>
