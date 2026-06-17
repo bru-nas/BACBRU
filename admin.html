@@ -268,6 +268,7 @@ function pushToFirebase(){
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
     tieAcum: ST.tieAcum || {},
+    modoAcum: ST.modoAcum || {},
     sessoes: ST.sessoes,
     ciclo: ST.ciclo,
     ciclo_sinal: ST.ciclo_sinal,
@@ -327,6 +328,7 @@ function initFirebaseSync(){
     if(data.deltaAcum) ST.deltaAcum = data.deltaAcum;
     if(data.countAcum) ST.countAcum = data.countAcum;
     if(data.tieAcum) ST.tieAcum = data.tieAcum;
+    if(data.modoAcum) ST.modoAcum = data.modoAcum;
     if(typeof data.sessoes === "number") ST.sessoes = data.sessoes;
     if(typeof data.ciclo === "string") ST.ciclo = data.ciclo;
     ST.ciclo_sinal = data.ciclo_sinal || null;
@@ -856,7 +858,7 @@ function analyze(){
 
   const patterns = [];
   function add(name, sig, base, reason, hi=false){
-    let conf = Math.min(0.95, (base * fatorAprendido(name)) + totalBoost);
+    let conf = Math.min(0.95, (base * fatorAprendido(name) * fatorModo(name)) + totalBoost);
     if(sig === "P") conf += W.bias_P;
     if(sig === "B") conf += W.bias_B;
     conf = Math.max(0, Math.min(0.95, conf));
@@ -1710,10 +1712,20 @@ function aprendeRodada(patterns, resultadoReal){
   if(!patterns || !patterns.length) return;
   if(!ST.deltaAcum) ST.deltaAcum = {};
   if(!ST.countAcum) ST.countAcum = {};
+  // momento da mesa ANTES desta rodada (para carimbar o aprendizado por modo)
+  const modo = (modoMesa() || {}).modo || "BAGUNCA";
+  if(!ST.modoAcum) ST.modoAcum = {};
+  if(!ST.modoAcum[modo]) ST.modoAcum[modo] = {};
   patterns.forEach(p => {
     if(p.sig !== "P" && p.sig !== "B") return; // só padrões de cor; TIE não entra
+    // (1) aprendizado GERAL — preservado, nunca para de acumular
     ST.countAcum[p.name] = (ST.countAcum[p.name] || 0) + 1;
     ST.deltaAcum[p.name] = (ST.deltaAcum[p.name] || 0) + (p.sig === resultadoReal ? 1 : -1);
+    // (2) aprendizado POR MOMENTO — camada nova, soma por cima sem mexer no geral
+    const m = ST.modoAcum[modo];
+    if(!m[p.name]) m[p.name] = {c:0, d:0};
+    m[p.name].c += 1;
+    m[p.name].d += (p.sig === resultadoReal ? 1 : -1);
   });
 }
 
@@ -1769,6 +1781,22 @@ function fatorAprendido(name){
     return Math.max(piso, 1 - (0.5 - taxa) * 0.7);
   }
   return 1.0;
+}
+
+// FATOR POR MOMENTO · empurrão extra para padrões que vão bem no modo ATUAL da mesa.
+// Trabalha JUNTO do fatorAprendido (geral), não no lugar dele. PRIORIZA, não EXCLUI:
+//  · padrão forte no momento → reforça (até +12%).
+//  · padrão fraco no momento → leve recuo (piso 0.92), mas NUNCA zera — o padrão
+//    continua disponível; só perde preferência para os que combinam com o momento.
+//  · precisa de 6+ amostras NAQUELE modo; abaixo disso fica neutro (1.0).
+function fatorModo(name){
+  const modo = (modoMesa() || {}).modo;
+  if(!modo || modo === "DADOS" || modo === "BAGUNCA") return 1; // bagunça/sem dado = sem preferência
+  const m = ST.modoAcum && ST.modoAcum[modo] && ST.modoAcum[modo][name];
+  if(!m || m.c < 6) return 1;            // amostra insuficiente naquele momento = neutro
+  const taxa = (m.d / m.c + 1) / 2;
+  if(taxa >= 0.5) return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);  // forte no momento → reforça
+  return Math.max(0.92, 1 - (0.5 - taxa) * 0.4);                  // fraco no momento → recuo leve, nunca zera
 }
 
 function regLog(padrao, cor, conf, res, via){
@@ -2368,6 +2396,7 @@ function injectJSON(){
     if(d.deltaAcum) ST.deltaAcum = d.deltaAcum;
     if(d.countAcum) ST.countAcum = d.countAcum;
     if(d.tieAcum) ST.tieAcum = d.tieAcum;
+    if(d.modoAcum) ST.modoAcum = d.modoAcum;
     if(typeof d.sessoes === "number") ST.sessoes = d.sessoes + 1;
     ST.injTxt = "";
     ST.jsonOpen = false;
@@ -2393,6 +2422,7 @@ function exportJSON(){
     deltaAcum: ST.deltaAcum,
     countAcum: ST.countAcum,
     tieAcum: ST.tieAcum || {},
+    modoAcum: ST.modoAcum || {},
     timestamp: new Date().toISOString()
   }, null, 2);
 }
