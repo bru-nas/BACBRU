@@ -614,7 +614,9 @@ function _modoBruto(col){
   if(tr<=2) return "SURF";
   return "BAGUNCA";
 }
-// classificador estável (histerese): só troca de modo após 2 confirmações
+// classificador estável (histerese): só troca de modo após 2 confirmações.
+// EXCEÇÃO: SURF entra na hora — um streak de 4+ é inconfundível e perder o
+// começo do surf é a maior fonte de oportunidade perdida. Não espera confirmar.
 function modoMesa(){
   const col = ST.H.filter(x=>x.r!=='T');
   if(col.length < 6) return {modo:"DADOS", virouAgora:false};
@@ -622,13 +624,36 @@ function modoMesa(){
   const e = ST._modoEstado;
   const mb = _modoBruto(col);
   let virou=false;
-  if(mb===e.modo){ e.pend=null; e.pc=0; }
+  // streak atual (lado dominante da coluna em curso)
+  let s=1; for(let i=col.length-2;i>=0;i--){ if(col[i].r===col[col.length-1].r) s++; else break; }
+  if(mb === "SURF" && s >= 4 && e.modo !== "SURF"){
+    // surf confirmado de imediato — sem histerese
+    e.modoAnterior = e.modo; e.modo = "SURF"; e.pend=null; e.pc=0; virou=true;
+  } else if(mb===e.modo){ e.pend=null; e.pc=0; }
   else {
     if(mb===e.pend) e.pc++; else { e.pend=mb; e.pc=1; }
     if(e.pc>=2){ e.modoAnterior=e.modo; e.modo=mb; e.pend=null; e.pc=0; virou=true; }
   }
-  return {modo:e.modo, virouAgora:virou, anterior:e.modoAnterior||null};
+  return {modo:e.modo, virouAgora:virou, anterior:e.modoAnterior||null, streak:s};
 }
+// LEITURA DO GRÁFICO · mede a ALTURA das colunas recentes da Big Road.
+//  · GRÁFICO ALTO = colunas longas (mesa repetindo cor) → critério: SEGUE a cor.
+//  · GRÁFICO BAIXO = colunas curtas (mesa picando) → critério: joga a ALTERNÂNCIA.
+// É leitura do presente (o que a mesa está fazendo AGORA), não previsão.
+function graficoMesa(){
+  const big = bigRoad(ST.H);
+  if(big.length < 3) return {nivel:"DADOS", alturaMedia:0, colAtual:0};
+  // altura das últimas 4 colunas FECHADAS (ignora a coluna em curso para medir tendência)
+  const fechadas = big.slice(-5, -1).map(c=>c.length).filter(n=>n>0);
+  const alturaMedia = fechadas.length ? fechadas.reduce((a,b)=>a+b,0)/fechadas.length : 0;
+  const colAtual = big[big.length-1] ? big[big.length-1].length : 0;
+  let nivel;
+  if(alturaMedia >= 2.6) nivel = "ALTO";       // colunas longas → mesa repete
+  else if(alturaMedia <= 1.6) nivel = "BAIXO"; // colunas curtas → mesa pica
+  else nivel = "MEDIO";
+  return {nivel, alturaMedia:+alturaMedia.toFixed(1), colAtual};
+}
+
 // saúde do padrão dominante: firme / enfraquecendo (somas caindo ou bloco sujo)
 function saudePadrao(){
   const col = ST.H.filter(x=>x.r!=='T');
@@ -728,6 +753,16 @@ function tieHunter(H, heatScore){
     const ondePos = res.dist === 1 ? "DUPLO (back-to-back)" : res.dist === 2 ? "SANDWICH (cor entre dois empates)" : "na QUINA (próximo)";
     res.msg = `Empate há ${res.dist} rodada(s) · outro pode vir ${ondePos}`;
     res.conf = Math.min(0.85, 0.55 + res.echoRate*0.4 + (res.dist === 1 ? 0.05 : 0));
+    // REFORÇO P/ QUEM COBRE: se as somas recentes apontam empate ALTO (10x+),
+    // a cobertura vale muito mais → sobe a confiança e marca como alvo bom.
+    if(res.payoutProvavel && (res.payoutProvavel.indexOf("25x") >= 0 || res.payoutProvavel.indexOf("88x") >= 0)){
+      res.conf = Math.min(0.92, res.conf + 0.07);
+      res.altoValor = true;
+      res.msg += ` · 💰 payout provável ${res.payoutProvavel} (cobertura vale mais)`;
+    } else if(res.payoutProvavel && res.payoutProvavel.indexOf("10x") >= 0){
+      res.conf = Math.min(0.90, res.conf + 0.04);
+      res.altoValor = true;
+    }
     return res;
   }
 
@@ -742,6 +777,13 @@ function tieHunter(H, heatScore){
     res.status = "ABERTA";
     res.msg = `Cluster de empates (${ties8}/8 rodadas) · mesa ecoando empate · leve tendência`;
     res.conf = 0.55;
+    // mesa carregada de empate = oportunidade de cobertura; se payout provável alto, reforça
+    if(res.payoutProvavel && (res.payoutProvavel.indexOf("25x")>=0 || res.payoutProvavel.indexOf("88x")>=0)){
+      res.conf = Math.min(0.88, res.conf + 0.07); res.altoValor = true;
+      res.msg += ` · 💰 ${res.payoutProvavel}`;
+    } else if(res.payoutProvavel && res.payoutProvavel.indexOf("10x")>=0){
+      res.conf = Math.min(0.85, res.conf + 0.04); res.altoValor = true;
+    }
   } else if(mesaFria && res.ties15 >= 3){
     // mesa muito fria com vários empates recentes → leve zona de eco
     res.status = "ABERTA";
@@ -1522,9 +1564,9 @@ function analyze(){
     out.signal = "W";
     out.reason = `📉 Padrão enfraquecendo · ${saudePadrao().motivo} · aguarda novo momento`;
     out.conf = bestConf;
-  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora; })()){
-    // VIRADA DE MOMENTO · a mesa acabou de trocar de modo. Fica calado 1 leitura
-    // para o novo modo confirmar, em vez de entrar no escuro logo após a virada.
+  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora && mm.modo!=="SURF"; })()){
+    // VIRADA DE MOMENTO · a mesa trocou de modo (exceto para SURF, onde queremos
+    // entrar surfando na hora). Fica calado 1 leitura para o novo modo confirmar.
     out.signal = "W";
     out.reason = `🔄 Mesa mudou de momento (agora ${out._modoMesa}) · re-identificando · AGUARDA`;
     out.conf = 0;
@@ -1790,13 +1832,33 @@ function fatorAprendido(name){
 //    continua disponível; só perde preferência para os que combinam com o momento.
 //  · precisa de 6+ amostras NAQUELE modo; abaixo disso fica neutro (1.0).
 function fatorModo(name){
-  const modo = (modoMesa() || {}).modo;
-  if(!modo || modo === "DADOS" || modo === "BAGUNCA") return 1; // bagunça/sem dado = sem preferência
+  const mm = modoMesa() || {};
+  const modo = mm.modo;
+  const continuacao = ["RE6","RE7","RE8","SK4C","SK3C","SK5C","DOM12"]; // seguem a coluna/dominância
+  const quebra = ["B22T","B22C","PP5","PP4","ZZ3","SK4Q","SK3Q","C21","P21","P22"]; // apostam na virada
+  // CRITÉRIO DO GRÁFICO (altura das colunas) · concreto, mede o presente:
+  //  · ALTO  (colunas longas, mesa repete) → reforça CONTINUAÇÃO, freia QUEBRA.
+  //  · BAIXO (colunas curtas, mesa pica)   → reforça QUEBRA/ALTERNÂNCIA, freia CONTINUAÇÃO.
+  const g = graficoMesa();
+  if(g.nivel === "ALTO"){
+    if(continuacao.includes(name)) return 1.12;
+    if(quebra.includes(name)) return 0.84;
+  } else if(g.nivel === "BAIXO"){
+    if(quebra.includes(name)) return 1.12;
+    if(continuacao.includes(name)) return 0.84;
+  }
+  // SURF (streak 4+) reforça ainda mais a continuação — sobrepõe ao gráfico
+  if(modo === "SURF" && (mm.streak||0) >= 4){
+    if(continuacao.includes(name)) return 1.15;
+    if(quebra.includes(name)) return 0.80;
+    return 1;
+  }
+  if(!modo || modo === "DADOS" || modo === "BAGUNCA") return 1;
   const m = ST.modoAcum && ST.modoAcum[modo] && ST.modoAcum[modo][name];
-  if(!m || m.c < 6) return 1;            // amostra insuficiente naquele momento = neutro
+  if(!m || m.c < 6) return 1;
   const taxa = (m.d / m.c + 1) / 2;
-  if(taxa >= 0.5) return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);  // forte no momento → reforça
-  return Math.max(0.92, 1 - (0.5 - taxa) * 0.4);                  // fraco no momento → recuo leve, nunca zera
+  if(taxa >= 0.5) return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);
+  return Math.max(0.92, 1 - (0.5 - taxa) * 0.4);
 }
 
 function regLog(padrao, cor, conf, res, via){
