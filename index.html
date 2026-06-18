@@ -346,8 +346,8 @@ function checkAuth(){
   if(AUTH.key&&keyIsValid(AUTH.keys[AUTH.key])){
     const _rec=AUTH.keys[AUTH.key];
     const _dev=getDeviceId();
-    // Se a chave está vinculada a OUTRO aparelho, expulsa
-    if(_rec.deviceId && _rec.deviceId!==_dev){
+    // Se a chave está vinculada a OUTRO aparelho, expulsa (dono nunca trava)
+    if(!_rec.dono && _rec.deviceId && _rec.deviceId!==_dev){
       AUTH.key="";localStorage.removeItem("bacbru_key");
       AUTH.msg="Esta chave já está em uso em outro aparelho.";
       AUTH.view="lock";render();return;
@@ -667,7 +667,7 @@ function renderApp(){
         ${SYNC_STATUS==="LIVE"?"LIVE · SYNC":SYNC_STATUS==="CONNECTING"?"CONECTANDO...":"OFFLINE"}
       </div>
     </div>
-    ${AUTH.nome?`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan);letter-spacing:.5px">Bem-vindo, ${AUTH.nome}!</span><div style="font-size:10px;color:var(--txt3);margin-top:2px;letter-spacing:1px">BOA SESSÃO · OPERE COM DISCIPLINA</div></div>`:`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan)">Bem-vindo!</span></div>`}
+    ${AUTH.nome?`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan);letter-spacing:.5px">Bem-vind${/^(brunas|bruna|dono\u00b4?a|fernanda|miztella)$/i.test(AUTH.nome.trim())?'a':'o'}, ${AUTH.nome}!</span><div style="font-size:10px;color:var(--txt3);margin-top:2px;letter-spacing:1px">BOA SESSÃO · OPERE COM DISCIPLINA</div></div>`:`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan)">Bem-vindo!</span></div>`}
     ${ST.coberturaEmpate?`<div style="margin-bottom:10px;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;text-align:center;font-family:var(--mono);font-weight:800;font-size:14px;color:#1a1a1a;letter-spacing:1px;box-shadow:0 2px 12px rgba(245,158,11,.4)">🛡️ COBRIR EMPATE</div>`:""}
     ${avisoHtml}
     ${testeHtml}
@@ -713,12 +713,12 @@ window.entrar=function(){
   if(keyIsValid(rec)){
     const devId=getDeviceId();
     const donoDev=rec.deviceId||null;
-    if(donoDev && donoDev!==devId){
+    if(!rec.dono && donoDev && donoDev!==devId){
       AUTH.msg="Esta chave já está em uso em outro aparelho.";
       render();return;
     }
-    // Primeira vez: vincula a chave a este dispositivo
-    if(!donoDev){
+    // Primeira vez: vincula a chave a este dispositivo (dono nunca vincula)
+    if(!rec.dono && !donoDev){
       db.ref("keys/"+k+"/deviceId").set(devId);
     }
     AUTH.key=k;
