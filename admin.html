@@ -201,6 +201,18 @@ const DEFAULT_WEIGHTS = {
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
   DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
+  // ── GATILHOS DE SOMA/EMPATE (v6) · descobertos por análise estatística da mesa ──
+  // A informação previsível não está só na cor (≈53%, perto do acaso); está na SOMA
+  // do dado e no pós-empate. Pesos calibrados pelo teste de robustez (sessão 105
+  // partida em trechos): SUMB5 aguentou em TODOS os trechos (75-86%) e nunca
+  // inverteu → entra FORTE. POSTIE e SUMP11 oscilaram muito (pós-T caiu a 40% num
+  // trecho) → entram DESCONFIADOS e só ganham força se o fatorAprendido confirmar
+  // na base real ao longo das sessões. Todos aprendem sozinhos e SOMAM à
+  // convergência — não substituem nada do que já existe.
+  SUMB5: 0.80,   // soma ≤5 → Banker · VALIDADO (robusto em todos os trechos)
+  SUMB4: 0.74,   // soma ≤4 → Banker (reforço do SUMB5)
+  POSTIE: 0.66,  // pós-empate → Banker · instável, entra cauteloso (era 0.72)
+  SUMP11: 0.64,  // soma ≥11 → Player · fraco/morno, entra cauteloso (era 0.70)
   boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
   boost_conv2: 0.06, boost_conv3: 0.10, boost_road_align: 0.05,
   min_conf: 0.65, min_conf_cautela: 0.80,
@@ -451,18 +463,17 @@ function deltaSum(arr){
 // BIG ROAD · derivação de colunas
 // ════════════════════════════════════════════════════════════════════════════
 function bigRoad(hist){
+  // Cada COLUNA representa uma sequência (streak) de um mesmo lado.
+  // Correção: uma streak longa NÃO vira coluna nova ao passar de 6 — no Big Road
+  // real ela "dobra" (dragon tail) mas continua sendo a MESMA sequência. Fragmentar
+  // quebrava a leitura de comprimento das estradas derivadas em mesas de surf/descida.
   const col = [], cur = coloridas(hist);
-  let c = -1, r = -1, lastR = null;
+  let c = -1, lastR = null;
   for(const x of cur){
     if(x.r !== lastR){
-      c++; r = 0;
-      col[c] = [];
-    } else {
-      if(r < 5){ r++; }
-      else { c++; r=0; col[c]=[]; } // dragão > 6 vira coluna nova
+      c++; col[c] = [];     // mudou de lado → nova coluna/sequência
     }
-    if(!col[c]) col[c] = [];
-    col[c][r] = x.r;
+    col[c].push(x.r);       // mesmo lado → estende a sequência (sem limite de 6)
     lastR = x.r;
   }
   return col;
@@ -912,6 +923,29 @@ function analyze(){
     conf = Math.max(0, Math.min(0.95, conf));
     patterns.push({name, sig, conf, reason, hi});
   }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // GATILHOS DE SOMA / PÓS-EMPATE (v6) · sinal estatístico fora da sequência de cor
+  // Olham a ÚLTIMA rodada (soma e se foi empate). Aditivos: somam à convergência
+  // e aprendem sozinhos. Usam toda a fita ST.H (inclusive empates), não só c5.
+  // ════════════════════════════════════════════════════════════════════════
+  (function(){
+    const fita = ST.H;
+    if(!fita || fita.length < 1) return;
+    const ult = fita[fita.length - 1];
+    if(!ult) return;
+    // pós-empate → Banker
+    if(ult.r === "T"){
+      add("POSTIE", "B", W.POSTIE, "Pós-empate · histórico puxa Banker", true);
+    }
+    // soma muito baixa → Banker (≤5 é o sinal forte; ≤4 reforça)
+    if(typeof ult.s === "number" && ult.s > 0){
+      if(ult.s <= 5) add("SUMB5", "B", W.SUMB5, `Soma baixa (${ult.s}) · tende Banker`, true);
+      if(ult.s <= 4) add("SUMB4", "B", W.SUMB4, `Soma muito baixa (${ult.s}) · reforço Banker`);
+      // soma muito alta → Player
+      if(ult.s >= 11) add("SUMP11", "P", W.SUMP11, `Soma alta (${ult.s}) · tende Player`, true);
+    }
+  })();
 
   // PING_PONG_5 — 5 alternadas estritas
   if(c5.length === 5){
@@ -1859,12 +1893,24 @@ function fatorModo(name){
     if(quebra.includes(name)) return 0.80;
     return 1;
   }
-  if(!modo || modo === "DADOS" || modo === "BAGUNCA") return 1;
+  if(!modo || modo === "DADOS") return 1;
+  // Ajuste por momento de mesa · usa o desempenho REAL do padrão NAQUELE modo.
+  // Vale também em BAGUNCA: é o pior cenário e justamente onde mais precisamos
+  // desconfiar de padrão que não serve pro momento.
   const m = ST.modoAcum && ST.modoAcum[modo] && ST.modoAcum[modo][name];
-  if(!m || m.c < 6) return 1;
-  const taxa = (m.d / m.c + 1) / 2;
-  if(taxa >= 0.5) return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);
-  return Math.max(0.92, 1 - (0.5 - taxa) * 0.4);
+  if(!m || m.c < 6) return 1;        // pouca amostra naquele modo → neutro, não chuta
+  const taxa = (m.d / m.c + 1) / 2;  // saldo -1..1 → taxa 0..1 (0.5 = neutro)
+  if(taxa >= 0.5){
+    // padrão acertando NESTE modo → mantém o reforço como antes (intacto)
+    return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);
+  }
+  // padrão comprovadamente FALHANDO neste modo → corte de verdade, proporcional
+  // à amostra (quanto mais dados confirmam a falha, mais firme o corte):
+  //   amostra média (6-20): piso 0.85   ·   amostra grande (20+): piso 0.72
+  // O padrão NUNCA some — continua disponível nos modos onde acerta. Só perde
+  // força aqui, a ponto de não disparar sozinho num momento que não é dele.
+  const piso = m.c >= 20 ? 0.72 : 0.85;
+  return Math.max(piso, 1 - (0.5 - taxa) * 0.9);
 }
 
 function regLog(padrao, cor, conf, res, via){
@@ -2015,7 +2061,7 @@ function addRound(r, sNum){
   // para sempre). Então as rodadas mais antigas podem sair do histórico bruto:
   // o motor só precisa das últimas ~150 para ler qualquer padrão.
   // Resultado: aprendizado infinito e sólido, arquivo de tamanho fixo.
-  const MAX_HIST = 150;
+  const MAX_HIST = 300;
   if(ST.H.length > MAX_HIST){
     ST.H = ST.H.slice(-MAX_HIST);
   }
