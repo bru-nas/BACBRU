@@ -2434,10 +2434,12 @@ function injectJSON(){
     if(el) ST.injTxt=el.value;
     const d = JSON.parse(ST.injTxt);
     // O aprendizado (deltaAcum/countAcum/tieAcum) já vem destilado no JSON, então
-    // não precisamos do histórico inteiro. Mantemos só as últimas 150 rodadas para
+    // não precisamos do histórico inteiro. Mantemos só as últimas 300 rodadas para
     // o motor ler padrões — o conhecimento das antigas já está nos contadores abaixo.
+    // 300 dá profundidade suficiente p/ Big Road maduro e convergência das estradas
+    // derivadas (Big Eye / Small Road / Cockroach) sem inchar o JSON.
     if(d.history && Array.isArray(d.history)){
-      ST.H = d.history.length > 150 ? d.history.slice(-150) : d.history;
+      ST.H = d.history.length > 300 ? d.history.slice(-300) : d.history;
     }
     if(typeof d.greens === "number") ST.greens = d.greens;
     if(typeof d.reds === "number") ST.reds = d.reds;
@@ -3054,12 +3056,12 @@ function checkDeviceLock(k, rec){
   if(!rec) return "outro";
   if(rec.dono) return "ok"; // dono: sem trava
   const myDev = getDeviceId();
-  if(!rec.device){
+  if(!rec.deviceId){
     // 1º uso desta chave → casa com este aparelho
-    db.ref("keys/" + k + "/device").set(myDev);
+    db.ref("keys/" + k + "/deviceId").set(myDev);
     return "ok";
   }
-  return rec.device === myDev ? "ok" : "outro";
+  return rec.deviceId === myDev ? "ok" : "outro";
 }
 
 function initAuth(){
@@ -3302,7 +3304,7 @@ window.removerChave = function(k){
 // Libera a trava de aparelho: o assinante poderá casar a chave com um novo device.
 window.liberarDevice = function(k){
   if(!confirm("Liberar a trava de aparelho desta chave?\nO assinante poderá entrar em um novo celular.")) return;
-  db.ref("keys/" + k + "/device").remove();
+  db.ref("keys/" + k + "/deviceId").remove();
   toast("🔓 Trava liberada · pronta para novo aparelho", 2800);
 };
 
@@ -3459,10 +3461,10 @@ function renderAdminPanel(){
         <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
       </div>
       <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
-      <div style="font-size:9px;color:${(r.device&&!r.dono)?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:2px">${r.dono?'👑 sem trava':r.device?'🔒 travada · 1 aparelho':'🔓 livre · trava no 1º uso'}</div>
+      <div style="font-size:9px;color:${(r.deviceId&&!r.dono)?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:2px">${r.dono?'👑 sem trava':r.deviceId?'🔒 travada · 1 aparelho':'🔓 livre · trava no 1º uso'}</div>
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
-        ${(r.device&&!r.dono)?`<button onclick="liberarDevice('${k}')" style="flex:1;padding:7px 0;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:7px;color:var(--blue2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">LIBERAR</button>`:''}
+        ${(r.deviceId&&!r.dono)?`<button onclick="liberarDevice('${k}')" style="flex:1;padding:7px 0;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:7px;color:var(--blue2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">LIBERAR</button>`:''}
         ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
         ${r.tipo==='teste'?`<button onclick="mais3dias('${k}')" style="flex:1;padding:7px 0;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:7px;color:var(--purple);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+3 DIAS</button>`:''}
         <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
