@@ -269,6 +269,12 @@ function pushToFirebase(){
     countAcum: ST.countAcum,
     tieAcum: ST.tieAcum || {},
     modoAcum: ST.modoAcum || {},
+    logEntradas: (ST.logEntradas || []).slice(),
+    pSG: ST.pSG || 0,
+    pG1: ST.pG1 || 0,
+    pEmp: ST.pEmp || 0,
+    pEmpG1: ST.pEmpG1 || 0,
+    pEmpDetalhe: ST.pEmpDetalhe || {},
     sessoes: ST.sessoes,
     ciclo: ST.ciclo,
     ciclo_sinal: ST.ciclo_sinal,
@@ -3195,6 +3201,28 @@ window.criarChave = function(){
   renderRouter();
 };
 
+// Acesso DONO · perfil vitalício, sem trava de aparelho, sem faixa de teste.
+// Cria a chave, loga direto no app e NÃO grava nada em trials/{devId}.
+window.criarAcessoDono = function(){
+  const k = "BRU-DONO-" + (()=>{ const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<6;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; })();
+  const rec = {
+    ativo: true,
+    tipo: "vitalicia",
+    nome: "DONO",
+    dono: true,
+    criadoEm: Date.now(),
+    expiraEm: null
+  };
+  db.ref("keys/" + k).set(rec).then(()=>{
+    AUTH.key = k;
+    localStorage.setItem("bacbru_key", k);
+    AUTH.msg = "";
+    AUTH.view = "app";
+    renderRouter();
+    toast("👑 Acesso DONO criado · " + k, 3500);
+  }).catch(()=>{ AUTH.msg = "Erro ao criar acesso dono"; renderRouter(); });
+};
+
 // Autoatendimento: teste grátis de 3 dias (1 por dispositivo, controlado no Firebase)
 function getDeviceId(){
   let id = localStorage.getItem("bacbru_dev");
@@ -3396,7 +3424,7 @@ function renderAdminPanel(){
     const exp = r.tipo === "vitalicia" ? "vitalícia" :
       (r.expiraEm ? new Date(r.expiraEm).toLocaleDateString("pt-BR") : "—");
     const dias = (r.tipo === "mensal" || r.tipo === "teste") && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
-    const tipoLabel = r.tipo==='vitalicia'?'♾ VITALÍCIA':r.tipo==='teste'?'🎁 TESTE 3D':'📅 MENSAL';
+    const tipoLabel = r.dono?'👑 DONO · SEM TRAVA':r.tipo==='vitalicia'?'♾ VITALÍCIA':r.tipo==='teste'?'🎁 TESTE 3D':'📅 MENSAL';
     return `<div style="padding:11px;background:rgba(0,0,0,.3);border:1px solid ${valid?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;margin-bottom:7px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${valid?'var(--green2)':'var(--red2)'}">${k}</div>
@@ -3545,6 +3573,8 @@ function renderAdminPanel(){
         <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">♾ VITAL.</button>
       </div>
       <button onclick="criarChave()" style="width:100%;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,211,238,.06));border:1px solid rgba(34,197,94,.3);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">+ GERAR CHAVE</button>
+      <button onclick="criarAcessoDono()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(167,139,250,.08));border:1px solid rgba(245,158,11,.4);border-radius:9px;color:var(--gold2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">👑 ACESSO DONO · SEM TRAVA</button>
+      <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center;letter-spacing:.5px">vitalício · sem trava de aparelho · loga direto neste dispositivo</div>
       ${AUTH.msg ? `<div style="margin-top:10px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono);text-align:center">${AUTH.msg}</div>` : ""}
     </div>
 
