@@ -3047,6 +3047,21 @@ function keyIsValid(rec){
   return true;
 }
 
+// Trava de aparelho: toda chave fica presa ao 1º device que a usa.
+// Exceção: chaves de DONO (rec.dono === true) nunca travam.
+// Retorna: "ok" (liberada/casada), "outro" (presa a outro aparelho).
+function checkDeviceLock(k, rec){
+  if(!rec) return "outro";
+  if(rec.dono) return "ok"; // dono: sem trava
+  const myDev = getDeviceId();
+  if(!rec.device){
+    // 1º uso desta chave → casa com este aparelho
+    db.ref("keys/" + k + "/device").set(myDev);
+    return "ok";
+  }
+  return rec.device === myDev ? "ok" : "outro";
+}
+
 function initAuth(){
   // Carrega entradas de assinantes
   db.ref("entradas").on("value", s => {
@@ -3080,7 +3095,7 @@ function routeAuth(){
   // Admin reconhecido pelo dispositivo?
   if(AUTH.adminToken && hashIsAdmin(AUTH.adminToken)){
     if(AUTH.view === "loading" || AUTH.view === "lock") AUTH.view = "app";
-  } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key])){
+  } else if(AUTH.key && keyIsValid(AUTH.keys[AUTH.key]) && checkDeviceLock(AUTH.key, AUTH.keys[AUTH.key]) === "ok"){
     // recupera o nome do assinante da chave (caso o localStorage do nome esteja vazio)
     if(!AUTH.nome){
       const rec = AUTH.keys[AUTH.key];
@@ -3104,6 +3119,12 @@ window.tentarChave = function(){
   if(!k){ AUTH.msg = "Digite sua chave"; renderRouter(); return; }
   const rec = AUTH.keys[k];
   if(keyIsValid(rec)){
+    const lock = checkDeviceLock(k, rec);
+    if(lock === "outro"){
+      AUTH.msg = "Esta chave já está em uso em outro aparelho";
+      renderRouter();
+      return;
+    }
     AUTH.key = k;
     AUTH.nome = (rec && rec.nome && rec.nome !== "sem nome") ? rec.nome : "";
     localStorage.setItem("bacbru_key", k);
@@ -3208,7 +3229,7 @@ window.criarAcessoDono = function(){
   const rec = {
     ativo: true,
     tipo: "vitalicia",
-    nome: "DONO",
+    nome: "BRUNAS",
     dono: true,
     criadoEm: Date.now(),
     expiraEm: null
@@ -3276,6 +3297,13 @@ window.mais3dias = function(k){
 window.removerChave = function(k){
   if(!confirm("Remover a chave " + k + "?")) return;
   db.ref("keys/" + k).remove();
+};
+
+// Libera a trava de aparelho: o assinante poderá casar a chave com um novo device.
+window.liberarDevice = function(k){
+  if(!confirm("Liberar a trava de aparelho desta chave?\nO assinante poderá entrar em um novo celular.")) return;
+  db.ref("keys/" + k + "/device").remove();
+  toast("🔓 Trava liberada · pronta para novo aparelho", 2800);
 };
 
 window.addSessao = function(){
@@ -3431,9 +3459,10 @@ function renderAdminPanel(){
         <div style="font-size:9px;font-family:var(--mono);color:var(--txt3)">${tipoLabel}</div>
       </div>
       <div style="font-size:10px;color:var(--txt2);font-family:var(--mono);margin-top:4px">${r.nome||'sem nome'} · ${valid?'ativa':'inativa'} · exp: ${exp}${dias!==null?` (${dias}d)`:''}</div>
-      <div style="font-size:9px;color:${r.deviceId?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:2px">${r.deviceId?'🔒 em uso · 1 aparelho':'🔓 livre'}</div>
+      <div style="font-size:9px;color:${(r.device&&!r.dono)?'var(--cyan)':'var(--txt3)'};font-family:var(--mono);margin-top:2px">${r.dono?'👑 sem trava':r.device?'🔒 travada · 1 aparelho':'🔓 livre · trava no 1º uso'}</div>
       <div style="display:flex;gap:5px;margin-top:8px">
         <button onclick="toggleChave('${k}')" style="flex:1;padding:7px 0;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:7px;color:var(--gold2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">${r.ativo?'DESATIVAR':'ATIVAR'}</button>
+        ${(r.device&&!r.dono)?`<button onclick="liberarDevice('${k}')" style="flex:1;padding:7px 0;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25);border-radius:7px;color:var(--blue2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">LIBERAR</button>`:''}
         ${(r.tipo==='mensal'||r.tipo==='teste')?`<button onclick="renovarChave('${k}')" style="flex:1;padding:7px 0;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:7px;color:var(--green2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+30 DIAS</button>`:''}
         ${r.tipo==='teste'?`<button onclick="mais3dias('${k}')" style="flex:1;padding:7px 0;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-radius:7px;color:var(--purple);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">+3 DIAS</button>`:''}
         <button onclick="removerChave('${k}')" style="flex:1;padding:7px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;color:var(--red2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer">REMOVER</button>
