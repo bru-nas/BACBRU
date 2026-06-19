@@ -925,25 +925,35 @@ function analyze(){
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // GATILHOS DE SOMA / PÓS-EMPATE (v6) · sinal estatístico fora da sequência de cor
-  // Olham a ÚLTIMA rodada (soma e se foi empate). Aditivos: somam à convergência
-  // e aprendem sozinhos. Usam toda a fita ST.H (inclusive empates), não só c5.
-  // ════════════════════════════════════════════════════════════════════════
+  // GATILHOS DE SOMA / PÓS-EMPATE (v6.1) · MODO OBSERVAÇÃO
+  // A soma do dado NÃO é regra do jogo — cada rodada é independente. Estes
+  // gatilhos são apenas uma CORRELAÇÃO observada nos dados, com amostra ainda
+  // pequena (SUMB5 c=1, POSTIE c=3 no histórico atual). Por isso entram em
+  // OBSERVAÇÃO: são registrados no painel e ALIMENTAM o aprendizado
+  // (deltaAcum/countAcum/modoAcum) a cada rodada, mas NÃO somam à convergência
+  // e NÃO disparam entrada. Acumulam estatística real da mesa sem arriscar nada.
+  // Quando tiverem amostra suficiente (~20+) e taxa comprovada, basta trocar
+  // GATILHOS_ATIVOS para true e eles passam a disparar como padrões normais.
+  const GATILHOS_ATIVOS = false;  // ← OBSERVAÇÃO. Mude p/ true só após validar na sua mesa.
+  out.gatilhosObs = [];
   (function(){
     const fita = ST.H;
     if(!fita || fita.length < 1) return;
     const ult = fita[fita.length - 1];
     if(!ult) return;
-    // pós-empate → Banker
-    if(ult.r === "T"){
-      add("POSTIE", "B", W.POSTIE, "Pós-empate · histórico puxa Banker", true);
-    }
-    // soma muito baixa → Banker (≤5 é o sinal forte; ≤4 reforça)
+    const reg = (name, sig, motivo) => {
+      if(GATILHOS_ATIVOS){
+        add(name, sig, W[name], motivo, true);
+      } else {
+        // só observa: anota o que o gatilho TERIA apostado, p/ você comparar
+        out.gatilhosObs.push({name, sig, motivo});
+      }
+    };
+    if(ult.r === "T") reg("POSTIE", "B", "Pós-empate · observando se puxa Banker");
     if(typeof ult.s === "number" && ult.s > 0){
-      if(ult.s <= 5) add("SUMB5", "B", W.SUMB5, `Soma baixa (${ult.s}) · tende Banker`, true);
-      if(ult.s <= 4) add("SUMB4", "B", W.SUMB4, `Soma muito baixa (${ult.s}) · reforço Banker`);
-      // soma muito alta → Player
-      if(ult.s >= 11) add("SUMP11", "P", W.SUMP11, `Soma alta (${ult.s}) · tende Player`, true);
+      if(ult.s <= 5) reg("SUMB5", "B", `Soma ${ult.s} · observando se tende Banker`);
+      if(ult.s <= 4) reg("SUMB4", "B", `Soma ${ult.s} · observando reforço Banker`);
+      if(ult.s >= 11) reg("SUMP11", "P", `Soma ${ult.s} · observando se tende Player`);
     }
   })();
 
@@ -1633,6 +1643,17 @@ function analyze(){
       out.reason = `Padrões contraditórios · AGUARDA`;
       out.conf = bestConf;
     }
+  } else if(bestSide && bestSide !== "T" && out.mesaPicotada &&
+            col.length && bestSide === col[col.length-1].r && (out.streakLen || 0) < 3){
+    // ── VETO ANTI-PICOTE (v6.1) · causa-raiz dos reds ──
+    // Rastreio da sessão 106: a maioria esmagadora dos reds vinha de SEGUIR a
+    // continuação (surf) com streak curta (1-2) em mesa PICOTADA/MISTA. A mesa
+    // alterna, o motor vê uma microsequência e aposta que estica — e quebra.
+    // Aqui: se a mesa está picotada E a entrada seria continuar uma streak < 3,
+    // AGUARDA. Surf real (streak ≥3) e apostas na QUEBRA continuam liberados.
+    out.signal = "W";
+    out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · continuação sem tendência real · AGUARDA`;
+    out.conf = bestConf;
   } else if(bestSide && bestSide !== "T" && roadHint === "MUDA" &&
             col.length && bestSide === col[col.length-1].r){
     // estradas derivadas dizem MUDA mas o sinal aposta em continuar → conflito → aguarda
@@ -1731,11 +1752,26 @@ function analyze(){
   if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
      && (ST.esperaSessao || 0) >= TETO_ESPERA
      && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
-    out.signal = bestSide;
-    out.conf = bestConf;
-    out.defensiva = true;
-    const ex = (tableState === "CONGELADA") ? " (mesa congelada · entrada de menor risco)" : "";
-    out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas${ex} · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
+    // ── DEFENSIVA + VETO ANTI-PICOTE trabalhando JUNTOS (v6.1) ──
+    // A defensiva existe pra não deixar a sessão morrer parada. O veto bloqueia
+    // continuação curta em picote. Para não brigarem: em mesa picotada a defensiva
+    // entra com MENOS força e exige que o bestSide tenha algum respaldo de padrão
+    // (não só surf nu). Se em picote o único motivo é continuação de streak curta,
+    // ela ESTENDE a espera em vez de forçar — deixa o veto continuar mandando.
+    // Em mesa normal, age como antes.
+    const ultimo = col.length ? col[col.length-1].r : null;
+    const soSurf = (byBet[bestSide] && byBet[bestSide].length < 2);
+    if(out.mesaPicotada && ultimo && bestSide === ultimo && (out.streakLen||0) < 3 && soSurf){
+      // picote + continuação curta + sem padrão de respaldo → não força, segura mais
+      out.signal = "W";
+      out.reason = `🛡️ DEFENSIVA segura · mesa picotada sem padrão de respaldo · AGUARDA (veto ativo)`;
+    } else {
+      out.signal = bestSide;
+      out.conf = bestConf;
+      out.defensiva = true;
+      const ex = (tableState === "CONGELADA") ? " (mesa congelada · entrada de menor risco)" : "";
+      out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas${ex} · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
+    }
   }
 
   // Padrão narrativo
@@ -2049,6 +2085,12 @@ function addRound(r, sNum){
   // Empates (r==="T") não avaliam padrões de cor (P/B), pois não confirmam nem negam.
   if(r === "P" || r === "B"){
     aprendeRodada(aBefore.patterns || [], r);
+    // Gatilhos em OBSERVAÇÃO também aprendem: viram itens de aprendizado mesmo
+    // sem terem entrado em patterns (não dispararam, mas registram acerto/erro).
+    // É assim que acumulam a estatística real da mesa para você validar depois.
+    if(aBefore.gatilhosObs && aBefore.gatilhosObs.length){
+      aprendeRodada(aBefore.gatilhosObs.map(g => ({name:g.name, sig:g.sig})), r);
+    }
   }
   // Aprendizado do farejador de empate · roda em TODA rodada (T conta como acerto da
   // previsão de empate; P/B contam como erro). Separado, NUNCA vira entrada.
