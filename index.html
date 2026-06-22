@@ -190,6 +190,14 @@ const ROOM_REF=db.ref("rooms/"+ROOM);
 let SYNC_STATUS="CONNECTING";
 
 const AUTH={view:"loading",key:"",keys:{},config:{},msg:"",keyInput:"",nome:""};
+/* ===== PROMOÇÃO — ACESSO LIBERADO POR 1 SEMANA ===== */
+const PROMO={
+  ativa:true,
+  inicio:new Date("2026-06-21T00:00:00").getTime(),
+  fim:new Date("2026-06-28T23:59:59").getTime()
+};
+function promoAtiva(){ return PROMO.ativa && Date.now()>=PROMO.inicio && Date.now()<=PROMO.fim; }
+/* =================================================== */
 const ST={
   H:[],greens:0,reds:0,bonus:0,
   ciclo:"idle",ciclo_sinal:null,ciclo_conf:0,ciclo_tie:null,
@@ -343,6 +351,14 @@ function initSync(){
 }
 
 function checkAuth(){
+  // PROMO: se ativa e o usuário não tem chave válida própria, libera como Visitante (sem trava)
+  if(promoAtiva() && !(AUTH.key && keyIsValid(AUTH.keys[AUTH.key]))){
+    AUTH.promo=true;
+    if(!AUTH.nome) AUTH.nome="Visitante";
+    if(AUTH.view==="loading"||AUTH.view==="lock") AUTH.view="app";
+    render();return;
+  }
+  AUTH.promo=false;
   if(AUTH.key&&keyIsValid(AUTH.keys[AUTH.key])){
     const _rec=AUTH.keys[AUTH.key];
     const _dev=getDeviceId();
