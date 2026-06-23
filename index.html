@@ -355,7 +355,18 @@ function checkAuth(){
   if(promoAtiva() && !(AUTH.key && keyIsValid(AUTH.keys[AUTH.key]))){
     AUTH.promo=true;
     if(!AUTH.nome) AUTH.nome="Visitante";
+    const jaEraApp = AUTH.view==="app";
     if(AUTH.view==="loading"||AUTH.view==="lock") AUTH.view="app";
+    // registra a entrada do visitante da promo (só na primeira vez)
+    if(!jaEraApp){
+      const devId=getDeviceId();
+      db.ref("entradas/"+devId).set({
+        nome: AUTH.nome||"Visitante",
+        chave: "PROMO",
+        tipo: "promo",
+        entradaEm: Date.now()
+      });
+    }
     render();return;
   }
   AUTH.promo=false;

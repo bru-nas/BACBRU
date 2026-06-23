@@ -3156,7 +3156,8 @@ function initAuth(){
   // Carrega entradas de assinantes
   db.ref("entradas").on("value", s => {
     AUTH.entradas = s.val() || {};
-    // não re-renderiza aqui (evita piscar); a lista atualiza no próximo render natural
+    // re-renderiza só na aba admin, para o resumo atualizar ao vivo sem piscar o jogo
+    if(AUTH.view === "admin") renderRouter();
   });
 
   // Carrega config (sessões + admins) e chaves
