@@ -829,12 +829,16 @@ function tieHunter(H, heatScore){
 // ════════════════════════════════════════════════════════════════════════
 const _MAPA_REGIME = {"ESC|TEND": 68, "ESC|MISTA": 82, "PP4|MISTA": 78, "PP4|PICOTE": 83, "RE6|MISTA": 100, "B22C|MISTA": 85, "B22T|MISTA": 71, "P22|MISTA": 82, "ESCD|MISTA": 75, "DOM12|MISTA": 75, "B22T|TEND": 100, "SK3Q|MISTA": 80};
 function regimeAtual(){
-  // lê o momento da mesa pelas últimas 8 cores (sem tie): tendência/mista/picote
+  // lê o momento da mesa pelas últimas 14 cores (sem tie): tendência/mista/picote
+  // janela maior (14) não oscila a cada respiro de 2 cores; gatilho de picote
+  // em 50% de troca reflete a mesa de gráfico baixo real (antes exigia 75% e cegava o motor)
   const col = ST.H.filter(x=>x.r!=='T');
-  if(col.length < 8) return 'MISTA';
-  const u = col.slice(-8);
+  const WIN = 14;
+  if(col.length < WIN) return 'MISTA';
+  const u = col.slice(-WIN);
   let trocas=0; for(let i=1;i<u.length;i++) if(u[i].r!==u[i-1].r) trocas++;
-  return trocas<=2 ? 'TEND' : trocas>=6 ? 'PICOTE' : 'MISTA';
+  const pct = trocas/(u.length-1);
+  return pct <= 0.33 ? 'TEND' : pct >= 0.50 ? 'PICOTE' : 'MISTA';
 }
 function padraoForteNoRegime(patterns, regime){
   // retorna {sig, name, taxa} do padrão candidato que é forte (>=68%) no regime atual
