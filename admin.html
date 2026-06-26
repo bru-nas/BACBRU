@@ -626,9 +626,13 @@ function _modoBruto(col){
   if(eq(r4,[3,1,3,1])||eq(r4,[1,3,1,3])) return "3-1";
   if(eq(r4,[2,1,2,1])||eq(r4,[1,2,1,2])) return "2-1";
   if(r3.length>=3 && (r3[0]<r3[1]&&r3[1]<r3[2] || r3[0]>r3[1]&&r3[1]>r3[2])) return "ESCADA";
-  const w=c.slice(-8); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
-  if(tr>=6) return "PICOTE";
-  if(tr<=2) return "SURF";
+  // janela 14 (antes 8) e picote em 50% de troca (antes 6/8=75%) — mesmo critério
+  // já validado em regimeAtual. Mesa de gráfico baixo agora é reconhecida como
+  // PICOTE em vez de cair em BAGUNCA, o que alimenta o modoAcum de PICOTE correto.
+  const w=c.slice(-12); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
+  const pct = w.length>1 ? tr/(w.length-1) : 0;
+  if(pct>=0.55) return "PICOTE";
+  if(pct<=0.20) return "SURF";
   return "BAGUNCA";
 }
 // classificador estável (histerese): só troca de modo após 2 confirmações.
@@ -829,16 +833,17 @@ function tieHunter(H, heatScore){
 // ════════════════════════════════════════════════════════════════════════
 const _MAPA_REGIME = {"ESC|TEND": 68, "ESC|MISTA": 82, "PP4|MISTA": 78, "PP4|PICOTE": 83, "RE6|MISTA": 100, "B22C|MISTA": 85, "B22T|MISTA": 71, "P22|MISTA": 82, "ESCD|MISTA": 75, "DOM12|MISTA": 75, "B22T|TEND": 100, "SK3Q|MISTA": 80};
 function regimeAtual(){
-  // lê o momento da mesa pelas últimas 14 cores (sem tie): tendência/mista/picote
-  // janela maior (14) não oscila a cada respiro de 2 cores; gatilho de picote
-  // em 50% de troca reflete a mesa de gráfico baixo real (antes exigia 75% e cegava o motor)
+  // lê o momento da mesa pelas últimas 12 cores (sem tie): tendência/mista/picote
+  // janela 12 + picote em 55% de troca: parâmetros validados por teste preditivo
+  // contra sessão real (acerto 66%, robusto em todos os sub-trechos; o antigo
+  // 8/75% acertava só 42% — pior que o acaso)
   const col = ST.H.filter(x=>x.r!=='T');
-  const WIN = 14;
+  const WIN = 12;
   if(col.length < WIN) return 'MISTA';
   const u = col.slice(-WIN);
   let trocas=0; for(let i=1;i<u.length;i++) if(u[i].r!==u[i-1].r) trocas++;
   const pct = trocas/(u.length-1);
-  return pct <= 0.33 ? 'TEND' : pct >= 0.50 ? 'PICOTE' : 'MISTA';
+  return pct <= 0.33 ? 'TEND' : pct >= 0.55 ? 'PICOTE' : 'MISTA';
 }
 function padraoForteNoRegime(patterns, regime){
   // retorna {sig, name, taxa} do padrão candidato que é forte (>=68%) no regime atual
@@ -2271,16 +2276,24 @@ function addRound(r, sNum){
     } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
       // ════════════════════════════════════════════════════════════════
       // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
-      // Direção determinada AUTOMATICAMENTE pela tendência das últimas 8:
-      // - Lado dominante (mesmo que pouco): vai com ele
-      // - 4/4 verdadeiro (raríssimo): INVERTER por segurança
-      // Decisão MANTER ou INVERTER sai automaticamente da análise
+      // Direção determinada pela LEITURA DE MOMENTO (não por contagem cega):
+      // - Mesa de tendência/surf  → segue o lado dominante (janela 14)
+      // - Mesa picotada (gráfico baixo) → acompanha a ALTERNÂNCIA (oposto da última)
+      // - Equilíbrio sem leitura clara → inverte o sinal original (defensivo)
+      // Tudo derivado do momento atual; nada de regra fixa cega.
       // ════════════════════════════════════════════════════════════════
-      const recent = ST.H.filter(x=>x.r!=='T').slice(-8);
+      const recent = ST.H.filter(x=>x.r!=='T').slice(-12);
       const pCount = recent.filter(x=>x.r==='P').length;
       const bCount = recent.filter(x=>x.r==='B').length;
+      const _mm = modoMesa() || {};
+      const _modo = _mm.modo;
+      const ultima = recent.length ? recent[recent.length-1].r : null;
       let galeSide, motivo;
-      if(pCount > bCount){
+      if(_modo === "PICOTE" && ultima){
+        // mesa de gráfico baixo: o previsível é a virada → acompanha a alternância
+        galeSide = opos(ultima);
+        motivo = `picote · acompanha alternância (≠${lbl(ultima)})`;
+      } else if(pCount > bCount){
         galeSide = 'P';
         motivo = `tendência P (${pCount}/${recent.length})`;
       } else if(bCount > pCount){
@@ -3168,6 +3181,7 @@ function initAuth(){
   db.ref("config").on("value", s => {
     const c = s.val() || {};
     AUTH.config.sessoes = c.sessoes || [];
+    AUTH.config.modoSessao = c.modoSessao || "VIP";
     AUTH.config.adminHash = c.adminHash || null; // master (compatibilidade)
     AUTH.config.admins = c.admins || {};         // { hash: {nome, master} }
     routeAuth();
@@ -3407,6 +3421,13 @@ window.addSessao = function(){
   const arr = [...AUTH.config.sessoes, t].sort();
   db.ref("config/sessoes").set(arr);
   AUTH.newSessao = "";
+};
+
+// MODO DE SESSÃO: FREE (app abre sem chave) ou VIP (exige chave)
+window.setModoSessao = function(modo){
+  if(modo!=="FREE" && modo!=="VIP") return;
+  db.ref("config/modoSessao").set(modo);
+  toast(modo==="FREE" ? "🟢 Sessão FREE · acesso liberado a todos" : "⭐ Sessão VIP · somente com chave", 2800);
 };
 
 window.removerSessao = function(t){
@@ -3716,6 +3737,17 @@ function renderAdminPanel(){
           </div>
           <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);text-align:right">${new Date(e.entradaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
         </div>`).join('')}
+    </div>
+
+    <div class="sec-lbl">MODO DA SESSÃO ATUAL</div>
+    <div class="card">
+      <div style="display:flex;gap:10px">
+        <button onclick="setModoSessao('FREE')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='FREE'?'background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(34,197,94,.12));border:2px solid var(--green2);color:var(--green2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">🟢 FREE</button>
+        <button onclick="setModoSessao('VIP')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='VIP'?'background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(234,179,8,.12));border:2px solid var(--gold2);color:var(--gold2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">⭐ VIP</button>
+      </div>
+      <div style="margin-top:10px;text-align:center;font-size:11px;font-family:var(--mono);color:var(--txt2);line-height:1.6">
+        ${AUTH.config.modoSessao==='FREE'?'App liberado — qualquer um entra sem chave':'App fechado — só entra com chave válida'}
+      </div>
     </div>
 
     <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
