@@ -2156,21 +2156,22 @@ function addRound(r, sNum){
     //  · empate sem farejador ativo (alto ou baixo) → NEUTRO (gale segue, não conta bônus)
     // BÔNUS só existe quando o farejador está ATIVO. Sem farejador, empate é neutro.
     if(ST.ciclo === "aguarda_gale"){
-      // Entre entrada e gale (o BOTÃO de cobrir já foi tratado acima · aqui é o FAREJADOR):
+      // Entre a entrada perdida e o gale sair. Empate aqui NUNCA mata o gale.
       //  · empate ALTO + farejador  → GREEN (cobre o gale, cancela, celebra)
-      //  · empate BAIXO + farejador → BÔNUS (o GALE SEGUE)
-      //  · sem farejador → neutro (gale segue, não conta)
+      //  · empate BAIXO (com ou sem farejador) → BÔNUS · o GALE SEGUE, transparente
+      //  · empate ALTO sem farejador → BÔNUS também (não cobre, mas o gale segue)
+      // IMPORTANTE: empate é resultado neutro de cor (não ganha nem perde a aposta P/B).
+      // Por isso NÃO incrementa ciclo_aguarda_count e NÃO aborta: o ciclo fica
+      // exatamente como estava, esperando a próxima COR pra lançar o gale.
       if(hunterAntes && isHighPay){
         ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
-      } else if(hunterAntes && !isHighPay){
+      } else {
+        // empate baixo (ou alto sem farejador) → BÔNUS e o gale SEGUE intacto
         ST.bonus = (ST.bonus || 0) + 1;
         toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
-        save(); renderRouter();
-      } else {
-        toast(`↻ Empate ${pay} · GALE SEGUE`, 2800);
         save(); renderRouter();
       }
       return;
@@ -2277,7 +2278,7 @@ function addRound(r, sNum){
       // ════════════════════════════════════════════════════════════════
       // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
       // Direção determinada pela LEITURA DE MOMENTO (não por contagem cega):
-      // - Mesa de tendência/surf  → segue o lado dominante (janela 14)
+      // - Mesa de tendência/surf  → segue o lado dominante (janela 12)
       // - Mesa picotada (gráfico baixo) → acompanha a ALTERNÂNCIA (oposto da última)
       // - Equilíbrio sem leitura clara → inverte o sinal original (defensivo)
       // Tudo derivado do momento atual; nada de regra fixa cega.
