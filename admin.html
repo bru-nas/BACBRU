@@ -626,13 +626,9 @@ function _modoBruto(col){
   if(eq(r4,[3,1,3,1])||eq(r4,[1,3,1,3])) return "3-1";
   if(eq(r4,[2,1,2,1])||eq(r4,[1,2,1,2])) return "2-1";
   if(r3.length>=3 && (r3[0]<r3[1]&&r3[1]<r3[2] || r3[0]>r3[1]&&r3[1]>r3[2])) return "ESCADA";
-  // janela 14 (antes 8) e picote em 50% de troca (antes 6/8=75%) — mesmo critério
-  // já validado em regimeAtual. Mesa de gráfico baixo agora é reconhecida como
-  // PICOTE em vez de cair em BAGUNCA, o que alimenta o modoAcum de PICOTE correto.
-  const w=c.slice(-12); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
-  const pct = w.length>1 ? tr/(w.length-1) : 0;
-  if(pct>=0.55) return "PICOTE";
-  if(pct<=0.20) return "SURF";
+  const w=c.slice(-8); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
+  if(tr>=6) return "PICOTE";
+  if(tr<=2) return "SURF";
   return "BAGUNCA";
 }
 // classificador estável (histerese): só troca de modo após 2 confirmações.
@@ -833,17 +829,12 @@ function tieHunter(H, heatScore){
 // ════════════════════════════════════════════════════════════════════════
 const _MAPA_REGIME = {"ESC|TEND": 68, "ESC|MISTA": 82, "PP4|MISTA": 78, "PP4|PICOTE": 83, "RE6|MISTA": 100, "B22C|MISTA": 85, "B22T|MISTA": 71, "P22|MISTA": 82, "ESCD|MISTA": 75, "DOM12|MISTA": 75, "B22T|TEND": 100, "SK3Q|MISTA": 80};
 function regimeAtual(){
-  // lê o momento da mesa pelas últimas 12 cores (sem tie): tendência/mista/picote
-  // janela 12 + picote em 55% de troca: parâmetros validados por teste preditivo
-  // contra sessão real (acerto 66%, robusto em todos os sub-trechos; o antigo
-  // 8/75% acertava só 42% — pior que o acaso)
+  // lê o momento da mesa pelas últimas 8 cores (sem tie): tendência/mista/picote
   const col = ST.H.filter(x=>x.r!=='T');
-  const WIN = 12;
-  if(col.length < WIN) return 'MISTA';
-  const u = col.slice(-WIN);
+  if(col.length < 8) return 'MISTA';
+  const u = col.slice(-8);
   let trocas=0; for(let i=1;i<u.length;i++) if(u[i].r!==u[i-1].r) trocas++;
-  const pct = trocas/(u.length-1);
-  return pct <= 0.33 ? 'TEND' : pct >= 0.55 ? 'PICOTE' : 'MISTA';
+  return trocas<=2 ? 'TEND' : trocas>=6 ? 'PICOTE' : 'MISTA';
 }
 function padraoForteNoRegime(patterns, regime){
   // retorna {sig, name, taxa} do padrão candidato que é forte (>=68%) no regime atual
@@ -1475,19 +1466,19 @@ function analyze(){
   // ════════════════════════════════════════════════════════════════════════
   if(heat >= 72){
     tableState = "QUENTE";
-    dynThreshold = 0.66;
+    dynThreshold = 0.68;
     requireConvergence = false;
   } else if(heat >= 54){
     tableState = "FAVORÁVEL";
-    dynThreshold = 0.68;
+    dynThreshold = 0.71;
     requireConvergence = false;
   } else if(heat >= 40){
     tableState = "NEUTRA";
-    dynThreshold = 0.70;
+    dynThreshold = 0.74;
     requireConvergence = false;
   } else if(heat >= 26){
     tableState = "FRIA";
-    dynThreshold = 0.78;
+    dynThreshold = 0.80;
     requireConvergence = true;
   } else {
     tableState = "CONGELADA";
@@ -1518,7 +1509,7 @@ function analyze(){
   out.tie.hunterConf = hunter.conf;
 
   // EV gate: cada red vale 3 greens. Piso 0.68 (com gale, win efetivo ~89%)
-  const EV_FLOOR = 0.66;
+  const EV_FLOOR = 0.68;
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
 
@@ -1623,12 +1614,9 @@ function analyze(){
     out.signal = "W";
     out.reason = `📉 Padrão enfraquecendo · ${saudePadrao().motivo} · aguarda novo momento`;
     out.conf = bestConf;
-  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora; })()){
-    // VIRADA DE MOMENTO · a mesa trocou de modo. Fica calado 1 leitura para o novo
-    // modo confirmar — inclusive na virada para SURF: entrar na hora que a mesa
-    // "parece" virar surf é justamente onde vinham os reds de transição (uma puxada
-    // de 4 pode ser início de surf real OU um respiro que já vai quebrar). Aguardar
-    // 1 leitura separa os dois casos sem custo de red.
+  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora && mm.modo!=="SURF"; })()){
+    // VIRADA DE MOMENTO · a mesa trocou de modo (exceto para SURF, onde queremos
+    // entrar surfando na hora). Fica calado 1 leitura para o novo modo confirmar.
     out.signal = "W";
     out.reason = `🔄 Mesa mudou de momento (agora ${out._modoMesa}) · re-identificando · AGUARDA`;
     out.conf = 0;
@@ -1952,17 +1940,13 @@ function fatorModo(name){
     // padrão acertando NESTE modo → mantém o reforço como antes (intacto)
     return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);
   }
-  // padrão FALHANDO neste modo → corte por DISTÂNCIA de 50% × CONFIANÇA da amostra.
-  // A massa de amostra importa: 44% em 200 amostras é falha confirmada e corta fundo;
-  // 44% em 10 corta pouco (ainda incerto). Usa o peso real do histórico acumulado.
-  //   confiança cresce com log da amostra (6→~0.4, 60→~1.0, 200→~1.6)
-  //   piso por massa: 150+→0.50 · 60-150→0.62 · <60→0.75
-  // O padrão NUNCA some — continua disponível nos modos onde acerta.
-  const dist = 0.5 - taxa;
-  const conf = Math.min(1.6, 0.3 + Math.log(m.c / 5) / 2);
-  const corte = 1 - dist * 2.2 * conf;
-  const piso = m.c >= 150 ? 0.50 : m.c >= 60 ? 0.62 : 0.75;
-  return Math.max(piso, corte);
+  // padrão comprovadamente FALHANDO neste modo → corte de verdade, proporcional
+  // à amostra (quanto mais dados confirmam a falha, mais firme o corte):
+  //   amostra média (6-20): piso 0.85   ·   amostra grande (20+): piso 0.72
+  // O padrão NUNCA some — continua disponível nos modos onde acerta. Só perde
+  // força aqui, a ponto de não disparar sozinho num momento que não é dele.
+  const piso = m.c >= 20 ? 0.72 : 0.85;
+  return Math.max(piso, 1 - (0.5 - taxa) * 0.9);
 }
 
 function regLog(padrao, cor, conf, res, via){
@@ -2141,12 +2125,8 @@ function addRound(r, sNum){
     // conta GREEN imediatamente. A cobertura é consumida (desliga) após pagar.
     // Não interfere no farejador nem nas demais regras quando está desligada.
     if(ST.coberturaEmpate){
-      // Botão COBRIR EMPATE apertado.
-      //  · empate ALTO → GREEN + celebração (cobre e encerra)
-      //  · empate BAIXO no aguarda_gale/gale → BÔNUS, o GALE SEGUE (não é green)
-      //  · empate BAIXO na entrada/idle → GREEN (a entrada cobre junto)
-      // Botão cobrir empate = GREEN sempre. ÚNICA exceção: empate BAIXO no
-      // aguarda_gale (entre a entrada e o gale) → segue o gale, não é green.
+      // Botão COBRIR EMPATE apertado = GREEN para QUALQUER empate.
+      // ÚNICA exceção: empate BAIXO no aguarda_gale (entre entrada e gale) = BÔNUS, gale segue.
       if(!isHighPay && ST.ciclo === "aguarda_gale"){
         ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
         toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
@@ -2172,42 +2152,38 @@ function addRound(r, sNum){
     //  · empate sem farejador ativo (alto ou baixo) → NEUTRO (gale segue, não conta bônus)
     // BÔNUS só existe quando o farejador está ATIVO. Sem farejador, empate é neutro.
     if(ST.ciclo === "aguarda_gale"){
-      // Entre a entrada perdida e o gale sair. Empate aqui NUNCA mata o gale.
+      // Entre entrada e gale (o BOTÃO de cobrir já foi tratado acima · aqui é o FAREJADOR):
       //  · empate ALTO + farejador  → GREEN (cobre o gale, cancela, celebra)
-      //  · empate BAIXO (com ou sem farejador) → BÔNUS · o GALE SEGUE, transparente
-      //  · empate ALTO sem farejador → BÔNUS também (não cobre, mas o gale segue)
-      // IMPORTANTE: empate é resultado neutro de cor (não ganha nem perde a aposta P/B).
-      // Por isso NÃO incrementa ciclo_aguarda_count e NÃO aborta: o ciclo fica
-      // exatamente como estava, esperando a próxima COR pra lançar o gale.
+      //  · empate BAIXO + farejador → BÔNUS (o GALE SEGUE)
+      //  · sem farejador → neutro (gale segue, não conta)
       if(hunterAntes && isHighPay){
         ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
-      } else {
-        // empate baixo (ou alto sem farejador) → BÔNUS e o gale SEGUE intacto
+      } else if(hunterAntes && !isHighPay){
         ST.bonus = (ST.bonus || 0) + 1;
         toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        save(); renderRouter();
+      } else {
+        toast(`↻ Empate ${pay} · GALE SEGUE`, 2800);
         save(); renderRouter();
       }
       return;
     }
 
-    // GALE já lançado: empate na mesa. Empate BAIXO = BÔNUS, o gale SEGUE (não é green).
-    // Só empate ALTO cobre e encerra como green.
+    // GALE já lançado: empate BAIXO = BÔNUS (gale segue), empate ALTO = green (cobre).
     if(ST.ciclo === "gale"){
       if(isHighPay){
         ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
-        flashResultado('GREEN', `✅ GREEN · empate alto no gale · ${pay}`);
         abortCiclo();
       } else {
-        // empate baixo no gale → BÔNUS, gale continua esperando a cor
-        ST.bonus = (ST.bonus || 0) + 1;
-        regEmpMult(pay);
+        ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
         toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
         save(); renderRouter();
       }
+      return;
       return;
     }
     // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
@@ -2302,24 +2278,16 @@ function addRound(r, sNum){
     } else if(ST.ciclo_aguarda_count >= MAX_AGUARDA){
       // ════════════════════════════════════════════════════════════════
       // Teto atingido · SEMPRE FAZ O GALE com a melhor leitura disponível
-      // Direção determinada pela LEITURA DE MOMENTO (não por contagem cega):
-      // - Mesa de tendência/surf  → segue o lado dominante (janela 12)
-      // - Mesa picotada (gráfico baixo) → acompanha a ALTERNÂNCIA (oposto da última)
-      // - Equilíbrio sem leitura clara → inverte o sinal original (defensivo)
-      // Tudo derivado do momento atual; nada de regra fixa cega.
+      // Direção determinada AUTOMATICAMENTE pela tendência das últimas 8:
+      // - Lado dominante (mesmo que pouco): vai com ele
+      // - 4/4 verdadeiro (raríssimo): INVERTER por segurança
+      // Decisão MANTER ou INVERTER sai automaticamente da análise
       // ════════════════════════════════════════════════════════════════
-      const recent = ST.H.filter(x=>x.r!=='T').slice(-12);
+      const recent = ST.H.filter(x=>x.r!=='T').slice(-8);
       const pCount = recent.filter(x=>x.r==='P').length;
       const bCount = recent.filter(x=>x.r==='B').length;
-      const _mm = modoMesa() || {};
-      const _modo = _mm.modo;
-      const ultima = recent.length ? recent[recent.length-1].r : null;
       let galeSide, motivo;
-      if(_modo === "PICOTE" && ultima){
-        // mesa de gráfico baixo: o previsível é a virada → acompanha a alternância
-        galeSide = opos(ultima);
-        motivo = `picote · acompanha alternância (≠${lbl(ultima)})`;
-      } else if(pCount > bCount){
+      if(pCount > bCount){
         galeSide = 'P';
         motivo = `tendência P (${pCount}/${recent.length})`;
       } else if(bCount > pCount){
@@ -3207,7 +3175,6 @@ function initAuth(){
   db.ref("config").on("value", s => {
     const c = s.val() || {};
     AUTH.config.sessoes = c.sessoes || [];
-    AUTH.config.modoSessao = c.modoSessao || "VIP";
     AUTH.config.adminHash = c.adminHash || null; // master (compatibilidade)
     AUTH.config.admins = c.admins || {};         // { hash: {nome, master} }
     routeAuth();
@@ -3447,13 +3414,6 @@ window.addSessao = function(){
   const arr = [...AUTH.config.sessoes, t].sort();
   db.ref("config/sessoes").set(arr);
   AUTH.newSessao = "";
-};
-
-// MODO DE SESSÃO: FREE (app abre sem chave) ou VIP (exige chave)
-window.setModoSessao = function(modo){
-  if(modo!=="FREE" && modo!=="VIP") return;
-  db.ref("config/modoSessao").set(modo);
-  toast(modo==="FREE" ? "🟢 Sessão FREE · acesso liberado a todos" : "⭐ Sessão VIP · somente com chave", 2800);
 };
 
 window.removerSessao = function(t){
@@ -3763,17 +3723,6 @@ function renderAdminPanel(){
           </div>
           <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);text-align:right">${new Date(e.entradaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
         </div>`).join('')}
-    </div>
-
-    <div class="sec-lbl">MODO DA SESSÃO ATUAL</div>
-    <div class="card">
-      <div style="display:flex;gap:10px">
-        <button onclick="setModoSessao('FREE')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='FREE'?'background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(34,197,94,.12));border:2px solid var(--green2);color:var(--green2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">🟢 FREE</button>
-        <button onclick="setModoSessao('VIP')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='VIP'?'background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(234,179,8,.12));border:2px solid var(--gold2);color:var(--gold2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">⭐ VIP</button>
-      </div>
-      <div style="margin-top:10px;text-align:center;font-size:11px;font-family:var(--mono);color:var(--txt2);line-height:1.6">
-        ${AUTH.config.modoSessao==='FREE'?'App liberado — qualquer um entra sem chave':'App fechado — só entra com chave válida'}
-      </div>
     </div>
 
     <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
