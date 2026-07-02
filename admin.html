@@ -1475,19 +1475,19 @@ function analyze(){
   // ════════════════════════════════════════════════════════════════════════
   if(heat >= 72){
     tableState = "QUENTE";
-    dynThreshold = 0.68;
+    dynThreshold = 0.66;
     requireConvergence = false;
   } else if(heat >= 54){
     tableState = "FAVORÁVEL";
-    dynThreshold = 0.71;
+    dynThreshold = 0.68;
     requireConvergence = false;
   } else if(heat >= 40){
     tableState = "NEUTRA";
-    dynThreshold = 0.74;
+    dynThreshold = 0.70;
     requireConvergence = false;
   } else if(heat >= 26){
     tableState = "FRIA";
-    dynThreshold = 0.80;
+    dynThreshold = 0.78;
     requireConvergence = true;
   } else {
     tableState = "CONGELADA";
@@ -1518,7 +1518,7 @@ function analyze(){
   out.tie.hunterConf = hunter.conf;
 
   // EV gate: cada red vale 3 greens. Piso 0.68 (com gale, win efetivo ~89%)
-  const EV_FLOOR = 0.68;
+  const EV_FLOOR = 0.66;
 
   out.heat = { score: heat, state: tableState, threshold: dynThreshold, reasons: heatReasons, requireConvergence, minPatterns };
 
@@ -1623,9 +1623,12 @@ function analyze(){
     out.signal = "W";
     out.reason = `📉 Padrão enfraquecendo · ${saudePadrao().motivo} · aguarda novo momento`;
     out.conf = bestConf;
-  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora && mm.modo!=="SURF"; })()){
-    // VIRADA DE MOMENTO · a mesa trocou de modo (exceto para SURF, onde queremos
-    // entrar surfando na hora). Fica calado 1 leitura para o novo modo confirmar.
+  } else if((()=>{ const mm=modoMesa(); out._modoMesa=mm.modo; return mm.virouAgora; })()){
+    // VIRADA DE MOMENTO · a mesa trocou de modo. Fica calado 1 leitura para o novo
+    // modo confirmar — inclusive na virada para SURF: entrar na hora que a mesa
+    // "parece" virar surf é justamente onde vinham os reds de transição (uma puxada
+    // de 4 pode ser início de surf real OU um respiro que já vai quebrar). Aguardar
+    // 1 leitura separa os dois casos sem custo de red.
     out.signal = "W";
     out.reason = `🔄 Mesa mudou de momento (agora ${out._modoMesa}) · re-identificando · AGUARDA`;
     out.conf = 0;
@@ -1949,13 +1952,17 @@ function fatorModo(name){
     // padrão acertando NESTE modo → mantém o reforço como antes (intacto)
     return Math.min(1.12, 1 + (taxa - 0.5) * 0.5);
   }
-  // padrão comprovadamente FALHANDO neste modo → corte de verdade, proporcional
-  // à amostra (quanto mais dados confirmam a falha, mais firme o corte):
-  //   amostra média (6-20): piso 0.85   ·   amostra grande (20+): piso 0.72
-  // O padrão NUNCA some — continua disponível nos modos onde acerta. Só perde
-  // força aqui, a ponto de não disparar sozinho num momento que não é dele.
-  const piso = m.c >= 20 ? 0.72 : 0.85;
-  return Math.max(piso, 1 - (0.5 - taxa) * 0.9);
+  // padrão FALHANDO neste modo → corte por DISTÂNCIA de 50% × CONFIANÇA da amostra.
+  // A massa de amostra importa: 44% em 200 amostras é falha confirmada e corta fundo;
+  // 44% em 10 corta pouco (ainda incerto). Usa o peso real do histórico acumulado.
+  //   confiança cresce com log da amostra (6→~0.4, 60→~1.0, 200→~1.6)
+  //   piso por massa: 150+→0.50 · 60-150→0.62 · <60→0.75
+  // O padrão NUNCA some — continua disponível nos modos onde acerta.
+  const dist = 0.5 - taxa;
+  const conf = Math.min(1.6, 0.3 + Math.log(m.c / 5) / 2);
+  const corte = 1 - dist * 2.2 * conf;
+  const piso = m.c >= 150 ? 0.50 : m.c >= 60 ? 0.62 : 0.75;
+  return Math.max(piso, corte);
 }
 
 function regLog(padrao, cor, conf, res, via){
@@ -2134,9 +2141,18 @@ function addRound(r, sNum){
     // conta GREEN imediatamente. A cobertura é consumida (desliga) após pagar.
     // Não interfere no farejador nem nas demais regras quando está desligada.
     if(ST.coberturaEmpate){
-      // Botão COBRIR EMPATE apertado = GREEN para QUALQUER empate (você cobriu de propósito).
-      //  · empate ALTO → GREEN + celebração
-      //  · empate BAIXO → GREEN
+      // Botão COBRIR EMPATE apertado.
+      //  · empate ALTO → GREEN + celebração (cobre e encerra)
+      //  · empate BAIXO no aguarda_gale/gale → BÔNUS, o GALE SEGUE (não é green)
+      //  · empate BAIXO na entrada/idle → GREEN (a entrada cobre junto)
+      // Botão cobrir empate = GREEN sempre. ÚNICA exceção: empate BAIXO no
+      // aguarda_gale (entre a entrada e o gale) → segue o gale, não é green.
+      if(!isHighPay && ST.ciclo === "aguarda_gale"){
+        ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
+        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        save(); renderRouter();
+        return;
+      }
       ST.coberturaEmpate = false; // cobertura usada
       ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate "+pay);
       if(isHighPay){
@@ -2177,12 +2193,21 @@ function addRound(r, sNum){
       return;
     }
 
-    // GALE já lançado: aposta na mesa → empate green/push, encerra
+    // GALE já lançado: empate na mesa. Empate BAIXO = BÔNUS, o gale SEGUE (não é green).
+    // Só empate ALTO cobre e encerra como green.
     if(ST.ciclo === "gale"){
-      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
-      if(isHighPay) celebraPaga(pay);
-      else flashResultado('GREEN', `✅ GREEN · empate no gale · ${pay}`);
-      abortCiclo();
+      if(isHighPay){
+        ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
+        celebraPaga(pay);
+        flashResultado('GREEN', `✅ GREEN · empate alto no gale · ${pay}`);
+        abortCiclo();
+      } else {
+        // empate baixo no gale → BÔNUS, gale continua esperando a cor
+        ST.bonus = (ST.bonus || 0) + 1;
+        regEmpMult(pay);
+        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        save(); renderRouter();
+      }
       return;
     }
     // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
