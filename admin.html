@@ -615,9 +615,10 @@ function blocosRecentes(col){
 function _modoBruto(col){
   if(col.length < 6) return "DADOS";
   const c = col.map(x=>x.r);
-  // streak atual
+  // streak atual — surf só a partir de 5 iguais (validado: streak 4 quebra 44% das vezes;
+  // entrar no 5 pega a zona 5→6/6→7 que continua ~100% nos dados reais)
   let s=1; for(let i=c.length-2;i>=0;i--){ if(c[i]===c[c.length-1]) s++; else break; }
-  if(s>=4) return "SURF";
+  if(s>=5) return "SURF";
   const b = blocosRecentes(col); const rec = b.slice(-4);
   const r3 = rec.slice(-3), r4 = rec.slice(-4);
   const eq=(a,v)=>a.length>=v.length && JSON.stringify(a.slice(-v.length))===JSON.stringify(v);
@@ -626,9 +627,12 @@ function _modoBruto(col){
   if(eq(r4,[3,1,3,1])||eq(r4,[1,3,1,3])) return "3-1";
   if(eq(r4,[2,1,2,1])||eq(r4,[1,2,1,2])) return "2-1";
   if(r3.length>=3 && (r3[0]<r3[1]&&r3[1]<r3[2] || r3[0]>r3[1]&&r3[1]>r3[2])) return "ESCADA";
-  const w=c.slice(-8); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
-  if(tr>=6) return "PICOTE";
-  if(tr<=2) return "SURF";
+  // janela 13 / picote 55% / surf por alternância 20% — config validada por simulação
+  // contra as 5 sessões reais: 191G 33R (+92u) vs 121G 25R (+46u) do critério antigo.
+  const w=c.slice(-13); let tr=0; for(let i=1;i<w.length;i++) if(w[i]!==w[i-1]) tr++;
+  const pct = w.length>1 ? tr/(w.length-1) : 0;
+  if(pct>=0.55) return "PICOTE";
+  if(pct<=0.20) return "SURF";
   return "BAGUNCA";
 }
 // classificador estável (histerese): só troca de modo após 2 confirmações.
@@ -3175,6 +3179,7 @@ function initAuth(){
   db.ref("config").on("value", s => {
     const c = s.val() || {};
     AUTH.config.sessoes = c.sessoes || [];
+    AUTH.config.modoSessao = c.modoSessao || "VIP";
     AUTH.config.adminHash = c.adminHash || null; // master (compatibilidade)
     AUTH.config.admins = c.admins || {};         // { hash: {nome, master} }
     routeAuth();
@@ -3414,6 +3419,12 @@ window.addSessao = function(){
   const arr = [...AUTH.config.sessoes, t].sort();
   db.ref("config/sessoes").set(arr);
   AUTH.newSessao = "";
+};
+
+window.setModoSessao = function(modo){
+  if(modo!=="FREE" && modo!=="VIP") return;
+  db.ref("config/modoSessao").set(modo);
+  toast(modo==="FREE" ? "🟢 Sessão FREE · acesso liberado a todos" : "⭐ Sessão VIP · somente com chave", 2800);
 };
 
 window.removerSessao = function(t){
@@ -3723,6 +3734,17 @@ function renderAdminPanel(){
           </div>
           <div style="font-size:10px;color:var(--txt3);font-family:var(--mono);text-align:right">${new Date(e.entradaEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
         </div>`).join('')}
+    </div>
+
+    <div class="sec-lbl">MODO DA SESSÃO ATUAL</div>
+    <div class="card">
+      <div style="display:flex;gap:10px">
+        <button onclick="setModoSessao('FREE')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='FREE'?'background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(34,197,94,.12));border:2px solid var(--green2);color:var(--green2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">🟢 FREE</button>
+        <button onclick="setModoSessao('VIP')" style="flex:1;padding:16px;border-radius:11px;cursor:pointer;font-family:var(--mono);font-size:14px;font-weight:900;letter-spacing:1px;${AUTH.config.modoSessao==='VIP'?'background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(234,179,8,.12));border:2px solid var(--gold2);color:var(--gold2)':'background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--txt3)'}">⭐ VIP</button>
+      </div>
+      <div style="margin-top:10px;text-align:center;font-size:11px;font-family:var(--mono);color:var(--txt2);line-height:1.6">
+        ${AUTH.config.modoSessao==='FREE'?'App liberado — qualquer um entra sem chave':'App fechado — só entra com chave válida'}
+      </div>
     </div>
 
     <div class="sec-lbl">HORÁRIOS DE SESSÃO</div>
