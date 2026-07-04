@@ -793,28 +793,23 @@ function tieHunter(H, heatScore){
   // Estados por ATRASO (antes QUENTE/ABERTA) previam 8-11% — igual ou abaixo do
   // acaso — então NÃO acendem mais: viram FECHADA. Empate é quase puro acaso;
   // prometer "iminente" por atraso seria enganar. Melhor ficar quieto.
-  if(res.cluster){
-    // cluster recente é o único "atrasado" com leve edge → acende como ABERTA leve
+  // CALIBRAÇÃO REAL (4 sessões): empate base 11%. Só atraso>=12 supera (15%).
+  // Pós-empate/ECO na verdade dá 8% (abaixo do acaso) → não acende.
+  if(res.dist >= 12){
     res.status = "ABERTA";
-    res.msg = `Cluster de empates (${ties8}/8 rodadas) · mesa ecoando empate · leve tendência`;
-    res.conf = 0.55;
-    // mesa carregada de empate = oportunidade de cobertura; se payout provável alto, reforça
+    res.conf = 0.15;
+    res.msg = `Atraso: ${res.dist} rodadas sem empate · cobertura vale ~15% (base 11%)`;
     if(res.payoutProvavel && (res.payoutProvavel.indexOf("25x")>=0 || res.payoutProvavel.indexOf("88x")>=0)){
-      res.conf = Math.min(0.88, res.conf + 0.07); res.altoValor = true;
-      res.msg += ` · 💰 ${res.payoutProvavel}`;
-    } else if(res.payoutProvavel && res.payoutProvavel.indexOf("10x")>=0){
-      res.conf = Math.min(0.85, res.conf + 0.04); res.altoValor = true;
+      res.altoValor = true; res.msg += ` · 💰 payout provável ${res.payoutProvavel}`;
     }
-  } else if(mesaFria && res.ties15 >= 3){
-    // mesa muito fria com vários empates recentes → leve zona de eco
+  } else if(res.cluster){
     res.status = "ABERTA";
-    res.msg = `Mesa fria + ${res.ties15} empates/15 · zona de eco`;
-    res.conf = 0.52;
+    res.conf = 0.12;
+    res.msg = `Cluster de empates (${ties8}/8) · densidade ~12% (base 11%) · cobertura opcional`;
   } else {
-    // todo o resto (inclusive atraso) → FECHADA. Sem edge real, não acende.
     res.status = "FECHADA";
-    res.msg = `Sem padrão de empate confiável agora · ${res.dist} rodada(s) desde o último`;
     res.conf = 0;
+    res.msg = `Empate sem vantagem agora (${res.dist} desde o último) · base 11%`;
   }
 
   return res;
@@ -1597,7 +1592,11 @@ function analyze(){
     }
   }
 
-  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
+  const _momento = (modoMesa()||{}).modo;
+  const _graf = (graficoMesa()||{}).nivel;
+  const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
+  const _picoteMedio = (_momento==="PICOTE" && _graf==="MEDIO");
+  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA") && !_picoteMedio;
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
     out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
@@ -1789,7 +1788,11 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  if(out.signal === "W" && mesaPermiteEntrada){
+  if((out.signal==="P"||out.signal==="B") && _graf==="MEDIO" && _colOpen[1]===1 && out.signal!==_colOpen[0]){
+    out.signal = "W";
+    out.reason = "Alternância no gráfico médio (zona de erro) · AGUARDA";
+  }
+  if(out.signal === "W" && mesaPermiteEntrada && !_picoteMedio){
     const _reg = regimeAtual();
     const _forte = padraoForteNoRegime(patterns, _reg);
     if(_forte){
@@ -2596,6 +2599,8 @@ function exportJSON(){
     countAcum: ST.countAcum,
     tieAcum: ST.tieAcum || {},
     modoAcum: ST.modoAcum || {},
+    logEntradas: ST.logEntradas || [],
+    placar: { seco: ST.pSG||0, gale: ST.pG1||0, empate: ST.pEmp||0, empateGale: ST.pEmpG1||0, bonus: ST.bonus||0, empatesDetalhe: ST.pEmpDetalhe||{} },
     timestamp: new Date().toISOString()
   }, null, 2);
 }
@@ -2711,19 +2716,21 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
-  // Bead road render — últimas 90 rodadas (15 colunas de 6), mais novas à direita
+  // Bead road IGUAL À MESA: colunas de 6, cima->baixo, mais recentes à direita.
   const beadCells = [];
   const BEAD_MAX = 90;
   const beadH = ST.H.slice(-BEAD_MAX);
   const colCount = Math.ceil(beadH.length / 6);
+  const padFront = colCount*6 - beadH.length;
   for(let c=0;c<colCount;c++){
     for(let r=0;r<6;r++){
-      const idx = c*6+r;
-      if(idx < beadH.length){
+      const slot = c*6+r;
+      const idx = slot - padFront;
+      if(idx >= 0 && idx < beadH.length){
         const x = beadH[idx];
         beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
       } else {
-        beadCells.push(`<div></div>`);
+        beadCells.push(`<div class="bead-empty"></div>`);
       }
     }
   }
