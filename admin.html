@@ -1592,6 +1592,7 @@ function analyze(){
 
   const _momento = (modoMesa()||{}).modo;
   const _graf = (graficoMesa()||{}).nivel;
+  const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
   const _picoteMedio = (_momento==="PICOTE" && _graf==="MEDIO");
   const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA") && !_picoteMedio;
   if(!mesaPermiteEntrada && !out.exaustao){
@@ -1785,8 +1786,12 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  if((out.signal==="P"||out.signal==="B") && /\bRE6\b/.test(out.reason||"") && _momento==="PICOTE"){
-    out.signal="W"; out.reason="RE6 em picote (33% acerto, vaza) · AGUARDA";
+  if((out.signal==="P"||out.signal==="B")){
+    if(/\bRE6\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="BAGUNCA")){
+      out.signal="W"; out.reason="RE6 em "+_momento+" (vaza) · AGUARDA";
+    } else if(/\b(B22C|P22|ESC|B22T)\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="ESCADA")){
+      out.signal="W"; out.reason="Padrão de dupla em "+_momento+" (mesa capa em 2) · AGUARDA";
+    }
   }
   if(out.signal === "W" && mesaPermiteEntrada && !_picoteMedio){
     const _reg = regimeAtual();
@@ -2177,18 +2182,13 @@ function addRound(r, sNum){
       return;
     }
 
-    // GALE já lançado: empate BAIXO = BÔNUS (gale segue), empate ALTO = green (cobre).
+    // GALE JÁ LANÇADO: o empate cai NA rodada do gale = a aposta do gale foi coberta.
+    // Empate (qualquer soma) = GREEN e FECHA o ciclo.
     if(ST.ciclo === "gale"){
-      if(isHighPay){
-        ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
-        celebraPaga(pay);
-        abortCiclo();
-      } else {
-        ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
-        save(); renderRouter();
-      }
-      return;
+      ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
+      if(isHighPay){ celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} cobriu o gale!`, 3800); }
+      else { flashResultado('GREEN', `✅ GREEN · empate ${pay} cobriu o gale`); }
+      abortCiclo();
       return;
     }
     // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
