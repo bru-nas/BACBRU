@@ -108,6 +108,7 @@ button:active{transform:scale(.97)}
 .cell-empty{width:12px;height:12px}
 /* BEAD ROAD NUMÉRICO */
 .bead-grid{display:grid;grid-template-rows:repeat(6,22px);grid-auto-flow:column;grid-auto-columns:22px;gap:2px;min-width:max-content}
+.bead-empty{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,0.03)}
 .bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;font-weight:800;font-family:var(--mono);color:#fff;flex:0 0 auto}
 .bead.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af)}
 .bead.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b)}
@@ -793,23 +794,20 @@ function tieHunter(H, heatScore){
   // Estados por ATRASO (antes QUENTE/ABERTA) previam 8-11% — igual ou abaixo do
   // acaso — então NÃO acendem mais: viram FECHADA. Empate é quase puro acaso;
   // prometer "iminente" por atraso seria enganar. Melhor ficar quieto.
-  // CALIBRAÇÃO REAL (4 sessões): empate base 11%. Só atraso>=12 supera (15%).
-  // Pós-empate/ECO na verdade dá 8% (abaixo do acaso) → não acende.
-  if(res.dist >= 12){
-    res.status = "ABERTA";
-    res.conf = 0.15;
-    res.msg = `Atraso: ${res.dist} rodadas sem empate · cobertura vale ~15% (base 11%)`;
-    if(res.payoutProvavel && (res.payoutProvavel.indexOf("25x")>=0 || res.payoutProvavel.indexOf("88x")>=0)){
-      res.altoValor = true; res.msg += ` · 💰 payout provável ${res.payoutProvavel}`;
-    }
-  } else if(res.cluster){
-    res.status = "ABERTA";
-    res.conf = 0.12;
-    res.msg = `Cluster de empates (${ties8}/8) · densidade ~12% (base 11%) · cobertura opcional`;
+  const _modoF = (modoMesa()||{}).modo;
+  const _ultSoma = ST.H.length ? ST.H[ST.H.length-1].s : 0;
+  const _somaQuente = (_ultSoma>=6 && _ultSoma<=8);
+  const _atraso = res.dist>=10 && res.dist<=14;
+  if(_modoF==="SURF" && _somaQuente){
+    res.status="ABERTA"; res.conf=0.20;
+    res.msg=`SURF + soma ${_ultSoma} (zona quente 6-8) · empate ~20% · costuma pagar 4-6x`;
+    if(res.payoutProvavel && /25x|88x/.test(res.payoutProvavel)){res.altoValor=true;res.msg+=` · 💰 ${res.payoutProvavel}`;}
+  } else if((_modoF==="SURF" || _atraso) && _modoF!=="ESCADA"){
+    res.status="ABERTA"; res.conf=0.14;
+    res.msg=(_modoF==="SURF"?`SURF`:`Atraso ${res.dist}`)+` · empate ~14% · cobertura leve`;
   } else {
-    res.status = "FECHADA";
-    res.conf = 0;
-    res.msg = `Empate sem vantagem agora (${res.dist} desde o último) · base 11%`;
+    res.status="FECHADA"; res.conf=0;
+    res.msg=`Empate sem vantagem (${_modoF}, soma ${_ultSoma}, ${res.dist} desde último) · base 11%`;
   }
 
   return res;
@@ -1594,7 +1592,6 @@ function analyze(){
 
   const _momento = (modoMesa()||{}).modo;
   const _graf = (graficoMesa()||{}).nivel;
-  const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
   const _picoteMedio = (_momento==="PICOTE" && _graf==="MEDIO");
   const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA") && !_picoteMedio;
   if(!mesaPermiteEntrada && !out.exaustao){
@@ -1788,9 +1785,8 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  if((out.signal==="P"||out.signal==="B") && _graf==="MEDIO" && _colOpen[1]===1 && out.signal!==_colOpen[0]){
-    out.signal = "W";
-    out.reason = "Alternância no gráfico médio (zona de erro) · AGUARDA";
+  if((out.signal==="P"||out.signal==="B") && /\bRE6\b/.test(out.reason||"") && _momento==="PICOTE"){
+    out.signal="W"; out.reason="RE6 em picote (33% acerto, vaza) · AGUARDA";
   }
   if(out.signal === "W" && mesaPermiteEntrada && !_picoteMedio){
     const _reg = regimeAtual();
@@ -1964,7 +1960,9 @@ function regLog(padrao, cor, conf, res, via){
     cor: cor,
     conf: Math.round((conf||0)*100),
     res: res,   // "G" ou "R"
-    via: via    // "seco", "gale", "empate", "empate-gale"
+    via: via,   // "seco", "gale", "empate", "empate-gale"
+    modo: (modoMesa()||{}).modo,
+    grafico: (graficoMesa()||{}).nivel
   });
 }
 function regEmpMult(pay){
@@ -2716,22 +2714,18 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
-  // Bead road IGUAL À MESA: colunas de 6, cima->baixo, mais recentes à direita.
   const beadCells = [];
   const BEAD_MAX = 90;
   const beadH = ST.H.slice(-BEAD_MAX);
-  const colCount = Math.ceil(beadH.length / 6);
+  const colCount = Math.ceil(beadH.length / 6) || 1;
   const padFront = colCount*6 - beadH.length;
   for(let c=0;c<colCount;c++){
     for(let r=0;r<6;r++){
-      const slot = c*6+r;
-      const idx = slot - padFront;
+      const slot = c*6+r; const idx = slot - padFront;
       if(idx >= 0 && idx < beadH.length){
         const x = beadH[idx];
         beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
-      } else {
-        beadCells.push(`<div class="bead-empty"></div>`);
-      }
+      } else { beadCells.push(`<div class="bead-empty"></div>`); }
     }
   }
 
