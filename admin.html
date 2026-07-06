@@ -1593,8 +1593,7 @@ function analyze(){
   const _momento = (modoMesa()||{}).modo;
   const _graf = (graficoMesa()||{}).nivel;
   const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
-  const _picoteMedio = (_momento==="PICOTE" && _graf==="MEDIO");
-  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA") && !_picoteMedio;
+  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
     out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
@@ -1786,14 +1785,13 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  if((out.signal==="P"||out.signal==="B")){
-    if(/\bRE6\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="BAGUNCA")){
-      out.signal="W"; out.reason="RE6 em "+_momento+" (vaza) · AGUARDA";
-    } else if(/\b(B22C|P22|ESC|B22T)\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="ESCADA")){
-      out.signal="W"; out.reason="Padrão de dupla em "+_momento+" (mesa capa em 2) · AGUARDA";
-    }
+  // ÚNICO VETO (validado em 87 entradas reais, 4 sessões): padrões de dupla
+  // (B22C/P22/ESC/B22T) apostam continuação de par. Em PICOTE ou ESCADA a mesa
+  // capa em 2 e quebra → erram. Bloquear corta 56% de red mantendo 88% dos greens.
+  if((out.signal==="P"||out.signal==="B") && /\b(B22C|P22|ESC|B22T)\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="ESCADA")){
+    out.signal="W"; out.reason="Padrão de dupla em "+_momento+" (mesa capa em 2) · AGUARDA";
   }
-  if(out.signal === "W" && mesaPermiteEntrada && !_picoteMedio){
+  if(out.signal === "W" && mesaPermiteEntrada){
     const _reg = regimeAtual();
     const _forte = padraoForteNoRegime(patterns, _reg);
     if(_forte){
@@ -2714,19 +2712,16 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
+  // Bead road IGUAL À MESA: preenche COLUNA por COLUNA, de cima pra baixo,
+  // começando na rodada mais antiga (canto superior esquerdo), sem padding.
+  // O CSS usa grid-auto-flow:column, então os itens no array vão coluna a coluna:
+  // itens 0-5 = coluna 1 (cima->baixo), 6-11 = coluna 2, etc. Basta empurrar em ordem.
   const beadCells = [];
   const BEAD_MAX = 90;
   const beadH = ST.H.slice(-BEAD_MAX);
-  const colCount = Math.ceil(beadH.length / 6) || 1;
-  const padFront = colCount*6 - beadH.length;
-  for(let c=0;c<colCount;c++){
-    for(let r=0;r<6;r++){
-      const slot = c*6+r; const idx = slot - padFront;
-      if(idx >= 0 && idx < beadH.length){
-        const x = beadH[idx];
-        beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
-      } else { beadCells.push(`<div class="bead-empty"></div>`); }
-    }
+  for(let i=0;i<beadH.length;i++){
+    const x = beadH[i];
+    beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
   }
 
   // Big Road render
