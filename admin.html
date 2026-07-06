@@ -190,6 +190,8 @@ const ROOM = "bac-bru-sala-1";
 const ROOM_REF = db.ref("rooms/" + ROOM);
 let SYNC_STATUS = "OFFLINE"; // OFFLINE | CONNECTING | LIVE
 let SUPPRESS_PUSH = false;
+let IMPORT_GUARD_UNTIL = 0;   // até quando ignorar snapshots antigos do Firebase pós-import
+let IMPORT_STAMP = 0;         // timestamp do import local, p/ comparar com data.updatedAt
 let _heatPushTimer = null;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -337,6 +339,11 @@ function initFirebaseSync(){
   ROOM_REF.on("value", snap => {
     const data = snap.val();
     if(!data) return;
+    // GUARDA DE IMPORT: logo após importar um JSON local, ignoramos snapshots do Firebase
+    // que sejam antigos/atrasados e reverteriam o history recém-carregado (o "congelamento").
+    if(typeof IMPORT_GUARD_UNTIL !== "undefined" && Date.now() < IMPORT_GUARD_UNTIL){
+      if(!data.updatedAt || data.updatedAt < IMPORT_STAMP) return;
+    }
     SUPPRESS_PUSH = true;
     if(Array.isArray(data.H)) ST.H = data.H;
     if(typeof data.greens === "number") ST.greens = data.greens;
@@ -1353,7 +1360,7 @@ function analyze(){
   // complementar de uma entrada de cor, nunca como jogada principal.
   const byBet = {P:[], B:[], T:[]};
   patterns.forEach(p=>{ if(byBet[p.sig]) byBet[p.sig].push(p); });
-  let bestSide = null, bestConf = 0, bestReason = "";
+  let bestSide = null, bestConf = 0, bestReason = "", bestPatternName = "";
   for(const side of ["P","B"]){
     if(byBet[side].length === 0) continue;
     let conf = Math.max(...byBet[side].map(p=>p.conf));
@@ -1372,6 +1379,7 @@ function analyze(){
       const top = byBet[side].sort((a,b)=>b.conf-a.conf)[0];
       const others = byBet[side].length > 1 ? ` (+${byBet[side].length-1} padrões)` : "";
       bestReason = top.reason + others;
+      bestPatternName = top.name;  // guarda o CÓDIGO do padrão (B22C, RE6...) p/ os vetos
     }
   }
   out.convergence = bestSide ? byBet[bestSide].length : 0;
@@ -1785,11 +1793,21 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  // ÚNICO VETO (validado em 87 entradas reais, 4 sessões): padrões de dupla
-  // (B22C/P22/ESC/B22T) apostam continuação de par. Em PICOTE ou ESCADA a mesa
-  // capa em 2 e quebra → erram. Bloquear corta 56% de red mantendo 88% dos greens.
-  if((out.signal==="P"||out.signal==="B") && /\b(B22C|P22|ESC|B22T)\b/.test(out.reason||"") && (_momento==="PICOTE"||_momento==="ESCADA")){
-    out.signal="W"; out.reason="Padrão de dupla em "+_momento+" (mesa capa em 2) · AGUARDA";
+  // VETO baseado no APRENDIZADO ACUMULADO do app (206 sessões, delta acumulado real):
+  //   B22C: delta -66 total, negativo em quase todo modo (2-1,2-2,PICOTE,SURF,BAGUNCA).
+  //         Só liberado em ESCADA (delta +1).
+  //   RE6: degradou p/ negativo → bloqueado em PICOTE e BAGUNCA.
+  //   P22: delta -4 → bloqueado em PICOTE (onde é pior).
+  //   ESC: bloqueado em ESCADA (0% acerto real).
+  // MANTIDOS LIVRES os de delta positivo: B22T(+17), P21(+11), SK3C(+7), PP4, PP5, B31, DOM12.
+  if(out.signal==="P"||out.signal==="B"){
+    const _pn = bestPatternName || "";
+    let _veto=false, _motivo="";
+    if(_pn==="B22C" && _momento!=="ESCADA"){ _veto=true; _motivo="B22C fraco (delta -66 acumulado)"; }
+    else if(_pn==="RE6" && (_momento==="PICOTE"||_momento==="BAGUNCA")){ _veto=true; _motivo="RE6 degradado em "+_momento; }
+    else if(_pn==="P22" && _momento==="PICOTE"){ _veto=true; _motivo="P22 fraco em picote"; }
+    else if(_pn==="ESC" && _momento==="ESCADA"){ _veto=true; _motivo="ESC fraco em escada (0%)"; }
+    if(_veto){ out.signal="W"; out.reason=_motivo+" · AGUARDA"; }
   }
   if(out.signal === "W" && mesaPermiteEntrada){
     const _reg = regimeAtual();
@@ -2572,10 +2590,17 @@ function injectJSON(){
     if(typeof d.sessoes === "number") ST.sessoes = d.sessoes + 1;
     ST.injTxt = "";
     ST.jsonOpen = false;
-    save();
+    // IMPORTANTE: ao importar, forçamos o push do history NOVO pro Firebase e evitamos
+    // que o listener em tempo real reverta pro valor antigo (causa do "congelamento").
+    SUPPRESS_PUSH = false;
+    IMPORT_STAMP = Date.now();
+    IMPORT_GUARD_UNTIL = IMPORT_STAMP + 6000; // 6s de proteção contra reversão
+    save();            // grava local + empurra o ST.H NOVO pro Firebase
+    pushToFirebase();  // reforça o push do estado novo
     if(_renderTimer){ clearTimeout(_renderTimer); _renderTimer=null; }
+    if(typeof _rTimer !== "undefined" && _rTimer){ clearTimeout(_rTimer); _rTimer=null; }
     renderApp();
-    toast(`✓ ${ST.H.length} rodadas carregadas · pesos atualizados`);
+    toast(`✓ ${ST.H.length} rodadas carregadas · gráfico atualizado`);
   }catch(e){
     toast("❌ JSON inválido");
   }
@@ -2712,16 +2737,21 @@ function renderApp(){
   const rate = total > 0 ? Math.round(100*ST.greens/total) : 0;
   const root = document.getElementById("root");
 
-  // Bead road IGUAL À MESA: preenche COLUNA por COLUNA, de cima pra baixo,
-  // começando na rodada mais antiga (canto superior esquerdo), sem padding.
-  // O CSS usa grid-auto-flow:column, então os itens no array vão coluna a coluna:
-  // itens 0-5 = coluna 1 (cima->baixo), 6-11 = coluna 2, etc. Basta empurrar em ordem.
+  // Bead road IGUAL À MESA (Evolution): colunas de 6, preenche de CIMA pra BAIXO,
+  // coluna nova à direita, mais antiga no canto superior esquerdo. Quando a última
+  // coluna não enche, as células que faltam ficam VAZIAS EMBAIXO — exatamente como a mesa.
+  // Ordem direta: item 0 = rodada mais antiga do recorte. O CSS grid-auto-flow:column
+  // coloca 0-5 na coluna 1 (cima->baixo), 6-11 na coluna 2, etc.
   const beadCells = [];
   const BEAD_MAX = 90;
   const beadH = ST.H.slice(-BEAD_MAX);
   for(let i=0;i<beadH.length;i++){
     const x = beadH[i];
     beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);
+  }
+  // completa a última coluna com vazios EMBAIXO (como a mesa), se não fechar em 6
+  while(beadCells.length % 6 !== 0){
+    beadCells.push(`<div class="bead-empty"></div>`);
   }
 
   // Big Road render
