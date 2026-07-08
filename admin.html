@@ -1793,21 +1793,20 @@ function analyze(){
   // A mesa muda de comportamento (surf, alternância, bloco); aqui o motor identifica
   // o regime ATUAL e, se houver um padrão que funciona nesse regime, dá a entrada
   // em vez de ficar calado. Validado leave-one-out: entradas extras ~83% green.
-  // VETO baseado no APRENDIZADO ACUMULADO do app (206 sessões, delta acumulado real):
-  //   B22C: delta -66 total, negativo em quase todo modo (2-1,2-2,PICOTE,SURF,BAGUNCA).
-  //         Só liberado em ESCADA (delta +1).
-  //   RE6: degradou p/ negativo → bloqueado em PICOTE e BAGUNCA.
-  //   P22: delta -4 → bloqueado em PICOTE (onde é pior).
-  //   ESC: bloqueado em ESCADA (0% acerto real).
-  // MANTIDOS LIVRES os de delta positivo: B22T(+17), P21(+11), SK3C(+7), PP4, PP5, B31, DOM12.
-  if(out.signal==="P"||out.signal==="B"){
-    const _pn = bestPatternName || "";
-    let _veto=false, _motivo="";
-    if(_pn==="B22C" && _momento!=="ESCADA"){ _veto=true; _motivo="B22C fraco (delta -66 acumulado)"; }
-    else if(_pn==="RE6" && (_momento==="PICOTE"||_momento==="BAGUNCA")){ _veto=true; _motivo="RE6 degradado em "+_momento; }
-    else if(_pn==="P22" && _momento==="PICOTE"){ _veto=true; _motivo="P22 fraco em picote"; }
-    else if(_pn==="ESC" && _momento==="ESCADA"){ _veto=true; _motivo="ESC fraco em escada (0%)"; }
-    if(_veto){ out.signal="W"; out.reason=_motivo+" · AGUARDA"; }
+  // O MOTOR LÊ A MESA: em vez de lista fixa, consulta o modoAcum (aprendizado por
+  // momento, ao vivo dos dados reais). Para o padrão principal do sinal, olha o delta
+  // dele NO MOMENTO ATUAL da mesa. Se nesse momento o padrão é negativo com amostra
+  // suficiente, o motor descarta sozinho — o padrão não encaixa nesta mesa agora.
+  // Se o delta é positivo/neutro, o padrão ENCAIXA e fica livre. Nada é vetado cego:
+  // o mesmo padrão pode ser bloqueado num momento e liberado noutro, conforme a mesa.
+  if((out.signal==="P"||out.signal==="B") && bestPatternName){
+    const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][bestPatternName] : null;
+    if(_mm && _mm.c >= 20 && _mm.d < 0){
+      // amostra >=20 nesse momento E delta negativo → não encaixa aqui agora
+      const _taxa = ((_mm.c + _mm.d) / (2*_mm.c) * 100).toFixed(0); // acerto aprox no momento
+      out.signal = "W";
+      out.reason = bestPatternName+" não encaixa em "+_momento+" ("+_taxa+"% no histórico deste momento) · AGUARDA";
+    }
   }
   if(out.signal === "W" && mesaPermiteEntrada){
     const _reg = regimeAtual();
@@ -2181,7 +2180,7 @@ function addRound(r, sNum){
       // Entre entrada e gale (o BOTÃO de cobrir já foi tratado acima · aqui é o FAREJADOR):
       //  · empate ALTO + farejador  → GREEN (cobre o gale, cancela, celebra)
       //  · empate BAIXO + farejador → BÔNUS (o GALE SEGUE)
-      //  · sem farejador → neutro (gale segue, não conta)
+      //  · sem farejador → REAVALIA o padrão (não segue o gale por inércia)
       if(hunterAntes && isHighPay){
         ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
@@ -2192,8 +2191,19 @@ function addRound(r, sNum){
         toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
         save(); renderRouter();
       } else {
-        toast(`↻ Empate ${pay} · GALE SEGUE`, 2800);
-        save(); renderRouter();
+        // SEM farejador: o empate quase reseta a mesa (medido: cor segue só ~53% após empate,
+        // abaixo do break-even do gale de 75%). Então NÃO seguimos o gale por inércia.
+        // Reavaliamos o padrão do zero: só mantém o gale se a leitura nova confirmar a MESMA cor.
+        const _reav = analyze();
+        if((_reav.signal === "P" || _reav.signal === "B") && _reav.signal === ST.ciclo_sinal){
+          // leitura nova confirma a mesma direção → gale segue com fundamento
+          toast(`↻ Empate ${pay} · padrão confirma ${ST.ciclo_sinal==="P"?"AZUL":"VERMELHO"} · GALE SEGUE`, 3200);
+          save(); renderRouter();
+        } else {
+          // leitura nova NÃO confirma (mudou ou virou AGUARDA) → cancela o gale, evita red de inércia
+          toast(`⏸️ Empate ${pay} resetou a leitura · GALE CANCELADO · aguardando novo padrão`, 4000);
+          abortCiclo();
+        }
       }
       return;
     }
@@ -2227,7 +2237,7 @@ function addRound(r, sNum){
     }
     if(hunterAntes && isHighPay){
       // Farejador ativo + empate alto → GREEN
-      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog("FAREJADOR", null, (a.hunter&&a.hunter.conf)||0, "G", "empate "+pay);
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog("FAREJADOR", null, (aBefore.hunter&&aBefore.hunter.conf)||0, "G", "empate "+pay);
       celebraPaga(pay);
       save(); renderRouter();
     } else if(hunterAntes && !isHighPay){
