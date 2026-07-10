@@ -1815,17 +1815,54 @@ function analyze(){
   //   - taxa >= 55%: PASSA (jogável, valor esperado positivo, gale cobre o erro ocasional)
   //   - taxa <  55%: BARRA (fraco demais, dependeria do gale e o red final fica alto)
   // Só age com amostra suficiente (c>=20) no momento; sem dados, deixa o padrão atuar.
-  if((out.signal==="P"||out.signal==="B") && bestPatternName){
-    const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][bestPatternName] : null;
-    if(_mm && _mm.c >= 20){
-      const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
-      if(_taxa < 0.55){
-        out.signal = "W";
-        out.reason = bestPatternName+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª) · AGUARDA";
+  if((out.signal==="P"||out.signal==="B") && bestSide){
+    // GUARDA MULTI-PADRÃO: barra se QUALQUER padrão candidato do lado escolhido estiver
+    // fraco no momento (c>=20, taxa<piso). Antes olhava só o bestPatternName e vazava
+    // quando o lado casava com um 2º padrão ruim — desacoplamento dos reds 227/232.
+    const _cands = (byBet[bestSide] || []).map(p=>p.name);
+    if(bestPatternName && _cands.indexOf(bestPatternName) < 0) _cands.push(bestPatternName);
+    for(const _nm of _cands){
+      const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][_nm] : null;
+      if(_mm && _mm.c >= 20){
+        const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
+        // Piso mais duro em PICOTE com gráfico não-ALTO (zona de sangria): exige 58%.
+        const _piso = (_momento === "PICOTE" && _graf !== "ALTO") ? 0.58 : 0.55;
+        if(_taxa < _piso){
+          out.signal = "W";
+          out._vetoPrimeira = true; // barrado por proteção de 1ª → regime NÃO reabre
+          out.reason = _nm+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª, piso "+(_piso*100).toFixed(0)+"%) · AGUARDA";
+          break;
+        }
       }
     }
   }
-  if(out.signal === "W" && mesaPermiteEntrada){
+
+  // ── GUARD v6.5 · causa-raiz dos reds sessões 227/232 ──
+  // Rastreio real (medido, não teoria): a taxa modoAcum por padrão NÃO separa green de
+  // red nessa faixa (ESC 48% deu green, PP4 53% deu red). O discriminador verdadeiro é
+  // o TIPO de aposta vs o gráfico:
+  //   CONTINUAÇÃO (bestSide == última cor) em PICOTE com gráfico != ALTO → o surf já
+  //   está picando/morrendo; seguir a cor perto das quebras é onde o motor sangra
+  //   (3 dos 4 reds da 232 nasceram exatamente aí). Alternância/quebra em picote NÃO é
+  //   barrada — é justamente o green (ESC, RE6 pegaram green apostando a quebra). O veto
+  //   anti-picote antigo (acima) só pegava streak < 3; num surf longo que começa a picar
+  //   a streak é >=3 e ele vazava. Aqui não depende da streak, só do gráfico não estar ALTO.
+  //   Medido: a taxa modoAcum por padrão NÃO discrimina green de red nessa faixa, então
+  //   não se usa taxa aqui — o sinal real é continuação vs gráfico.
+  if(out.signal==="P" || out.signal==="B"){
+    const _ultimaCor = col.length ? col[col.length-1].r : null;
+    const _ehContinuacao = (_ultimaCor && out.signal === _ultimaCor);
+    if(_ehContinuacao && _momento === "PICOTE" && _graf !== "ALTO"){
+      out.signal = "W";
+      out._vetoPrimeira = true; // barrado por proteção de 1ª → regime NÃO reabre
+      out.conf = bestConf;
+      out.reason = "Continuação em PICOTE sem gráfico ALTO (surf picando) · "+_graf+" · AGUARDA";
+    }
+  }
+  // Regime só reabre AGUARDA que veio de "motor calado" — NUNCA uma entrada que a
+  // proteção de 1ª barrou. O mapa de regime é taxa GLOBAL (ignora momento+gráfico);
+  // deixá-lo sobrepor o veto específico é o vazamento que gerava os reds da 232.
+  if(out.signal === "W" && mesaPermiteEntrada && !out._vetoPrimeira){
     const _reg = regimeAtual();
     const _forte = padraoForteNoRegime(patterns, _reg);
     if(_forte){
@@ -1841,6 +1878,9 @@ function analyze(){
   // O sinal de entrada JAMAIS pode ser "T" (empate). Empate não é entrada.
   // Se por qualquer caminho o signal virou "T", força AGUARDA.
   if(out.signal === "T") out.signal = "W";
+
+  // expõe o código do padrão principal p/ quem reanalisa (ex.: reavaliação pós-empate)
+  out.bestPatternName = bestPatternName;
 
   return out;
 }
@@ -2169,9 +2209,27 @@ function addRound(r, sNum){
     if(ST.coberturaEmpate){
       // Botão COBRIR EMPATE apertado = GREEN para QUALQUER empate.
       // ÚNICA exceção: empate BAIXO no aguarda_gale (entre entrada e gale) = BÔNUS, gale segue.
+      // Empate BAIXO em aguarda_gale (com cobrir empate ligado) = BÔNUS, e o motor
+      // REANALISA a mesa: o empate mexeu no roadmap, então a entrada do gale pode ter
+      // mudado. Não segue o gale cego — mostra qual é a leitura agora.
       if(!isHighPay && ST.ciclo === "aguarda_gale"){
         ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        const _reav = analyze();
+        if((_reav.signal === "P" || _reav.signal === "B")){
+          if(_reav.signal === ST.ciclo_sinal){
+            toast(`✨ BÔNUS · empate ${pay} · padrão mantém ${lbl(_reav.signal)} · GALE SEGUE`, 3500);
+          } else {
+            // a leitura virou pro outro lado → o gale acompanha a nova entrada
+            ST.ciclo_sinal = _reav.signal;
+            ST.ciclo_padraoPrincipal = _reav.bestPatternName || ST.ciclo_padraoPrincipal;
+            ST.ciclo_conf = Math.round((_reav.conf||0)*100);
+            toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
+          }
+        } else {
+          // motor não vê entrada agora → não força o gale por inércia, aguarda
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura clara · aguardando padrão`, 3800);
+          abortCiclo();
+        }
         save(); renderRouter();
         return;
       }
@@ -2197,59 +2255,75 @@ function addRound(r, sNum){
       // Entre entrada e gale (o BOTÃO de cobrir já foi tratado acima · aqui é o FAREJADOR):
       //  · empate ALTO + farejador  → GREEN (cobre o gale, cancela, celebra)
       //  · empate BAIXO + farejador → BÔNUS (o GALE SEGUE)
-      //  · sem farejador → REAVALIA o padrão (não segue o gale por inércia)
+      //  · sem farejador (alto ou baixo) → NADA: push puro, o GALE SEGUE VIVO
       if(hunterAntes && isHighPay){
         ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
       } else if(hunterAntes && !isHighPay){
-        ST.bonus = (ST.bonus || 0) + 1;
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
-        save(); renderRouter();
-      } else {
-        // SEM farejador: o empate quase reseta a mesa (medido: cor segue só ~53% após empate,
-        // abaixo do break-even do gale de 75%). Então NÃO seguimos o gale por inércia.
-        // Reavaliamos o padrão do zero: só mantém o gale se a leitura nova confirmar a MESMA cor.
+        // Empate BAIXO + farejador = BÔNUS, e o motor REANALISA a mesa (o empate mexeu
+        // no roadmap; a entrada do gale pode ter mudado). Não segue o gale cego.
+        ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
         const _reav = analyze();
-        if((_reav.signal === "P" || _reav.signal === "B") && _reav.signal === ST.ciclo_sinal){
-          // leitura nova confirma a mesma direção → gale segue com fundamento
-          toast(`↻ Empate ${pay} · padrão confirma ${ST.ciclo_sinal==="P"?"AZUL":"VERMELHO"} · GALE SEGUE`, 3200);
+        if((_reav.signal === "P" || _reav.signal === "B")){
+          if(_reav.signal === ST.ciclo_sinal){
+            toast(`✨ BÔNUS · empate ${pay} · padrão mantém ${lbl(_reav.signal)} · GALE SEGUE`, 3500);
+          } else {
+            ST.ciclo_sinal = _reav.signal;
+            ST.ciclo_padraoPrincipal = _reav.bestPatternName || ST.ciclo_padraoPrincipal;
+            ST.ciclo_conf = Math.round((_reav.conf||0)*100);
+            toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
+          }
           save(); renderRouter();
         } else {
-          // leitura nova NÃO confirma (mudou ou virou AGUARDA) → cancela o gale, evita red de inércia
-          toast(`⏸️ Empate ${pay} resetou a leitura · GALE CANCELADO · aguardando novo padrão`, 4000);
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura clara · aguardando padrão`, 3800);
           abortCiclo();
         }
+      } else {
+        // SEM farejador, SEM cobertura → não é nada. Push puro, o gale segue vivo.
+        regEmpMult(pay);
+        toast(`↻ Empate ${pay} · PUSH · GALE SEGUE`, 3000);
+        save(); renderRouter();
       }
       return;
     }
 
-    // GALE JÁ LANÇADO: o empate cai NA rodada do gale = a aposta do gale foi coberta.
-    // Empate (qualquer soma) = GREEN e FECHA o ciclo.
+    // GALE JÁ LANÇADO: a aposta do gale é na COR. Empate é PUSH (a aposta de cor não
+    // resolve). Só conta GREEN se houver cobertura real do empate:
+    //  · empate ALTO + farejador ATIVO → GREEN (o farejador cobriu), fecha ciclo
+    //  · empate BAIXO ou sem farejador → PUSH: neutro, o GALE SEGUE VIVO pra próxima
+    // (o botão COBRIR EMPATE já foi tratado no topo). Antes contava green sempre — bug.
     if(ST.ciclo === "gale"){
-      ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
-      if(isHighPay){ celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} cobriu o gale!`, 3800); }
-      else { flashResultado('GREEN', `✅ GREEN · empate ${pay} cobriu o gale`); }
-      abortCiclo();
+      if(hunterAntes && isHighPay){
+        ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
+        celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} cobriu o gale!`, 3800);
+        abortCiclo();
+      } else {
+        // PUSH: empate não resolve a aposta de cor. Gale continua de pé.
+        regEmpMult(pay);
+        toast(`↻ Empate ${pay} · PUSH · GALE SEGUE`, 3000);
+        save(); renderRouter();
+      }
       return;
     }
-    // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
-    //  · farejador ativo + alto  → GREEN (encerra)
-    //  · farejador ativo + baixo → BÔNUS (ciclo SEGUE pro gale)
-    //  · sem farejador           → nada (ciclo SEGUE pro gale)
+    // ENTRADA (antes do gale): a aposta é na COR. Empate é PUSH.
+    //  · empate ALTO (10x/25x/88x)  → GREEN (cobre de fato), encerra
+    //  · empate BAIXO (4x/6x)       → PUSH: neutro, o CICLO SEGUE pro gale
+    // (o botão COBRIR EMPATE já foi tratado no topo). Antes contava green sempre — bug.
     if(ST.ciclo === "entrada"){
-      // Empate na ENTRADA (cor) = GREEN sempre. A entrada cobre o empate junto.
-      //  · empate ALTO (10x/25x/88x) → GREEN + celebração
-      //  · empate BAIXO (4x/6x)      → GREEN normal
-      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-entrada "+pay);
       if(isHighPay){
+        ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-entrada "+pay);
         celebraPaga(pay);
         toast(`🔥 GREEN · empate alto ${pay}!`, 3800);
+        abortCiclo();
       } else {
-        flashResultado('GREEN', `✅ GREEN · empate ${pay}`);
+        // PUSH: empate baixo não resolve a cor. Passa pro gale.
+        regEmpMult(pay);
+        ST.ciclo = "aguarda_gale";
+        toast(`↻ Empate ${pay} · PUSH · aguardando gale`, 3000);
+        save(); renderRouter();
       }
-      abortCiclo();
       return;
     }
     if(hunterAntes && isHighPay){
