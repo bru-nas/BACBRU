@@ -3568,13 +3568,6 @@ function renderLock(){
     <input id="keyInput" placeholder="DIGITE SUA CHAVE" value="${AUTH.keyInput}" style="width:100%;padding:15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:14px;text-align:center;letter-spacing:2px;outline:none;text-transform:uppercase"/>
     ${AUTH.msg ? `<div style="margin-top:12px;font-size:11px;color:${AUTH.msg.startsWith('✓')?'var(--green2)':'var(--red2)'};font-family:var(--mono)">${AUTH.msg}</div>` : ""}
     <button onclick="tentarChave()" style="width:100%;margin-top:16px;padding:15px;background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,211,238,.08));border:1px solid rgba(34,197,94,.3);border-radius:12px;color:var(--green2);font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:3px;cursor:pointer">▶ ENTRAR</button>
-    <div style="display:flex;align-items:center;gap:10px;width:100%;margin:18px 0 4px">
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:9px;color:var(--txt4);font-family:var(--mono);letter-spacing:2px">OU</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-    </div>
-    <button onclick="iniciarTeste()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(245,158,11,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">🎁 TESTAR GRÁTIS · 3 DIAS</button>
-    <div style="margin-top:8px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center">acesso completo por 3 dias · 1 por dispositivo</div>
     ${AUTH.secretCount > 0 && AUTH.secretCount < 5 ? `<div style="margin-top:18px;font-size:9px;color:var(--txt4);font-family:var(--mono)">${'●'.repeat(AUTH.secretCount)}${'○'.repeat(5-AUTH.secretCount)}</div>` : ""}
   </div>`;
 }
@@ -3618,7 +3611,7 @@ function renderAdminPanel(){
     const exp = r.tipo === "vitalicia" ? "vitalícia" :
       (r.expiraEm ? new Date(r.expiraEm).toLocaleDateString("pt-BR") : "—");
     const dias = (r.tipo === "mensal" || r.tipo === "teste") && r.expiraEm ? Math.ceil((r.expiraEm-Date.now())/(24*60*60*1000)) : null;
-    const tipoLabel = r.dono?'👑 DONO · SEM TRAVA':r.tipo==='vitalicia'?'♾ VITALÍCIA':r.tipo==='teste'?'🎁 TESTE 3D':'📅 MENSAL';
+    const tipoLabel = r.dono?'👑 DONO · SEM TRAVA':r.tipo==='vitalicia'?'👑 VIP':r.tipo==='teste'?'🎁 TESTE 3D':'🆓 FREE';
     return `<div style="padding:11px;background:rgba(0,0,0,.3);border:1px solid ${valid?'rgba(34,197,94,.2)':'rgba(239,68,68,.2)'};border-radius:10px;margin-bottom:7px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${valid?'var(--green2)':'var(--red2)'}">${k}</div>
@@ -3762,10 +3755,9 @@ function renderAdminPanel(){
     <div class="sec-lbl">CRIAR NOVA CHAVE</div>
     <div class="card">
       <input id="newKeyName" placeholder="Nome do assinante" value="${AUTH.newKeyName}" style="width:100%;padding:11px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none;margin-bottom:8px"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
-        <button onclick="window.setTipo('teste')" style="padding:11px 0;background:${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='teste'?'rgba(245,158,11,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='teste'?'var(--gold2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">🎁 3 DIAS</button>
-        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">📅 MENSAL</button>
-        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">♾ VITAL.</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+        <button onclick="window.setTipo('mensal')" style="padding:11px 0;background:${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='mensal'?'rgba(59,130,246,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='mensal'?'var(--blue2)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">🆓 FREE</button>
+        <button onclick="window.setTipo('vitalicia')" style="padding:11px 0;background:${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.15)':'rgba(0,0,0,.3)'};border:1px solid ${AUTH.newKeyTipo==='vitalicia'?'rgba(167,139,250,.4)':'var(--border)'};border-radius:9px;color:${AUTH.newKeyTipo==='vitalicia'?'var(--purple)':'var(--txt3)'};font-family:var(--mono);font-size:10px;letter-spacing:1px;cursor:pointer">👑 VIP</button>
       </div>
       <button onclick="criarChave()" style="width:100%;padding:12px;background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,211,238,.06));border:1px solid rgba(34,197,94,.3);border-radius:9px;color:var(--green2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">+ GERAR CHAVE</button>
       <button onclick="criarAcessoDono()" style="width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(167,139,250,.08));border:1px solid rgba(245,158,11,.4);border-radius:9px;color:var(--gold2);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">👑 ACESSO DONO · SEM TRAVA</button>
