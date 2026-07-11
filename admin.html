@@ -1653,14 +1653,30 @@ function analyze(){
     }
   } else if(bestSide && bestSide !== "T" && out.mesaPicotada &&
             col.length && bestSide === col[col.length-1].r && (out.streakLen || 0) < 3){
-    // ── VETO ANTI-PICOTE (v6.1) · causa-raiz dos reds ──
-    // Rastreio da sessão 106: a maioria esmagadora dos reds vinha de SEGUIR a
-    // continuação (surf) com streak curta (1-2) em mesa PICOTADA/MISTA. A mesa
-    // alterna, o motor vê uma microsequência e aposta que estica — e quebra.
-    // Aqui: se a mesa está picotada E a entrada seria continuar uma streak < 3,
-    // AGUARDA. Surf real (streak ≥3) e apostas na QUEBRA continuam liberados.
+    // ── VETO ANTI-PICOTE (v6.6) · REDIRECIONA em vez de travar ──
+    // A leitura queria CONTINUAR (seguir a última cor) numa mesa picotada com streak
+    // curta. No agregado (224 sessões) isso é ruim: continuação em PICOTE = 43% (n=128).
+    // Mas a versão antiga mandava AGUARDA geral — e travava também a QUEBRA, que no mesmo
+    // agregado dá 50,3% (n=729). Resultado: motor mudo em mesa picotada, só sobrava gale.
+    // CORREÇÃO: em vez de aguardar, o motor VIRA a entrada pra QUEBRA (lado oposto), que é
+    // o lado estatisticamente melhor do picote — MAS só se houver respaldo pra quebra
+    // (2+ padrões de quebra convergindo OU um padrão de quebra forte). Sem respaldo, aí sim
+    // aguarda. Isso destrava o "bater de primeira" sem soltar os reds de continuação.
+    const _quebraLado = opos(bestSide);
+    const _padroesQuebra = (patterns||[]).filter(p => p.sig === _quebraLado);
+    const _quebraForte = _padroesQuebra.some(p => p.conf >= 0.72);
+    const _quebraConverge = _padroesQuebra.length >= 2;
+    if(_quebraForte || _quebraConverge){
+      const _melhorQuebra = _padroesQuebra.sort((a,b)=>b.conf-a.conf)[0];
+      out.signal = _quebraLado;
+      out.conf = Math.min(0.9, _melhorQuebra ? _melhorQuebra.conf : bestConf);
+      out.reason = `Mesa picotada · continuação fraca → VIRA p/ quebra ${lbl(_quebraLado)} (50% hist)`;
+      out.patterns = patterns;
+      if(!out.tie) out.tie = {active:false};
+      return out;
+    }
     out.signal = "W";
-    out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · continuação sem tendência real · AGUARDA`;
+    out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · sem respaldo p/ quebra · AGUARDA`;
     out.conf = bestConf;
   } else if(bestSide && bestSide !== "T" && (function(){
       // ── DETECTOR DE TROCA DE REGIME (v6.4) · busca exaustiva sobre 1939 rodadas reais ──
@@ -1847,15 +1863,26 @@ function analyze(){
       out.reason = "Continuação em PICOTE sem gráfico ALTO (surf picando) · "+_graf+" · AGUARDA";
     }
   }
-  if(out.signal === "W" && mesaPermiteEntrada){
-    const _reg = regimeAtual();
-    const _forte = padraoForteNoRegime(patterns, _reg);
-    if(_forte){
-      out.signal = _forte.sig;
-      out.conf = Math.min(0.88, _forte.taxa/100);
-      out.reason = `🎯 REGIME ${_reg} · ${_forte.name} acerta ${_forte.taxa}% neste momento`;
-      out.viaRegime = true;
-      out.regimeMesa = _reg;
+  if(out.signal === "W" && mesaPermiteEntrada && !out._vetoPrimeira){
+    // ── TRAVA DO REGIME (v6.6) · causa-raiz de 35% dos reds ──
+    // O _MAPA_REGIME usa regimeAtual() (janela curta 8) que quase sempre devolve MISTA,
+    // e então força continuação (RE6|MISTA:100, B22C|MISTA:85) SOBRESCREVENDO o AGUARDA
+    // correto — inclusive em mesa já classificada PICOTE/BAGUNÇA pela janela longa (13).
+    // Rastreado: 35% dos reds vinham daqui. No agregado (224 sessões) esses padrões dão
+    // 42-49% em PICOTE/BAGUNÇA (abaixo do break-even). CORREÇÃO: o REGIME só reabre
+    // entrada quando modoMesa NÃO é PICOTE nem BAGUNÇA — nos modos legíveis (SURF/ESCADA/
+    // tendência) onde a leitura de regime tem valor. Em picote/bagunça, AGUARDA vence.
+    const _mmRegime = (modoMesa() || {}).modo;
+    if(_mmRegime !== "PICOTE" && _mmRegime !== "BAGUNCA"){
+      const _reg = regimeAtual();
+      const _forte = padraoForteNoRegime(patterns, _reg);
+      if(_forte){
+        out.signal = _forte.sig;
+        out.conf = Math.min(0.88, _forte.taxa/100);
+        out.reason = `🎯 REGIME ${_reg} · ${_forte.name} acerta ${_forte.taxa}% neste momento`;
+        out.viaRegime = true;
+        out.regimeMesa = _reg;
+      }
     }
   }
 
@@ -2215,9 +2242,8 @@ function addRound(r, sNum){
             toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
           }
         } else {
-          // motor não vê entrada agora → não força o gale por inércia, aguarda
-          toast(`✨ BÔNUS · empate ${pay} · sem leitura clara · aguardando padrão`, 3800);
-          abortCiclo();
+          // Sem leitura nova: o gale NÃO SOME. Segue com o sinal original que já tinha.
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura nova · GALE SEGUE`, 3500);
         }
         save(); renderRouter();
         return;
@@ -2251,8 +2277,9 @@ function addRound(r, sNum){
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
       } else if(hunterAntes && !isHighPay){
-        // Empate BAIXO + farejador = BÔNUS, e o motor REANALISA a mesa (o empate mexeu
-        // no roadmap; a entrada do gale pode ter mudado). Não segue o gale cego.
+        // Empate BAIXO + farejador = BÔNUS. O motor REANALISA a mesa (o empate mexeu no
+        // roadmap; a entrada do gale pode ter mudado) — mas o GALE NUNCA SOME. Se não há
+        // leitura clara, o gale simplesmente segue com o sinal que já tinha. Nunca aborta.
         ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
         const _reav = analyze();
         if((_reav.signal === "P" || _reav.signal === "B")){
@@ -2264,11 +2291,12 @@ function addRound(r, sNum){
             ST.ciclo_conf = Math.round((_reav.conf||0)*100);
             toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
           }
-          save(); renderRouter();
         } else {
-          toast(`✨ BÔNUS · empate ${pay} · sem leitura clara · aguardando padrão`, 3800);
-          abortCiclo();
+          // Sem leitura clara: NÃO aborta. O gale segue com o sinal original (aguarda_gale
+          // continua vivo, conta a rodada normalmente na máquina de estados).
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura nova · GALE SEGUE`, 3500);
         }
+        save(); renderRouter();
       } else {
         // SEM farejador, SEM cobertura → não é nada. Push puro, o gale segue vivo.
         regEmpMult(pay);
