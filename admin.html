@@ -1815,24 +1815,13 @@ function analyze(){
   //   - taxa >= 55%: PASSA (jogável, valor esperado positivo, gale cobre o erro ocasional)
   //   - taxa <  55%: BARRA (fraco demais, dependeria do gale e o red final fica alto)
   // Só age com amostra suficiente (c>=20) no momento; sem dados, deixa o padrão atuar.
-  if((out.signal==="P"||out.signal==="B") && bestSide){
-    // GUARDA MULTI-PADRÃO: barra se QUALQUER padrão candidato do lado escolhido estiver
-    // fraco no momento (c>=20, taxa<piso). Antes olhava só o bestPatternName e vazava
-    // quando o lado casava com um 2º padrão ruim — desacoplamento dos reds 227/232.
-    const _cands = (byBet[bestSide] || []).map(p=>p.name);
-    if(bestPatternName && _cands.indexOf(bestPatternName) < 0) _cands.push(bestPatternName);
-    for(const _nm of _cands){
-      const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][_nm] : null;
-      if(_mm && _mm.c >= 20){
-        const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
-        // Piso mais duro em PICOTE com gráfico não-ALTO (zona de sangria): exige 58%.
-        const _piso = (_momento === "PICOTE" && _graf !== "ALTO") ? 0.58 : 0.55;
-        if(_taxa < _piso){
-          out.signal = "W";
-          out._vetoPrimeira = true; // barrado por proteção de 1ª → regime NÃO reabre
-          out.reason = _nm+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª, piso "+(_piso*100).toFixed(0)+"%) · AGUARDA";
-          break;
-        }
+  if((out.signal==="P"||out.signal==="B") && bestPatternName){
+    const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][bestPatternName] : null;
+    if(_mm && _mm.c >= 20){
+      const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
+      if(_taxa < 0.55){
+        out.signal = "W";
+        out.reason = bestPatternName+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª) · AGUARDA";
       }
     }
   }
@@ -1854,15 +1843,11 @@ function analyze(){
     const _ehContinuacao = (_ultimaCor && out.signal === _ultimaCor);
     if(_ehContinuacao && _momento === "PICOTE" && _graf !== "ALTO"){
       out.signal = "W";
-      out._vetoPrimeira = true; // barrado por proteção de 1ª → regime NÃO reabre
       out.conf = bestConf;
       out.reason = "Continuação em PICOTE sem gráfico ALTO (surf picando) · "+_graf+" · AGUARDA";
     }
   }
-  // Regime só reabre AGUARDA que veio de "motor calado" — NUNCA uma entrada que a
-  // proteção de 1ª barrou. O mapa de regime é taxa GLOBAL (ignora momento+gráfico);
-  // deixá-lo sobrepor o veto específico é o vazamento que gerava os reds da 232.
-  if(out.signal === "W" && mesaPermiteEntrada && !out._vetoPrimeira){
+  if(out.signal === "W" && mesaPermiteEntrada){
     const _reg = regimeAtual();
     const _forte = padraoForteNoRegime(patterns, _reg);
     if(_forte){
