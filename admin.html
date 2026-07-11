@@ -2176,12 +2176,16 @@ function addRound(r, sNum){
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // EMPATE · regras definitivas:
-  // 1) Com aposta na mesa (entrada/gale) → GREEN, encerra ciclo (push)
-  // 2) aguarda_gale → alto+farejador=GREEN(cobre) · baixo+farejador=BÔNUS · sem farejador=neutro (gale segue)
-  // 3) Fora de aposta, farejador ATIVO → alto=GREEN · baixo=BÔNUS
-  // 4) Fora de aposta, sem farejador → neutro
-  // BÔNUS só existe com farejador ATIVO. Empate NUNCA gera gale, NUNCA é loss, NUNCA é entrada.
+  // EMPATE · regras definitivas (SIMPLES):
+  // Tem APOSTA VIVA na mesa (entrada OU gale) → empate COBRE → GREEN, qualquer valor.
+  //   1) NA ENTRADA  → GREEN sempre.
+  //   2) NO GALE     → GREEN sempre.
+  // O ÚNICO caso especial é o VÃO entre a entrada perder e o gale entrar (aguarda_gale):
+  //   3) aguarda_gale → gale PROSSEGUE por padrão. Só vira GREEN com:
+  //        · cobrir empate ligado, OU
+  //        · farejador ativo + empate ALTO.
+  //      farejador + baixo = BÔNUS (gale segue). Sem nada = push (gale segue).
+  //   4) Fora de aposta, farejador ATIVO → alto=GREEN · baixo=BÔNUS · senão neutro.
   // ════════════════════════════════════════════════════════════════════════
   if(r === "T"){
     const pay = payoutDaSoma(s);
@@ -2274,41 +2278,32 @@ function addRound(r, sNum){
       return;
     }
 
-    // GALE JÁ LANÇADO: a aposta do gale é na COR. Empate é PUSH (a aposta de cor não
-    // resolve). Só conta GREEN se houver cobertura real do empate:
-    //  · empate ALTO + farejador ATIVO → GREEN (o farejador cobriu), fecha ciclo
-    //  · empate BAIXO ou sem farejador → PUSH: neutro, o GALE SEGUE VIVO pra próxima
-    // (o botão COBRIR EMPATE já foi tratado no topo). Antes contava green sempre — bug.
+    // GALE JÁ LANÇADO (aposta viva na mesa): empate COBRE a aposta → GREEN, QUALQUER valor.
+    // Mesma lógica da entrada: tem aposta viva, empate cobre, é green. Encerra o ciclo.
     if(ST.ciclo === "gale"){
-      if(hunterAntes && isHighPay){
-        ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
-        celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} cobriu o gale!`, 3800);
-        abortCiclo();
+      ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
+      if(isHighPay){
+        celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} no gale!`, 3800);
       } else {
-        // PUSH: empate não resolve a aposta de cor. Gale continua de pé.
-        regEmpMult(pay);
-        toast(`↻ Empate ${pay} · PUSH · GALE SEGUE`, 3000);
-        save(); renderRouter();
+        flashResultado('GREEN', `✅ GREEN · empate ${pay} no gale`);
       }
+      abortCiclo();
       return;
     }
-    // ENTRADA (antes do gale): a aposta é na COR. Empate é PUSH.
-    //  · empate ALTO (10x/25x/88x)  → GREEN (cobre de fato), encerra
-    //  · empate BAIXO (4x/6x)       → PUSH: neutro, o CICLO SEGUE pro gale
-    // (o botão COBRIR EMPATE já foi tratado no topo). Antes contava green sempre — bug.
+    // ENTRADA (aposta viva na mesa, gale ainda NÃO lançado):
+    // REGRA (Miztella): empate NA ENTRADA = GREEN, QUALQUER valor (2x/4x/6x/alto).
+    // Deu a entrada e bateu empate → a aposta foi coberta pelo empate → GREEN, encerra.
+    // NÃO vai pro gale. O corte por valor (baixo = push/bônus) só existe DEPOIS da
+    // entrada perdida, no aguarda_gale — nunca aqui.
     if(ST.ciclo === "entrada"){
+      ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-entrada "+pay);
       if(isHighPay){
-        ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-entrada "+pay);
         celebraPaga(pay);
-        toast(`🔥 GREEN · empate alto ${pay}!`, 3800);
-        abortCiclo();
+        toast(`🔥 GREEN · empate ${pay} na entrada!`, 3800);
       } else {
-        // PUSH: empate baixo não resolve a cor. Passa pro gale.
-        regEmpMult(pay);
-        ST.ciclo = "aguarda_gale";
-        toast(`↻ Empate ${pay} · PUSH · aguardando gale`, 3000);
-        save(); renderRouter();
+        flashResultado('GREEN', `✅ GREEN · empate ${pay} na entrada`);
       }
+      abortCiclo();
       return;
     }
     if(hunterAntes && isHighPay){
