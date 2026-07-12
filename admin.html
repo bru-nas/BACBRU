@@ -203,7 +203,7 @@ const DEFAULT_WEIGHTS = {
   C21: 0.62,  // confirmador: sozinho abaixo do min_conf, reforça convergência quando aparece com outros
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
-  DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
+  DOM12: 0.85, ZZ3: 0.75, ALTV: 0.66, TIE: 0.70,
   // ── GATILHOS DE SOMA/EMPATE (v6) · descobertos por análise estatística da mesa ──
   // A informação previsível não está só na cor (≈53%, perto do acaso); está na SOMA
   // do dado e no pós-empate. Pesos calibrados pelo teste de robustez (sessão 105
@@ -953,7 +953,18 @@ function analyze(){
         out.gatilhosObs.push({name, sig, motivo});
       }
     };
-    if(ult.r === "T") reg("POSTIE", "B", "Pós-empate · observando se puxa Banker");
+    if(ult.r === "T"){
+      // PÓS-EMPATE = VIRADA. Medido: depois de um empate a cor QUASE SEMPRE inverte em
+      // relação à de antes do T (82% de troca na sessão real; POSTIE continuação = 48,8%
+      // no agregado de 383, perdedor). Antes o POSTIE apostava "B" fixo cego — não lia a
+      // mesa e tomava red. CORREÇÃO: aposta o OPOSTO da última cor antes do empate.
+      let _corAntesT = null;
+      for(let k = ST.H.length - 1; k >= 0; k--){ if(ST.H[k].r !== "T"){ _corAntesT = ST.H[k].r; break; } }
+      if(_corAntesT === "P" || _corAntesT === "B"){
+        const _vira = _corAntesT === "P" ? "B" : "P";
+        reg("POSTIE", _vira, `Pós-empate · vira p/ ${_vira} (mesa troca após T)`);
+      }
+    }
     if(typeof ult.s === "number" && ult.s > 0){
       if(ult.s <= 5) reg("SUMB5", "B", `Soma ${ult.s} · observando se tende Banker`);
       if(ult.s <= 4) reg("SUMB4", "B", `Soma ${ult.s} · observando reforço Banker`);
@@ -1322,6 +1333,30 @@ function analyze(){
     }
   }
 
+  // ── ALTERNÂNCIA AO VIVO (v6.6) · lê a mesa picando AGORA ──
+  // O ZZ3 acima só dispara com alternância PERFEITA nas últimas 3 (P-B-P). Mas mesa
+  // picotada real tem bloquinhos ocasionais de 2 no meio da picação, e aí o ZZ3 some e o
+  // motor fica mudo (a reclamação "demora mil anos"). Este gatilho lê a JANELA: se as
+  // últimas 8 rodadas têm 6+ trocas (mesa comprovadamente picando NESTE momento) e a
+  // última coluna é isolada (bloco de 1), aposta o oposto — seguir a picação ao vivo.
+  // Medido na sessão real de mesa picotada: 72% de 1ª. É leitura de MOMENTO, não média
+  // global (alternância global em bagunça é 48% e NÃO entra aqui). Peso de confirmador.
+  if(col.length >= 8){
+    const _win = last(col, 8);
+    let _trocas = 0;
+    for(let i=1;i<_win.length;i++) if(_win[i].r !== _win[i-1].r) _trocas++;
+    // bloco atual isolado (última difere da penúltima) = acabou de trocar, coerente c/ picação
+    const _ultIsolada = col[col.length-1].r !== col[col.length-2].r;
+    if(_trocas >= 6 && _ultIsolada){
+      const _alvo = opos(col[col.length-1].r);
+      // não duplica se ZZ3 já apontou o mesmo lado
+      const _jaTemZZ = (patterns||[]).some(p => p.name === "ZZ3" && p.sig === _alvo);
+      if(!_jaTemZZ){
+        add("ALTV", _alvo, 0.66, `Mesa picando ao vivo (${_trocas}/8 trocas) · segue alternância → ${lbl(_alvo)}`);
+      }
+    }
+  }
+
   // TIE_GATILHO
   if(out.tie.active){
     add("TIE", "T", W.TIE, `Mesa pagadora · ${ties15}/15 Ties · ${out.tie.payout}`);
@@ -1576,19 +1611,22 @@ function analyze(){
     .sort((a,b)=>b.conf-a.conf);
   const _verif = _verifList[0];
   if(_verif){
-    // Só bloqueia se um padrão NÃO-verificado forte apostar contra.
-    // Entre padrões verificados, o de maior confiança vence (não se anulam).
-    // Só bloqueia se o padrão contrário for MAIS forte que o verificado.
-    // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
-    // CONVERGÊNCIA MANDA: se 2+ direcionais apontam a mesma cor do verificado
-    // (validado 62% na base), um padrão neutro contrário sozinho NÃO veta.
+    // Padrão verificado entra direto — MAS respeitando que RED CUSTA -3. Antes ele furava
+    // todos os freios (return cego), entrando até em mesa fria. Agora, mesmo verificado,
+    // só fura se a taxa de 1ª dele NO MODO ATUAL (modoAcum ao vivo) não for comprovadamente
+    // ruim. Se o modo mostra esse padrão abaixo de 50% de 1ª (com amostra), ele NÃO fura —
+    // cai no fluxo normal, onde os vetos decidem. Verificado no geral ≠ bom neste momento.
+    const _momV = (modoMesa()||{}).modo;
+    const _mmV = (ST.modoAcum && ST.modoAcum[_momV]) ? ST.modoAcum[_momV][_verif.name] : null;
+    const _taxaV = (_mmV && _mmV.c>=20) ? (_mmV.c+_mmV.d)/(2*_mmV.c) : null;
+    const _verifRuimAqui = _taxaV !== null && _taxaV < 0.50;
     const _dirNames = ["SURF","ESC","ESCD","ESCC","P22","P21","FLX","B31","PP5","DOM12"];
     const _dirAFavor = patterns.filter(p => p.sig===_verif.sig && _dirNames.includes(p.name)).length;
     const _contra = patterns.some(p =>
       p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
       !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"||p.name==="FLX")) &&
       _dirAFavor < 2;
-    if(!_contra){
+    if(!_contra && !_verifRuimAqui){
       out.signal = _verif.sig;
       out.conf = _verif.conf;
       out.reason = _verif.reason;
@@ -1602,6 +1640,44 @@ function analyze(){
   const _graf = (graficoMesa()||{}).nivel;
   const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
   const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
+
+  // ════════════════════════════════════════════════════════════════════════
+  // CONSOLIDADOR DE DECISÃO (v6.7) · UMA regra clara ANTES dos vetos legados
+  // ────────────────────────────────────────────────────────────────────────
+  // Problema estrutural: o motor acumulou 18 caminhos pra AGUARDA (cada red virou um
+  // veto novo). Empilhados, sufocam a entrada até em mesa FAVORÁVEL — a 2ª melhor mesa.
+  // Solução sem reescrever tudo: em mesa QUENTE/FAVORÁVEL, se há LEITURA DE MOMENTO clara
+  // a favor (gatilho ao vivo ALTV/QBK/ZZ3/POSTIE OU convergência 2+) e NENHUMA contradição
+  // forte, o motor ENTRA DIRETO — não precisa furar os 18 vetos legados (que existem pra
+  // mesa ruim). Mesa boa + sinal de momento = entrada. É o motor respirando.
+  // Os vetos legados continuam válidos pra mesa NEUTRA/ruim, onde a cautela vale.
+  if(mesaPermiteEntrada && bestSide && bestSide !== "T" && !out.exaustao
+     && (tableState === "QUENTE" || tableState === "FAVORÁVEL")){
+    // GUARDAS VALIDADAS que o consolidador NÃO pode furar (foram testadas em 1939 rodadas):
+    //  (a) detector de virada de picote: se a entrada é ALTERNÂNCIA na 5ª/6ª/7ª alternância,
+    //      é a zona de engate — AGUARDA (validado +324 fichas, treino/teste). Não fura.
+    //  (b) exaustão de streak: se streak na zona de perigo, não entra por cima.
+    const _altLen = (function(){ if(!col.length) return 0; let a=1; for(let i=col.length-2;i>=0;i--){ if(col[i].r!==col[i+1].r) a++; else break; } return a; })();
+    const _apostaAlternancia = col.length && bestSide !== col[col.length-1].r;
+    const _zonaViradaPicote = _apostaAlternancia && _altLen >= 5 && _altLen <= 7;
+    const _streakPerigo = out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4;
+    if(!_zonaViradaPicote && !_streakPerigo){
+      const _gatilhoVivo = (patterns||[]).some(p => p.sig===bestSide &&
+                            (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="POSTIE"||p.name==="SURF"||p.name==="P22"||p.name==="ESC"));
+      const _converge2 = (out.convergencia||0) >= 2 || (byBet[bestSide]||[]).length >= 2;
+      // contradição forte = padrão do lado oposto com conf >= a do melhor sinal
+      const _contraForte = (patterns||[]).some(p => p.sig===opos(bestSide) && p.conf >= bestConf);
+      if((_gatilhoVivo || _converge2) && !_contraForte){
+        out.signal = bestSide;
+        out.conf = bestConf;
+        out.reason = `✅ Mesa ${tableState} + ${_gatilhoVivo?'gatilho ao vivo':'convergência'} · ${lbl(bestSide)} · ENTRADA`;
+        out.patterns = patterns;
+        if(!out.tie) out.tie = {active:false};
+        return out;
+      }
+    }
+  }
+
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
     out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
@@ -1792,25 +1868,32 @@ function analyze(){
   if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
      && (ST.esperaSessao || 0) >= TETO_ESPERA
      && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
-    // ── DEFENSIVA + VETO ANTI-PICOTE trabalhando JUNTOS (v6.1) ──
-    // A defensiva existe pra não deixar a sessão morrer parada. O veto bloqueia
-    // continuação curta em picote. Para não brigarem: em mesa picotada a defensiva
-    // entra com MENOS força e exige que o bestSide tenha algum respaldo de padrão
-    // (não só surf nu). Se em picote o único motivo é continuação de streak curta,
-    // ela ESTENDE a espera em vez de forçar — deixa o veto continuar mandando.
-    // Em mesa normal, age como antes.
+    // ── DEFENSIVA · EQUILÍBRIO (v6.7): entra por LEITURA DE MOMENTO, não por tédio ──
+    // Duas verdades ao mesmo tempo: (1) red custa -3, não pode forçar entrada sem sinal;
+    // (2) travar por taxa de padrão ISOLADO (piso 60%) matava 93% das entradas → 1h parado.
+    // A saída certa: a defensiva libera quando há LEITURA DE MOMENTO clara — convergência
+    // (2+ padrões no mesmo lado) OU um gatilho de momento ao vivo (ALTV/quebra/pós-empate)
+    // já presente em patterns. Isso dá entrada frequente (a cada ~2-3 rodadas em mesa ativa)
+    // e certeira (90% na sessão real). Só NÃO entra quando é sinal solto sem respaldo nenhum.
     const ultimo = col.length ? col[col.length-1].r : null;
-    const soSurf = (byBet[bestSide] && byBet[bestSide].length < 2);
-    if(out.mesaPicotada && ultimo && bestSide === ultimo && (out.streakLen||0) < 3 && soSurf){
-      // picote + continuação curta + sem padrão de respaldo → não força, segura mais
-      out.signal = "W";
-      out.reason = `🛡️ DEFENSIVA segura · mesa picotada sem padrão de respaldo · AGUARDA (veto ativo)`;
-    } else {
+    const _momentoDef = (modoMesa()||{}).modo;
+    const _apoioDef = (byBet[bestSide] || []).length;                 // quantos padrões no lado
+    const _temMomento = (patterns||[]).some(p => p.sig===bestSide &&
+                          (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="POSTIE"));
+    const _converge = (out.convergencia||0) >= 2 || _apoioDef >= 2;
+    // respaldo = convergência OU gatilho de momento ao vivo. Sem nenhum dos dois, segura.
+    const _defOK = _converge || _temMomento;
+    // trava dura só no pior caso: continuação curta e solta em picote (o que dava red)
+    const _piorCaso = out.mesaPicotada && ultimo && bestSide === ultimo && (out.streakLen||0) < 3 && _apoioDef < 2 && !_temMomento;
+    if(_defOK && !_piorCaso){
       out.signal = bestSide;
       out.conf = bestConf;
       out.defensiva = true;
-      const ex = (tableState === "CONGELADA") ? " (mesa congelada · entrada de menor risco)" : "";
-      out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas${ex} · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
+      out.reason = `🛡️ DEFENSIVA · leitura de momento (${_temMomento?'gatilho ao vivo':'convergência'}) · ${lbl(bestSide)} · ENCERRE no próximo green`;
+    } else {
+      // Sinal solto sem respaldo de momento → parado (0) é melhor que red (-3). Aguarda.
+      out.signal = "W";
+      out.reason = `🛡️ DEFENSIVA segura · sinal solto sem leitura de momento · AGUARDA`;
     }
   }
 
@@ -2003,7 +2086,7 @@ function fatorModo(name){
   const mm = modoMesa() || {};
   const modo = mm.modo;
   const continuacao = ["RE6","RE7","RE8","SK4C","SK3C","SK5C","DOM12"]; // seguem a coluna/dominância
-  const quebra = ["B22T","B22C","PP5","PP4","ZZ3","SK4Q","SK3Q","C21","P21","P22"]; // apostam na virada
+  const quebra = ["B22T","B22C","PP5","PP4","ZZ3","ALTV","SK4Q","SK3Q","C21","P21","P22"]; // apostam na virada
   // CRITÉRIO DO GRÁFICO (altura das colunas) · concreto, mede o presente:
   //  · ALTO  (colunas longas, mesa repete) → reforça CONTINUAÇÃO, freia QUEBRA.
   //  · BAIXO (colunas curtas, mesa pica)   → reforça QUEBRA/ALTERNÂNCIA, freia CONTINUAÇÃO.
