@@ -203,7 +203,7 @@ const DEFAULT_WEIGHTS = {
   C21: 0.62,  // confirmador: sozinho abaixo do min_conf, reforça convergência quando aparece com outros
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
-  DOM12: 0.85, ZZ3: 0.75, ALTV: 0.66, TIE: 0.70,
+  DOM12: 0.85, ZZ3: 0.75, ALTV: 0.0, TIE: 0.70,
   // ── GATILHOS DE SOMA/EMPATE (v6) · descobertos por análise estatística da mesa ──
   // A informação previsível não está só na cor (≈53%, perto do acaso); está na SOMA
   // do dado e no pós-empate. Pesos calibrados pelo teste de robustez (sessão 105
@@ -1640,47 +1640,6 @@ function analyze(){
   const _graf = (graficoMesa()||{}).nivel;
   const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
   const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
-
-  // ════════════════════════════════════════════════════════════════════════
-  // CONSOLIDADOR DE DECISÃO (v6.7) · UMA regra clara ANTES dos vetos legados
-  // ────────────────────────────────────────────────────────────────────────
-  // Problema estrutural: o motor acumulou 18 caminhos pra AGUARDA (cada red virou um
-  // veto novo). Empilhados, sufocam a entrada até em mesa FAVORÁVEL — a 2ª melhor mesa.
-  // Solução sem reescrever tudo: em mesa QUENTE/FAVORÁVEL, se há LEITURA DE MOMENTO clara
-  // a favor (gatilho ao vivo ALTV/QBK/ZZ3/POSTIE OU convergência 2+) e NENHUMA contradição
-  // forte, o motor ENTRA DIRETO — não precisa furar os 18 vetos legados (que existem pra
-  // mesa ruim). Mesa boa + sinal de momento = entrada. É o motor respirando.
-  // Os vetos legados continuam válidos pra mesa NEUTRA/ruim, onde a cautela vale.
-  if(mesaPermiteEntrada && bestSide && bestSide !== "T" && !out.exaustao
-     && (tableState === "QUENTE" || tableState === "FAVORÁVEL")){
-    // GUARDAS VALIDADAS que o consolidador NÃO pode furar (foram testadas em 1939 rodadas):
-    //  (a) detector de virada de picote: se a entrada é ALTERNÂNCIA na 5ª/6ª/7ª alternância,
-    //      é a zona de engate — AGUARDA (validado +324 fichas, treino/teste). Não fura.
-    //  (b) exaustão de streak: se streak na zona de perigo, não entra por cima.
-    const _altLen = (function(){ if(!col.length) return 0; let a=1; for(let i=col.length-2;i>=0;i--){ if(col[i].r!==col[i+1].r) a++; else break; } return a; })();
-    const _apostaAlternancia = col.length && bestSide !== col[col.length-1].r;
-    // exceção alternância limpa: picação pura (85%+ trocas em 8) flui e continua (77%)
-    const _winC = col.slice(-8);
-    let _trC = 0; for(let i=1;i<_winC.length;i++) if(_winC[i].r!==_winC[i-1].r) _trC++;
-    const _altLimpa = _winC.length >= 7 && (_trC/(_winC.length-1)) >= 0.85;
-    const _zonaViradaPicote = _apostaAlternancia && _altLen >= 5 && _altLen <= 7 && !_altLimpa;
-    const _streakPerigo = out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4;
-    if(!_zonaViradaPicote && !_streakPerigo){
-      const _gatilhoVivo = (patterns||[]).some(p => p.sig===bestSide &&
-                            (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="SURF"||p.name==="P22"||p.name==="ESC"));
-      const _converge2 = (out.convergencia||0) >= 2 || (byBet[bestSide]||[]).length >= 2;
-      // contradição forte = padrão do lado oposto com conf >= a do melhor sinal
-      const _contraForte = (patterns||[]).some(p => p.sig===opos(bestSide) && p.conf >= bestConf);
-      if((_gatilhoVivo || _converge2) && !_contraForte){
-        out.signal = bestSide;
-        out.conf = bestConf;
-        out.reason = `✅ Mesa ${tableState} + ${_gatilhoVivo?'gatilho ao vivo':'convergência'} · ${lbl(bestSide)} · ENTRADA`;
-        out.patterns = patterns;
-        if(!out.tie) out.tie = {active:false};
-        return out;
-      }
-    }
-  }
 
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
