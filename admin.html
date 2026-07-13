@@ -198,12 +198,12 @@ let _heatPushTimer = null;
 // CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
 // ════════════════════════════════════════════════════════════════════════════
 const DEFAULT_WEIGHTS = {
-  PP5: 0.87, PP4: 0.79,
+  PP5: 0.62, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
   C21: 0.62,  // confirmador: sozinho abaixo do min_conf, reforça convergência quando aparece com outros
   SK4Q: 0.81, SK4C: 0.73, SK3Q: 0.80, SK3C: 0.71, SK5C: 0.80,
   RE8: 0.87, RE7: 0.82, RE6: 0.78,
-  DOM12: 0.85, ZZ3: 0.75, TIE: 0.70,
+  DOM12: 0.85, ZZ3: 0.62, ALTV: 0.0, TIE: 0.70,
   // ── GATILHOS DE SOMA/EMPATE (v6) · descobertos por análise estatística da mesa ──
   // A informação previsível não está só na cor (≈53%, perto do acaso); está na SOMA
   // do dado e no pós-empate. Pesos calibrados pelo teste de robustez (sessão 105
@@ -214,7 +214,7 @@ const DEFAULT_WEIGHTS = {
   // convergência — não substituem nada do que já existe.
   SUMB5: 0.80,   // soma ≤5 → Banker · VALIDADO (robusto em todos os trechos)
   SUMB4: 0.74,   // soma ≤4 → Banker (reforço do SUMB5)
-  POSTIE: 0.66,  // pós-empate → Banker · instável, entra cauteloso (era 0.72)
+  POSTIE: 0.60,  // pós-empate · CONFIRMADOR (49% no agregado, instável): abaixo do min_conf
   SUMP11: 0.64,  // soma ≥11 → Player · fraco/morno, entra cauteloso (era 0.70)
   boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
   boost_conv2: 0.06, boost_conv3: 0.10, boost_road_align: 0.05,
@@ -953,7 +953,18 @@ function analyze(){
         out.gatilhosObs.push({name, sig, motivo});
       }
     };
-    if(ult.r === "T") reg("POSTIE", "B", "Pós-empate · observando se puxa Banker");
+    if(ult.r === "T"){
+      // PÓS-EMPATE = VIRADA. Medido: depois de um empate a cor QUASE SEMPRE inverte em
+      // relação à de antes do T (82% de troca na sessão real; POSTIE continuação = 48,8%
+      // no agregado de 383, perdedor). Antes o POSTIE apostava "B" fixo cego — não lia a
+      // mesa e tomava red. CORREÇÃO: aposta o OPOSTO da última cor antes do empate.
+      let _corAntesT = null;
+      for(let k = ST.H.length - 1; k >= 0; k--){ if(ST.H[k].r !== "T"){ _corAntesT = ST.H[k].r; break; } }
+      if(_corAntesT === "P" || _corAntesT === "B"){
+        const _vira = _corAntesT === "P" ? "B" : "P";
+        reg("POSTIE", _vira, `Pós-empate · vira p/ ${_vira} (mesa troca após T)`);
+      }
+    }
     if(typeof ult.s === "number" && ult.s > 0){
       if(ult.s <= 5) reg("SUMB5", "B", `Soma ${ult.s} · observando se tende Banker`);
       if(ult.s <= 4) reg("SUMB4", "B", `Soma ${ult.s} · observando reforço Banker`);
@@ -1210,7 +1221,7 @@ function analyze(){
         const b0 = bl.length>=3 ? bl[bl.length-3] : null;
         if(b0 && b0.len===2 && b0.side!==b1.side){
           // ritmo 2-2-... confirmado (b0=2, b1=2) → aposta continuação do bloco atual (b2)
-          add("P22", b2.side, 0.82, `Padrão 2-2 · ${b0.side}2 ${b1.side}2 → ${b2.side} estica`, true);
+          add("P22", b2.side, 0.62, `Padrão 2-2 · ${b0.side}2 ${b1.side}2 → ${b2.side} estica`, true);
           return;
         }
       }
@@ -1222,7 +1233,7 @@ function analyze(){
       const q = bl.slice(-4); // [2,1,2,1] esperado
       if(q[0].len===2 && q[1].len===1 && q[2].len===2 && q[3].len===1){
         // ritmo 2-1 confirmado → próximo bloco começa cor de q[2] (oposta a q[3])
-        add("P21", q[2].side, 0.82, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
+        add("P21", q[2].side, 0.62, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
         return;
       }
     }
@@ -1318,6 +1329,30 @@ function analyze(){
         out.exaustaoMotivo = `Alternância ${altRun} (xadrez) na zona de quebra (hist. quebra ~${zonaQuebraAlt}, máx ${tetoAlt}) · PARAR de seguir`;
       } else {
         add("ZZ3", opos(c3[2].r), W.ZZ3, `Zigzag detectado · alternância ${altRun}${ap?` (mesa estica até ${tetoAlt})`:''}`);
+      }
+    }
+  }
+
+  // ── ALTERNÂNCIA AO VIVO (v6.6) · lê a mesa picando AGORA ──
+  // O ZZ3 acima só dispara com alternância PERFEITA nas últimas 3 (P-B-P). Mas mesa
+  // picotada real tem bloquinhos ocasionais de 2 no meio da picação, e aí o ZZ3 some e o
+  // motor fica mudo (a reclamação "demora mil anos"). Este gatilho lê a JANELA: se as
+  // últimas 8 rodadas têm 6+ trocas (mesa comprovadamente picando NESTE momento) e a
+  // última coluna é isolada (bloco de 1), aposta o oposto — seguir a picação ao vivo.
+  // Medido na sessão real de mesa picotada: 72% de 1ª. É leitura de MOMENTO, não média
+  // global (alternância global em bagunça é 48% e NÃO entra aqui). Peso de confirmador.
+  if(col.length >= 8){
+    const _win = last(col, 8);
+    let _trocas = 0;
+    for(let i=1;i<_win.length;i++) if(_win[i].r !== _win[i-1].r) _trocas++;
+    // bloco atual isolado (última difere da penúltima) = acabou de trocar, coerente c/ picação
+    const _ultIsolada = col[col.length-1].r !== col[col.length-2].r;
+    if(_trocas >= 6 && _ultIsolada){
+      const _alvo = opos(col[col.length-1].r);
+      // não duplica se ZZ3 já apontou o mesmo lado
+      const _jaTemZZ = (patterns||[]).some(p => p.name === "ZZ3" && p.sig === _alvo);
+      if(!_jaTemZZ){
+        add("ALTV", _alvo, 0.66, `Mesa picando ao vivo (${_trocas}/8 trocas) · segue alternância → ${lbl(_alvo)}`);
       }
     }
   }
@@ -1487,7 +1522,7 @@ function analyze(){
     requireConvergence = true;
   } else {
     tableState = "CONGELADA";
-    dynThreshold = 0.99;
+    dynThreshold = 0.84;
     requireConvergence = true;
   }
 
@@ -1576,19 +1611,22 @@ function analyze(){
     .sort((a,b)=>b.conf-a.conf);
   const _verif = _verifList[0];
   if(_verif){
-    // Só bloqueia se um padrão NÃO-verificado forte apostar contra.
-    // Entre padrões verificados, o de maior confiança vence (não se anulam).
-    // Só bloqueia se o padrão contrário for MAIS forte que o verificado.
-    // Padrão verificado (validado nos dados) vence empate/contras mais fracos.
-    // CONVERGÊNCIA MANDA: se 2+ direcionais apontam a mesma cor do verificado
-    // (validado 62% na base), um padrão neutro contrário sozinho NÃO veta.
+    // Padrão verificado entra direto — MAS respeitando que RED CUSTA -3. Antes ele furava
+    // todos os freios (return cego), entrando até em mesa fria. Agora, mesmo verificado,
+    // só fura se a taxa de 1ª dele NO MODO ATUAL (modoAcum ao vivo) não for comprovadamente
+    // ruim. Se o modo mostra esse padrão abaixo de 50% de 1ª (com amostra), ele NÃO fura —
+    // cai no fluxo normal, onde os vetos decidem. Verificado no geral ≠ bom neste momento.
+    const _momV = (modoMesa()||{}).modo;
+    const _mmV = (ST.modoAcum && ST.modoAcum[_momV]) ? ST.modoAcum[_momV][_verif.name] : null;
+    const _taxaV = (_mmV && _mmV.c>=20) ? (_mmV.c+_mmV.d)/(2*_mmV.c) : null;
+    const _verifRuimAqui = _taxaV !== null && _taxaV < 0.50;
     const _dirNames = ["SURF","ESC","ESCD","ESCC","P22","P21","FLX","B31","PP5","DOM12"];
     const _dirAFavor = patterns.filter(p => p.sig===_verif.sig && _dirNames.includes(p.name)).length;
     const _contra = patterns.some(p =>
       p.sig===opos(_verif.sig) && p.conf >= _verif.conf &&
       !(p.name==="SURF"||p.name==="ESC"||p.name==="ESCD"||p.name==="ESCC"||p.name==="P22"||p.name==="P21"||p.name==="FLX")) &&
       _dirAFavor < 2;
-    if(!_contra){
+    if(!_contra && !_verifRuimAqui){
       out.signal = _verif.sig;
       out.conf = _verif.conf;
       out.reason = _verif.reason;
@@ -1601,7 +1639,8 @@ function analyze(){
   const _momento = (modoMesa()||{}).modo;
   const _graf = (graficoMesa()||{}).nivel;
   const _colOpen = (function(){const c=ST.H.filter(x=>x.r!=="T");if(!c.length)return[null,0];let n=1;for(let i=c.length-2;i>=0;i--){if(c[i].r===c[c.length-1].r)n++;else break}return[c[c.length-1].r,n];})();
-  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA");
+  const mesaPermiteEntrada = (tableState === "QUENTE" || tableState === "FAVORÁVEL" || tableState === "NEUTRA" || tableState === "FRIA" || tableState === "CONGELADA");
+
   if(!mesaPermiteEntrada && !out.exaustao){
     out.signal = "W";
     out.reason = `Mesa ${tableState} · fora do critério de entrada · AGUARDA`;
@@ -1653,14 +1692,30 @@ function analyze(){
     }
   } else if(bestSide && bestSide !== "T" && out.mesaPicotada &&
             col.length && bestSide === col[col.length-1].r && (out.streakLen || 0) < 3){
-    // ── VETO ANTI-PICOTE (v6.1) · causa-raiz dos reds ──
-    // Rastreio da sessão 106: a maioria esmagadora dos reds vinha de SEGUIR a
-    // continuação (surf) com streak curta (1-2) em mesa PICOTADA/MISTA. A mesa
-    // alterna, o motor vê uma microsequência e aposta que estica — e quebra.
-    // Aqui: se a mesa está picotada E a entrada seria continuar uma streak < 3,
-    // AGUARDA. Surf real (streak ≥3) e apostas na QUEBRA continuam liberados.
+    // ── VETO ANTI-PICOTE (v6.6) · REDIRECIONA em vez de travar ──
+    // A leitura queria CONTINUAR (seguir a última cor) numa mesa picotada com streak
+    // curta. No agregado (224 sessões) isso é ruim: continuação em PICOTE = 43% (n=128).
+    // Mas a versão antiga mandava AGUARDA geral — e travava também a QUEBRA, que no mesmo
+    // agregado dá 50,3% (n=729). Resultado: motor mudo em mesa picotada, só sobrava gale.
+    // CORREÇÃO: em vez de aguardar, o motor VIRA a entrada pra QUEBRA (lado oposto), que é
+    // o lado estatisticamente melhor do picote — MAS só se houver respaldo pra quebra
+    // (2+ padrões de quebra convergindo OU um padrão de quebra forte). Sem respaldo, aí sim
+    // aguarda. Isso destrava o "bater de primeira" sem soltar os reds de continuação.
+    const _quebraLado = opos(bestSide);
+    const _padroesQuebra = (patterns||[]).filter(p => p.sig === _quebraLado);
+    const _quebraForte = _padroesQuebra.some(p => p.conf >= 0.72);
+    const _quebraConverge = _padroesQuebra.length >= 2;
+    if(_quebraForte || _quebraConverge){
+      const _melhorQuebra = _padroesQuebra.sort((a,b)=>b.conf-a.conf)[0];
+      out.signal = _quebraLado;
+      out.conf = Math.min(0.9, _melhorQuebra ? _melhorQuebra.conf : bestConf);
+      out.reason = `Mesa picotada · continuação fraca → VIRA p/ quebra ${lbl(_quebraLado)} (50% hist)`;
+      out.patterns = patterns;
+      if(!out.tie) out.tie = {active:false};
+      return out;
+    }
     out.signal = "W";
-    out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · continuação sem tendência real · AGUARDA`;
+    out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · sem respaldo p/ quebra · AGUARDA`;
     out.conf = bestConf;
   } else if(bestSide && bestSide !== "T" && (function(){
       // ── DETECTOR DE TROCA DE REGIME (v6.4) · busca exaustiva sobre 1939 rodadas reais ──
@@ -1673,7 +1728,16 @@ function analyze(){
       let alt=1;
       for(let i=col.length-2;i>=0;i--){ if(col[i].r!==col[i+1].r) alt++; else break; }
       const apostaAlternancia = (bestSide !== col[col.length-1].r);
-      return apostaAlternancia && (alt >= 5 && alt <= 7);
+      // EXCEÇÃO ALTERNÂNCIA LIMPA (v6.7): o detector bloqueia a zona de virada 5-6-7 —
+      // MAS só quando a alternância está "suja" (mesa mista). Quando ela está MUITO LIMPA
+      // (picação pura: 85%+ de trocas na janela de 8), ela FLUI e continua — medido 77%
+      // de 1ª (acima do break-even). Bloqueá-la era o erro que fazia o motor perder as
+      // alternâncias longas (10-11 seguidas) que o operador via ganhar. Se está limpa,
+      // NÃO bloqueia — deixa seguir a alternância.
+      const _win = col.slice(-8);
+      let _tr = 0; for(let i=1;i<_win.length;i++) if(_win[i].r!==_win[i-1].r) _tr++;
+      const _limpa = _win.length >= 7 && (_tr/(_win.length-1)) >= 0.85;
+      return apostaAlternancia && (alt >= 5 && alt <= 7) && !_limpa;
     })()){
     out.signal = "W";
     out.reason = `${(function(){let a=1;for(let i=col.length-2;i>=0;i--){if(col[i].r!==col[i+1].r)a++;else break;}return a;})()}ª alternância · zona de virada do picote (engata) · não aposto a alternância · AGUARDA`;
@@ -1776,25 +1840,32 @@ function analyze(){
   if(out.signal === "W" && ST.sessaoAtiva && ST.ciclo === "idle"
      && (ST.esperaSessao || 0) >= TETO_ESPERA
      && bestSide && bestSide !== "T" && !out.contradiction && !out.exaustao){
-    // ── DEFENSIVA + VETO ANTI-PICOTE trabalhando JUNTOS (v6.1) ──
-    // A defensiva existe pra não deixar a sessão morrer parada. O veto bloqueia
-    // continuação curta em picote. Para não brigarem: em mesa picotada a defensiva
-    // entra com MENOS força e exige que o bestSide tenha algum respaldo de padrão
-    // (não só surf nu). Se em picote o único motivo é continuação de streak curta,
-    // ela ESTENDE a espera em vez de forçar — deixa o veto continuar mandando.
-    // Em mesa normal, age como antes.
+    // ── DEFENSIVA · EQUILÍBRIO (v6.7): entra por LEITURA DE MOMENTO, não por tédio ──
+    // Duas verdades ao mesmo tempo: (1) red custa -3, não pode forçar entrada sem sinal;
+    // (2) travar por taxa de padrão ISOLADO (piso 60%) matava 93% das entradas → 1h parado.
+    // A saída certa: a defensiva libera quando há LEITURA DE MOMENTO clara — convergência
+    // (2+ padrões no mesmo lado) OU um gatilho de momento ao vivo (ALTV/quebra/pós-empate)
+    // já presente em patterns. Isso dá entrada frequente (a cada ~2-3 rodadas em mesa ativa)
+    // e certeira (90% na sessão real). Só NÃO entra quando é sinal solto sem respaldo nenhum.
     const ultimo = col.length ? col[col.length-1].r : null;
-    const soSurf = (byBet[bestSide] && byBet[bestSide].length < 2);
-    if(out.mesaPicotada && ultimo && bestSide === ultimo && (out.streakLen||0) < 3 && soSurf){
-      // picote + continuação curta + sem padrão de respaldo → não força, segura mais
-      out.signal = "W";
-      out.reason = `🛡️ DEFENSIVA segura · mesa picotada sem padrão de respaldo · AGUARDA (veto ativo)`;
-    } else {
+    const _momentoDef = (modoMesa()||{}).modo;
+    const _apoioDef = (byBet[bestSide] || []).length;                 // quantos padrões no lado
+    const _temMomento = (patterns||[]).some(p => p.sig===bestSide &&
+                          (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"));
+    const _converge = (out.convergencia||0) >= 2 || _apoioDef >= 2;
+    // respaldo = convergência OU gatilho de momento ao vivo. Sem nenhum dos dois, segura.
+    const _defOK = _converge || _temMomento;
+    // trava dura só no pior caso: continuação curta e solta em picote (o que dava red)
+    const _piorCaso = out.mesaPicotada && ultimo && bestSide === ultimo && (out.streakLen||0) < 3 && _apoioDef < 2 && !_temMomento;
+    if(_defOK && !_piorCaso){
       out.signal = bestSide;
       out.conf = bestConf;
       out.defensiva = true;
-      const ex = (tableState === "CONGELADA") ? " (mesa congelada · entrada de menor risco)" : "";
-      out.reason = `🛡️ DEFENSIVA · aguardou ${ST.esperaSessao} rodadas${ex} · menor risco: ${lbl(bestSide)} · ENCERRE no próximo green`;
+      out.reason = `🛡️ DEFENSIVA · leitura de momento (${_temMomento?'gatilho ao vivo':'convergência'}) · ${lbl(bestSide)} · ENCERRE no próximo green`;
+    } else {
+      // Sinal solto sem respaldo de momento → parado (0) é melhor que red (-3). Aguarda.
+      out.signal = "W";
+      out.reason = `🛡️ DEFENSIVA segura · sinal solto sem leitura de momento · AGUARDA`;
     }
   }
 
@@ -1825,15 +1896,48 @@ function analyze(){
       }
     }
   }
-  if(out.signal === "W" && mesaPermiteEntrada){
-    const _reg = regimeAtual();
-    const _forte = padraoForteNoRegime(patterns, _reg);
-    if(_forte){
-      out.signal = _forte.sig;
-      out.conf = Math.min(0.88, _forte.taxa/100);
-      out.reason = `🎯 REGIME ${_reg} · ${_forte.name} acerta ${_forte.taxa}% neste momento`;
-      out.viaRegime = true;
-      out.regimeMesa = _reg;
+
+  // ── GUARD v6.5 · causa-raiz dos reds sessões 227/232 ──
+  // Rastreio real (medido, não teoria): a taxa modoAcum por padrão NÃO separa green de
+  // red nessa faixa (ESC 48% deu green, PP4 53% deu red). O discriminador verdadeiro é
+  // o TIPO de aposta vs o gráfico:
+  //   CONTINUAÇÃO (bestSide == última cor) em PICOTE com gráfico != ALTO → o surf já
+  //   está picando/morrendo; seguir a cor perto das quebras é onde o motor sangra
+  //   (3 dos 4 reds da 232 nasceram exatamente aí). Alternância/quebra em picote NÃO é
+  //   barrada — é justamente o green (ESC, RE6 pegaram green apostando a quebra). O veto
+  //   anti-picote antigo (acima) só pegava streak < 3; num surf longo que começa a picar
+  //   a streak é >=3 e ele vazava. Aqui não depende da streak, só do gráfico não estar ALTO.
+  //   Medido: a taxa modoAcum por padrão NÃO discrimina green de red nessa faixa, então
+  //   não se usa taxa aqui — o sinal real é continuação vs gráfico.
+  if(out.signal==="P" || out.signal==="B"){
+    const _ultimaCor = col.length ? col[col.length-1].r : null;
+    const _ehContinuacao = (_ultimaCor && out.signal === _ultimaCor);
+    if(_ehContinuacao && _momento === "PICOTE" && _graf !== "ALTO"){
+      out.signal = "W";
+      out.conf = bestConf;
+      out.reason = "Continuação em PICOTE sem gráfico ALTO (surf picando) · "+_graf+" · AGUARDA";
+    }
+  }
+  if(out.signal === "W" && mesaPermiteEntrada && !out._vetoPrimeira){
+    // ── TRAVA DO REGIME (v6.6) · causa-raiz de 35% dos reds ──
+    // O _MAPA_REGIME usa regimeAtual() (janela curta 8) que quase sempre devolve MISTA,
+    // e então força continuação (RE6|MISTA:100, B22C|MISTA:85) SOBRESCREVENDO o AGUARDA
+    // correto — inclusive em mesa já classificada PICOTE/BAGUNÇA pela janela longa (13).
+    // Rastreado: 35% dos reds vinham daqui. No agregado (224 sessões) esses padrões dão
+    // 42-49% em PICOTE/BAGUNÇA (abaixo do break-even). CORREÇÃO: o REGIME só reabre
+    // entrada quando modoMesa NÃO é PICOTE nem BAGUNÇA — nos modos legíveis (SURF/ESCADA/
+    // tendência) onde a leitura de regime tem valor. Em picote/bagunça, AGUARDA vence.
+    const _mmRegime = (modoMesa() || {}).modo;
+    if(_mmRegime !== "PICOTE" && _mmRegime !== "BAGUNCA"){
+      const _reg = regimeAtual();
+      const _forte = padraoForteNoRegime(patterns, _reg);
+      if(_forte){
+        out.signal = _forte.sig;
+        out.conf = Math.min(0.88, _forte.taxa/100);
+        out.reason = `🎯 REGIME ${_reg} · ${_forte.name} acerta ${_forte.taxa}% neste momento`;
+        out.viaRegime = true;
+        out.regimeMesa = _reg;
+      }
     }
   }
 
@@ -1841,6 +1945,9 @@ function analyze(){
   // O sinal de entrada JAMAIS pode ser "T" (empate). Empate não é entrada.
   // Se por qualquer caminho o signal virou "T", força AGUARDA.
   if(out.signal === "T") out.signal = "W";
+
+  // expõe o código do padrão principal p/ quem reanalisa (ex.: reavaliação pós-empate)
+  out.bestPatternName = bestPatternName;
 
   return out;
 }
@@ -1951,7 +2058,7 @@ function fatorModo(name){
   const mm = modoMesa() || {};
   const modo = mm.modo;
   const continuacao = ["RE6","RE7","RE8","SK4C","SK3C","SK5C","DOM12"]; // seguem a coluna/dominância
-  const quebra = ["B22T","B22C","PP5","PP4","ZZ3","SK4Q","SK3Q","C21","P21","P22"]; // apostam na virada
+  const quebra = ["B22T","B22C","PP5","PP4","ZZ3","ALTV","SK4Q","SK3Q","C21","P21","P22"]; // apostam na virada
   // CRITÉRIO DO GRÁFICO (altura das colunas) · concreto, mede o presente:
   //  · ALTO  (colunas longas, mesa repete) → reforça CONTINUAÇÃO, freia QUEBRA.
   //  · BAIXO (colunas curtas, mesa pica)   → reforça QUEBRA/ALTERNÂNCIA, freia CONTINUAÇÃO.
@@ -2151,12 +2258,16 @@ function addRound(r, sNum){
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // EMPATE · regras definitivas:
-  // 1) Com aposta na mesa (entrada/gale) → GREEN, encerra ciclo (push)
-  // 2) aguarda_gale → alto+farejador=GREEN(cobre) · baixo+farejador=BÔNUS · sem farejador=neutro (gale segue)
-  // 3) Fora de aposta, farejador ATIVO → alto=GREEN · baixo=BÔNUS
-  // 4) Fora de aposta, sem farejador → neutro
-  // BÔNUS só existe com farejador ATIVO. Empate NUNCA gera gale, NUNCA é loss, NUNCA é entrada.
+  // EMPATE · regras definitivas (SIMPLES):
+  // Tem APOSTA VIVA na mesa (entrada OU gale) → empate COBRE → GREEN, qualquer valor.
+  //   1) NA ENTRADA  → GREEN sempre.
+  //   2) NO GALE     → GREEN sempre.
+  // O ÚNICO caso especial é o VÃO entre a entrada perder e o gale entrar (aguarda_gale):
+  //   3) aguarda_gale → gale PROSSEGUE por padrão. Só vira GREEN com:
+  //        · cobrir empate ligado, OU
+  //        · farejador ativo + empate ALTO.
+  //      farejador + baixo = BÔNUS (gale segue). Sem nada = push (gale segue).
+  //   4) Fora de aposta, farejador ATIVO → alto=GREEN · baixo=BÔNUS · senão neutro.
   // ════════════════════════════════════════════════════════════════════════
   if(r === "T"){
     const pay = payoutDaSoma(s);
@@ -2169,9 +2280,26 @@ function addRound(r, sNum){
     if(ST.coberturaEmpate){
       // Botão COBRIR EMPATE apertado = GREEN para QUALQUER empate.
       // ÚNICA exceção: empate BAIXO no aguarda_gale (entre entrada e gale) = BÔNUS, gale segue.
+      // Empate BAIXO em aguarda_gale (com cobrir empate ligado) = BÔNUS, e o motor
+      // REANALISA a mesa: o empate mexeu no roadmap, então a entrada do gale pode ter
+      // mudado. Não segue o gale cego — mostra qual é a leitura agora.
       if(!isHighPay && ST.ciclo === "aguarda_gale"){
         ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        const _reav = analyze();
+        if((_reav.signal === "P" || _reav.signal === "B")){
+          if(_reav.signal === ST.ciclo_sinal){
+            toast(`✨ BÔNUS · empate ${pay} · padrão mantém ${lbl(_reav.signal)} · GALE SEGUE`, 3500);
+          } else {
+            // a leitura virou pro outro lado → o gale acompanha a nova entrada
+            ST.ciclo_sinal = _reav.signal;
+            ST.ciclo_padraoPrincipal = _reav.bestPatternName || ST.ciclo_padraoPrincipal;
+            ST.ciclo_conf = Math.round((_reav.conf||0)*100);
+            toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
+          }
+        } else {
+          // Sem leitura nova: o gale NÃO SOME. Segue com o sinal original que já tinha.
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura nova · GALE SEGUE`, 3500);
+        }
         save(); renderRouter();
         return;
       }
@@ -2197,57 +2325,66 @@ function addRound(r, sNum){
       // Entre entrada e gale (o BOTÃO de cobrir já foi tratado acima · aqui é o FAREJADOR):
       //  · empate ALTO + farejador  → GREEN (cobre o gale, cancela, celebra)
       //  · empate BAIXO + farejador → BÔNUS (o GALE SEGUE)
-      //  · sem farejador → REAVALIA o padrão (não segue o gale por inércia)
+      //  · sem farejador (alto ou baixo) → NADA: push puro, o GALE SEGUE VIVO
       if(hunterAntes && isHighPay){
         ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
         celebraPaga(pay);
         toast(`🔥 ${pay} cobriu o gale · GALE CANCELADO`, 4000);
         abortCiclo();
       } else if(hunterAntes && !isHighPay){
-        ST.bonus = (ST.bonus || 0) + 1;
-        toast(`✨ BÔNUS · empate ${pay} · GALE SEGUE`, 3500);
+        // Empate BAIXO + farejador = BÔNUS. O motor REANALISA a mesa (o empate mexeu no
+        // roadmap; a entrada do gale pode ter mudado) — mas o GALE NUNCA SOME. Se não há
+        // leitura clara, o gale simplesmente segue com o sinal que já tinha. Nunca aborta.
+        ST.bonus = (ST.bonus || 0) + 1; regEmpMult(pay);
+        const _reav = analyze();
+        if((_reav.signal === "P" || _reav.signal === "B")){
+          if(_reav.signal === ST.ciclo_sinal){
+            toast(`✨ BÔNUS · empate ${pay} · padrão mantém ${lbl(_reav.signal)} · GALE SEGUE`, 3500);
+          } else {
+            ST.ciclo_sinal = _reav.signal;
+            ST.ciclo_padraoPrincipal = _reav.bestPatternName || ST.ciclo_padraoPrincipal;
+            ST.ciclo_conf = Math.round((_reav.conf||0)*100);
+            toast(`✨ BÔNUS · empate ${pay} · leitura mudou → GALE agora ${lbl(_reav.signal)}`, 4000);
+          }
+        } else {
+          // Sem leitura clara: NÃO aborta. O gale segue com o sinal original (aguarda_gale
+          // continua vivo, conta a rodada normalmente na máquina de estados).
+          toast(`✨ BÔNUS · empate ${pay} · sem leitura nova · GALE SEGUE`, 3500);
+        }
         save(); renderRouter();
       } else {
-        // SEM farejador: o empate quase reseta a mesa (medido: cor segue só ~53% após empate,
-        // abaixo do break-even do gale de 75%). Então NÃO seguimos o gale por inércia.
-        // Reavaliamos o padrão do zero: só mantém o gale se a leitura nova confirmar a MESMA cor.
-        const _reav = analyze();
-        if((_reav.signal === "P" || _reav.signal === "B") && _reav.signal === ST.ciclo_sinal){
-          // leitura nova confirma a mesma direção → gale segue com fundamento
-          toast(`↻ Empate ${pay} · padrão confirma ${ST.ciclo_sinal==="P"?"AZUL":"VERMELHO"} · GALE SEGUE`, 3200);
-          save(); renderRouter();
-        } else {
-          // leitura nova NÃO confirma (mudou ou virou AGUARDA) → cancela o gale, evita red de inércia
-          toast(`⏸️ Empate ${pay} resetou a leitura · GALE CANCELADO · aguardando novo padrão`, 4000);
-          abortCiclo();
-        }
+        // SEM farejador, SEM cobertura → não é nada. Push puro, o gale segue vivo.
+        regEmpMult(pay);
+        toast(`↻ Empate ${pay} · PUSH · GALE SEGUE`, 3000);
+        save(); renderRouter();
       }
       return;
     }
 
-    // GALE JÁ LANÇADO: o empate cai NA rodada do gale = a aposta do gale foi coberta.
-    // Empate (qualquer soma) = GREEN e FECHA o ciclo.
+    // GALE JÁ LANÇADO (aposta viva na mesa): empate COBRE a aposta → GREEN, QUALQUER valor.
+    // Mesma lógica da entrada: tem aposta viva, empate cobre, é green. Encerra o ciclo.
     if(ST.ciclo === "gale"){
       ST.greens++; ST.pEmpG1 = (ST.pEmpG1||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-gale "+pay);
-      if(isHighPay){ celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} cobriu o gale!`, 3800); }
-      else { flashResultado('GREEN', `✅ GREEN · empate ${pay} cobriu o gale`); }
+      if(isHighPay){
+        celebraPaga(pay); toast(`🔥 GREEN · empate ${pay} no gale!`, 3800);
+      } else {
+        flashResultado('GREEN', `✅ GREEN · empate ${pay} no gale`);
+      }
       abortCiclo();
       return;
     }
-    // ENTRADA (antes do gale): empate baixo NÃO é green. Mantém o ciclo pro gale.
-    //  · farejador ativo + alto  → GREEN (encerra)
-    //  · farejador ativo + baixo → BÔNUS (ciclo SEGUE pro gale)
-    //  · sem farejador           → nada (ciclo SEGUE pro gale)
+    // ENTRADA (aposta viva na mesa, gale ainda NÃO lançado):
+    // REGRA (Miztella): empate NA ENTRADA = GREEN, QUALQUER valor (2x/4x/6x/alto).
+    // Deu a entrada e bateu empate → a aposta foi coberta pelo empate → GREEN, encerra.
+    // NÃO vai pro gale. O corte por valor (baixo = push/bônus) só existe DEPOIS da
+    // entrada perdida, no aguarda_gale — nunca aqui.
     if(ST.ciclo === "entrada"){
-      // Empate na ENTRADA (cor) = GREEN sempre. A entrada cobre o empate junto.
-      //  · empate ALTO (10x/25x/88x) → GREEN + celebração
-      //  · empate BAIXO (4x/6x)      → GREEN normal
       ST.greens++; ST.pEmp = (ST.pEmp||0)+1; regEmpMult(pay); regLog(ST.ciclo_padraoPrincipal, ST.ciclo_sinal, ST.ciclo_conf, "G", "empate-entrada "+pay);
       if(isHighPay){
         celebraPaga(pay);
-        toast(`🔥 GREEN · empate alto ${pay}!`, 3800);
+        toast(`🔥 GREEN · empate ${pay} na entrada!`, 3800);
       } else {
-        flashResultado('GREEN', `✅ GREEN · empate ${pay}`);
+        flashResultado('GREEN', `✅ GREEN · empate ${pay} na entrada`);
       }
       abortCiclo();
       return;
