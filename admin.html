@@ -214,7 +214,7 @@ const DEFAULT_WEIGHTS = {
   // convergência — não substituem nada do que já existe.
   SUMB5: 0.80,   // soma ≤5 → Banker · VALIDADO (robusto em todos os trechos)
   SUMB4: 0.74,   // soma ≤4 → Banker (reforço do SUMB5)
-  POSTIE: 0.66,  // pós-empate → Banker · instável, entra cauteloso (era 0.72)
+  POSTIE: 0.60,  // pós-empate · CONFIRMADOR (49% no agregado, instável): abaixo do min_conf
   SUMP11: 0.64,  // soma ≥11 → Player · fraco/morno, entra cauteloso (era 0.70)
   boost_est: 0.07, boost_hi: 0.05, boost_mp: 0.06, boost_dom: 0.04,
   boost_conv2: 0.06, boost_conv3: 0.10, boost_road_align: 0.05,
@@ -1221,7 +1221,7 @@ function analyze(){
         const b0 = bl.length>=3 ? bl[bl.length-3] : null;
         if(b0 && b0.len===2 && b0.side!==b1.side){
           // ritmo 2-2-... confirmado (b0=2, b1=2) → aposta continuação do bloco atual (b2)
-          add("P22", b2.side, 0.82, `Padrão 2-2 · ${b0.side}2 ${b1.side}2 → ${b2.side} estica`, true);
+          add("P22", b2.side, 0.62, `Padrão 2-2 · ${b0.side}2 ${b1.side}2 → ${b2.side} estica`, true);
           return;
         }
       }
@@ -1233,7 +1233,7 @@ function analyze(){
       const q = bl.slice(-4); // [2,1,2,1] esperado
       if(q[0].len===2 && q[1].len===1 && q[2].len===2 && q[3].len===1){
         // ritmo 2-1 confirmado → próximo bloco começa cor de q[2] (oposta a q[3])
-        add("P21", q[2].side, 0.82, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
+        add("P21", q[2].side, 0.62, `Padrão 2-1-2-1 · ritmo alternado → ${q[2].side}`, true);
         return;
       }
     }
@@ -1659,11 +1659,15 @@ function analyze(){
     //  (b) exaustão de streak: se streak na zona de perigo, não entra por cima.
     const _altLen = (function(){ if(!col.length) return 0; let a=1; for(let i=col.length-2;i>=0;i--){ if(col[i].r!==col[i+1].r) a++; else break; } return a; })();
     const _apostaAlternancia = col.length && bestSide !== col[col.length-1].r;
-    const _zonaViradaPicote = _apostaAlternancia && _altLen >= 5 && _altLen <= 7;
+    // exceção alternância limpa: picação pura (85%+ trocas em 8) flui e continua (77%)
+    const _winC = col.slice(-8);
+    let _trC = 0; for(let i=1;i<_winC.length;i++) if(_winC[i].r!==_winC[i-1].r) _trC++;
+    const _altLimpa = _winC.length >= 7 && (_trC/(_winC.length-1)) >= 0.85;
+    const _zonaViradaPicote = _apostaAlternancia && _altLen >= 5 && _altLen <= 7 && !_altLimpa;
     const _streakPerigo = out.profile && out.streakLen >= out.profile.p90 && out.streakLen >= 4;
     if(!_zonaViradaPicote && !_streakPerigo){
       const _gatilhoVivo = (patterns||[]).some(p => p.sig===bestSide &&
-                            (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="POSTIE"||p.name==="SURF"||p.name==="P22"||p.name==="ESC"));
+                            (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="SURF"||p.name==="P22"||p.name==="ESC"));
       const _converge2 = (out.convergencia||0) >= 2 || (byBet[bestSide]||[]).length >= 2;
       // contradição forte = padrão do lado oposto com conf >= a do melhor sinal
       const _contraForte = (patterns||[]).some(p => p.sig===opos(bestSide) && p.conf >= bestConf);
@@ -1765,7 +1769,16 @@ function analyze(){
       let alt=1;
       for(let i=col.length-2;i>=0;i--){ if(col[i].r!==col[i+1].r) alt++; else break; }
       const apostaAlternancia = (bestSide !== col[col.length-1].r);
-      return apostaAlternancia && (alt >= 5 && alt <= 7);
+      // EXCEÇÃO ALTERNÂNCIA LIMPA (v6.7): o detector bloqueia a zona de virada 5-6-7 —
+      // MAS só quando a alternância está "suja" (mesa mista). Quando ela está MUITO LIMPA
+      // (picação pura: 85%+ de trocas na janela de 8), ela FLUI e continua — medido 77%
+      // de 1ª (acima do break-even). Bloqueá-la era o erro que fazia o motor perder as
+      // alternâncias longas (10-11 seguidas) que o operador via ganhar. Se está limpa,
+      // NÃO bloqueia — deixa seguir a alternância.
+      const _win = col.slice(-8);
+      let _tr = 0; for(let i=1;i<_win.length;i++) if(_win[i].r!==_win[i-1].r) _tr++;
+      const _limpa = _win.length >= 7 && (_tr/(_win.length-1)) >= 0.85;
+      return apostaAlternancia && (alt >= 5 && alt <= 7) && !_limpa;
     })()){
     out.signal = "W";
     out.reason = `${(function(){let a=1;for(let i=col.length-2;i>=0;i--){if(col[i].r!==col[i+1].r)a++;else break;}return a;})()}ª alternância · zona de virada do picote (engata) · não aposto a alternância · AGUARDA`;
@@ -1879,7 +1892,7 @@ function analyze(){
     const _momentoDef = (modoMesa()||{}).modo;
     const _apoioDef = (byBet[bestSide] || []).length;                 // quantos padrões no lado
     const _temMomento = (patterns||[]).some(p => p.sig===bestSide &&
-                          (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"||p.name==="POSTIE"));
+                          (p.name==="ALTV"||p.name==="QBK"||p.name==="ZZ3"));
     const _converge = (out.convergencia||0) >= 2 || _apoioDef >= 2;
     // respaldo = convergência OU gatilho de momento ao vivo. Sem nenhum dos dois, segura.
     const _defOK = _converge || _temMomento;
