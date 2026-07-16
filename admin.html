@@ -197,6 +197,26 @@ let _heatPushTimer = null;
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIG · PESOS APRENDIDOS DA SESSÃO ANTERIOR (rate 84%)
 // ════════════════════════════════════════════════════════════════════════════
+
+const TETO_CONF = 0.92;   // validado leave-one-out nas 7 fitas: red -37%, saldo +10%
+// ── TETO DE CONFIANCA ──────────────────────────────────────────────────
+// MEDIDO nas 7 fitas reais (235 entradas): a confianca do motor e INVERTIDA.
+//   conf 75-79% -> acerta 77% de 1a,  9% red,  +0.64u/entrada
+//   conf 85-89% -> acerta 64% de 1a, 14% red,  +0.44u/entrada
+//   conf 90-94% -> acerta 59% de 1a, 24% red,  +0.06u/entrada
+//   conf 95-99% -> acerta 50% de 1a, 30% red,  -0.20u/entrada  (PERDE dinheiro)
+// Conf inflada = varios padroes empilhando boost = mesa "obvia demais" = red.
+// Red = morte: nao entra na faixa que historicamente so custou unidade.
+function _aplicaTeto(o){
+  if(!o) return o;
+  const T = (ST.__TETO===null) ? null : (ST.__TETO || TETO_CONF);
+  if(T && (o.signal==="P"||o.signal==="B") && o.conf >= T){
+    o.signal = "W";
+    o.reason = `conf ${(o.conf*100).toFixed(0)}% >= teto ${(T*100).toFixed(0)}% · faixa de conf inflada = faixa do red · AGUARDA`;
+  }
+  return o;
+}
+
 const DEFAULT_WEIGHTS = {
   PP5: 0.62, PP4: 0.79,
   B22T: 0.81, B22C: 0.76, B31: 0.75,
@@ -989,7 +1009,7 @@ function analyze(){
   // BLOCO_2x2_TROCA · [A,A,B,B]
   if(c4.length === 4){
     if(c4[0].r === c4[1].r && c4[2].r === c4[3].r && c4[0].r !== c4[2].r){
-      add("B22T", opos(c4[3].r), W.B22T, "Bloco 2×2 troca · próximo par muda", true);
+      add("B22T", c4[3].r, W.B22T, "Bloco 2×2 · o bloco CONTINUA (validado: 1º palpite era invertido, virava gale)", true);
     }
     // BLOCO_2x2_CONT · [X,A,A,?] — par formado, próxima é A novamente? regra: continuar o par
     // Aqui interpreto como últimas 3 = [X,A,A] e prevê A novamente para formar bloco
@@ -1323,7 +1343,17 @@ function analyze(){
       const tetoAlt = ap ? (ap.max || ap.p90 || 7) : 7;
       const zonaQuebraAlt = ap ? Math.max(ap.p75, Math.ceil(tetoAlt*0.7)) : 6;
       const pertoDoTeto = ap && altRun >= zonaQuebraAlt;
-      if(pertoDoTeto){
+      // EXCEÇÃO XADREZ LIMPO · uma alternância que JÁ passou do teto histórico e continua
+      // perfeita (7+ trocas nas últimas 8) é REGIME ESTÁVEL, não exaustão. Seguir a
+      // picação continua ganhando (foi ela que esticou o run). Bloquear aqui era a origem
+      // da "eternidade": o motor sentava 10+ rodadas num xadrez limpo de quase-certeza.
+      let _xadrezLimpo = false;
+      if(col.length >= 8){
+        const _w = last(col,8); let _t=0;
+        for(let i=1;i<_w.length;i++) if(_w[i].r!==_w[i-1].r) _t++;
+        _xadrezLimpo = (_t >= 7);
+      }
+      if(pertoDoTeto && !_xadrezLimpo){
         // xadrez esticado perto do limite histórico → não seguir, alerta de quebra
         out.exaustao = true;
         out.exaustaoMotivo = `Alternância ${altRun} (xadrez) na zona de quebra (hist. quebra ~${zonaQuebraAlt}, máx ${tetoAlt}) · PARAR de seguir`;
@@ -1632,7 +1662,7 @@ function analyze(){
       out.reason = _verif.reason;
       out.patterns = patterns;
       if(!out.tie) out.tie = {active:false};
-      return out;
+      return _aplicaTeto(out);
     }
   }
 
@@ -1712,7 +1742,7 @@ function analyze(){
       out.reason = `Mesa picotada · continuação fraca → VIRA p/ quebra ${lbl(_quebraLado)} (50% hist)`;
       out.patterns = patterns;
       if(!out.tie) out.tie = {active:false};
-      return out;
+      return _aplicaTeto(out);
     }
     out.signal = "W";
     out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · sem respaldo p/ quebra · AGUARDA`;
@@ -1890,9 +1920,22 @@ function analyze(){
     const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][bestPatternName] : null;
     if(_mm && _mm.c >= 20){
       const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
-      if(_taxa < 0.55){
+      // OVERRIDE XADREZ LIMPO · a taxa de PICOTE é a MÉDIA global (~50%, coin-flip). Mas
+      // num xadrez limpo AO VIVO (7+ trocas nas últimas 8) apostando a CONTINUAÇÃO da
+      // alternância (oposto da última cor), o momento é regime forte (~77% medido), não
+      // coin-flip. Nesse caso NÃO barra pela média — era a origem da "eternidade" no xadrez.
+      let _xadrezVivo = false;
+      if(col.length >= 8){
+        const _w = last(col,8); let _t=0;
+        for(let i=1;i<_w.length;i++) if(_w[i].r!==_w[i-1].r) _t++;
+        const _apostaAlternancia = (out.signal === opos(col[col.length-1].r));
+        _xadrezVivo = (_t >= 7) && _apostaAlternancia;
+      }
+      if(_taxa < 0.55 && !_xadrezVivo){
         out.signal = "W";
         out.reason = bestPatternName+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª) · AGUARDA";
+      } else if(_xadrezVivo && _taxa < 0.55){
+        out.reason = `⚡ XADREZ LIMPO ao vivo · segue alternância ${lbl(out.signal)} (regime forte, ignora média PICOTE)`;
       }
     }
   }
@@ -1949,7 +1992,7 @@ function analyze(){
   // expõe o código do padrão principal p/ quem reanalisa (ex.: reavaliação pós-empate)
   out.bestPatternName = bestPatternName;
 
-  return out;
+  return _aplicaTeto(out);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
