@@ -989,7 +989,7 @@ function analyze(){
   // BLOCO_2x2_TROCA · [A,A,B,B]
   if(c4.length === 4){
     if(c4[0].r === c4[1].r && c4[2].r === c4[3].r && c4[0].r !== c4[2].r){
-      add("B22T", c4[3].r, W.B22T, "Bloco 2×2 · o bloco CONTINUA (validado: 1º palpite era invertido, virava gale)", true);
+      add("B22T", opos(c4[3].r), W.B22T, "Bloco 2×2 troca · próximo par muda", true);
     }
     // BLOCO_2x2_CONT · [X,A,A,?] — par formado, próxima é A novamente? regra: continuar o par
     // Aqui interpreto como últimas 3 = [X,A,A] e prevê A novamente para formar bloco
@@ -1323,17 +1323,7 @@ function analyze(){
       const tetoAlt = ap ? (ap.max || ap.p90 || 7) : 7;
       const zonaQuebraAlt = ap ? Math.max(ap.p75, Math.ceil(tetoAlt*0.7)) : 6;
       const pertoDoTeto = ap && altRun >= zonaQuebraAlt;
-      // EXCEÇÃO XADREZ LIMPO · uma alternância que JÁ passou do teto histórico e continua
-      // perfeita (7+ trocas nas últimas 8) é REGIME ESTÁVEL, não exaustão. Seguir a
-      // picação continua ganhando (foi ela que esticou o run). Bloquear aqui era a origem
-      // da "eternidade": o motor sentava 10+ rodadas num xadrez limpo de quase-certeza.
-      let _xadrezLimpo = false;
-      if(col.length >= 8){
-        const _w = last(col,8); let _t=0;
-        for(let i=1;i<_w.length;i++) if(_w[i].r!==_w[i-1].r) _t++;
-        _xadrezLimpo = (_t >= 7);
-      }
-      if(pertoDoTeto && !_xadrezLimpo){
+      if(pertoDoTeto){
         // xadrez esticado perto do limite histórico → não seguir, alerta de quebra
         out.exaustao = true;
         out.exaustaoMotivo = `Alternância ${altRun} (xadrez) na zona de quebra (hist. quebra ~${zonaQuebraAlt}, máx ${tetoAlt}) · PARAR de seguir`;
@@ -1900,22 +1890,9 @@ function analyze(){
     const _mm = (ST.modoAcum && ST.modoAcum[_momento]) ? ST.modoAcum[_momento][bestPatternName] : null;
     if(_mm && _mm.c >= 20){
       const _taxa = (_mm.c + _mm.d) / (2 * _mm.c); // acerto de 1ª nesse momento (0..1)
-      // OVERRIDE XADREZ LIMPO · a taxa de PICOTE é a MÉDIA global (~50%, coin-flip). Mas
-      // num xadrez limpo AO VIVO (7+ trocas nas últimas 8) apostando a CONTINUAÇÃO da
-      // alternância (oposto da última cor), o momento é regime forte (~77% medido), não
-      // coin-flip. Nesse caso NÃO barra pela média — era a origem da "eternidade" no xadrez.
-      let _xadrezVivo = false;
-      if(col.length >= 8){
-        const _w = last(col,8); let _t=0;
-        for(let i=1;i<_w.length;i++) if(_w[i].r!==_w[i-1].r) _t++;
-        const _apostaAlternancia = (out.signal === opos(col[col.length-1].r));
-        _xadrezVivo = (_t >= 7) && _apostaAlternancia;
-      }
-      if(_taxa < 0.55 && !_xadrezVivo){
+      if(_taxa < 0.55){
         out.signal = "W";
         out.reason = bestPatternName+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª) · AGUARDA";
-      } else if(_xadrezVivo && _taxa < 0.55){
-        out.reason = `⚡ XADREZ LIMPO ao vivo · segue alternância ${lbl(out.signal)} (regime forte, ignora média PICOTE)`;
       }
     }
   }
