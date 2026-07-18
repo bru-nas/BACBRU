@@ -199,7 +199,7 @@ let _heatPushTimer = null;
 // ════════════════════════════════════════════════════════════════════════════
 
 
-const ZM_LO = 1.5, ZM_HI = 1.9;   // validado leave-one-out em 11 fitas: red -32%, green1a +2
+const ZM_LO = 1.5, ZM_HI = 1.7;   // faixa aberta [1.5,1.7) COM veto gale-sujo ligado. A/B 13 fitas: 337 entradas (vs 300), red 36 (vs 43 do original), saldo 193 (vs 158). Faixa mais aberta corta espera; o veto abaixo segura o red. Melhor combinacao testada. Dial: ST.__ZM_HI ao vivo.
 // ── ZONA MORTA · mesa sem padrao definido ──────────────────────────────
 // MEDIDO em 328 entradas reais (perfil das 12 rodadas ANTES de cada entrada):
 //   streak medio < 1.5  (xadrez limpo)   -> red  8%    terreno BOM
@@ -223,6 +223,25 @@ function _zonaMorta(o){
   if(med >= LO && med <= HI){
     o.signal = "W";
     o.reason = `mesa sem padrao definido (streak medio ${med.toFixed(2)}) · zona de 3x mais red · AGUARDA a mesa definir`;
+  }
+  return o;
+}
+
+// ── VETO GALE-SUJO · perfis de leitura que dao red alto ─────────────────
+// MEDIDO em 441 entradas reais (13 fitas). Certos perfis o motor "acha" que
+// tem sinal mas erra muito: modo 3-1 (red 40%) e SURF com confianca <92% (red
+// 35%). Sao entradas de valor esperado NEGATIVO (red -3 domina). Barrar =
+// red 43->32 (-26%) E saldo 158->172 (+9%), leave-one-out melhora 6/13 fitas,
+// piora 3. Empurra a fronteira (nao e gangorra). Dial ao vivo: ST.__VG=false.
+function _vetoGale(o){
+  if(!o || (o.signal!=="P" && o.signal!=="B")) return o;
+  if(ST.__VG === false) return o;
+  const modo = (modoMesa()||{}).modo;
+  const conf = Math.round((o.conf||0)*100);
+  const barra = (modo==="3-1") || (modo==="SURF" && conf<92);
+  if(barra){
+    o.signal = "W";
+    o.reason = `veto gale-sujo · modo ${modo}${modo==="SURF"?` conf ${conf}%`:""} · perfil de red alto neste momento · AGUARDA`;
   }
   return o;
 }
@@ -1672,7 +1691,7 @@ function analyze(){
       out.reason = _verif.reason;
       out.patterns = patterns;
       if(!out.tie) out.tie = {active:false};
-      return _zonaMorta(out);
+      return _vetoGale(_zonaMorta(out));
     }
   }
 
@@ -1752,7 +1771,7 @@ function analyze(){
       out.reason = `Mesa picotada · continuação fraca → VIRA p/ quebra ${lbl(_quebraLado)} (50% hist)`;
       out.patterns = patterns;
       if(!out.tie) out.tie = {active:false};
-      return _zonaMorta(out);
+      return _vetoGale(_zonaMorta(out));
     }
     out.signal = "W";
     out.reason = `Mesa picotada + streak curta (${out.streakLen||0}) · sem respaldo p/ quebra · AGUARDA`;
@@ -2002,7 +2021,7 @@ function analyze(){
   // expõe o código do padrão principal p/ quem reanalisa (ex.: reavaliação pós-empate)
   out.bestPatternName = bestPatternName;
 
-  return _zonaMorta(out);
+  return _vetoGale(_zonaMorta(out));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
