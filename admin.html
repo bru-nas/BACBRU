@@ -1960,7 +1960,10 @@ function analyze(){
         const _apostaAlternancia = (out.signal === opos(col[col.length-1].r));
         _xadrezVivo = (_t >= 7) && _apostaAlternancia;
       }
-      if(_taxa < 0.55 && !_xadrezVivo){
+      // SOLTO por padrao (leave-one-out 13/13: entradas 338->606, saldo 194->386, taxa red 11%->9%).
+      // O veto barrava por taxa<55% de 1a supondo red alto, mas o gale cobria (red real 9-12%).
+      // So enrolava. Religa o veto antigo com ST.__manterFraco=true.
+      if(_taxa < 0.55 && !_xadrezVivo && ST.__manterFraco===true){
         out.signal = "W";
         out.reason = bestPatternName+" fraco em "+_momento+" ("+(_taxa*100).toFixed(0)+"% de 1ª) · AGUARDA";
       } else if(_xadrezVivo && _taxa < 0.55){
