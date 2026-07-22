@@ -1382,7 +1382,10 @@ function analyze(){
         for(let i=1;i<_w.length;i++) if(_w[i].r!==_w[i-1].r) _t++;
         _xadrezLimpo = (_t >= 7);
       }
-      if(pertoDoTeto && !_xadrezLimpo){
+      // SOLTO por padrao (A/B 13 fitas: +32 entradas das quais 75% batem de 1a,
+      // red +3 apenas, saldo +20, LOO melhora 9/13 piora 1). O teto historico barrava
+      // xadrez bom junto com o ruim. Religa o veto antigo com ST.__manterAlt=true.
+      if(pertoDoTeto && !_xadrezLimpo && ST.__manterAlt===true){
         // xadrez esticado perto do limite histórico → não seguir, alerta de quebra
         out.exaustao = true;
         out.exaustaoMotivo = `Alternância ${altRun} (xadrez) na zona de quebra (hist. quebra ~${zonaQuebraAlt}, máx ${tetoAlt}) · PARAR de seguir`;
