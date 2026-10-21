@@ -107,12 +107,6 @@ button:active{transform:scale(.97)}
 .cell-r{width:12px;height:12px;border-radius:50%;border:2px solid var(--red2)}
 .cell-b{width:12px;height:12px;border-radius:50%;border:2px solid var(--blue2)}
 .cell-empty{width:12px;height:12px}
-/* BEAD ROAD NUMÉRICO */
-.bead-grid{display:grid;grid-template-rows:repeat(6,22px);grid-auto-flow:column;grid-auto-columns:22px;gap:2px;min-width:max-content}
-.bead{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;font-weight:800;font-family:var(--mono);color:#fff;flex:0 0 auto}
-.bead.p{background:radial-gradient(circle at 30% 30%,#60a5fa,#1e40af)}
-.bead.b{background:radial-gradient(circle at 30% 30%,#f87171,#991b1b)}
-.bead.t{background:radial-gradient(circle at 30% 30%,#fcd34d,#92400e)}
 /* PATTERNS BREAKDOWN */
 .pat-list{display:grid;gap:6px}
 .pat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:rgba(0,0,0,.3);border-radius:8px;border-left:3px solid var(--txt4)}
@@ -150,6 +144,7 @@ button:active{transform:scale(.97)}
 .util-btn{padding:11px 0;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:9px;color:var(--txt3);font-family:var(--mono);font-size:11px;letter-spacing:2px;cursor:pointer}
 .util-btn:active{transform:scale(.97)}
 .credit{text-align:center;font-size:9px;color:#0a1828;letter-spacing:4px;margin-top:14px;font-family:var(--mono)}
+.tg-link{display:block;width:max-content;max-width:100%;margin:12px auto 4px;padding:10px 18px;border-radius:12px;border:1px solid rgba(34,211,238,.4);background:rgba(34,211,238,.08);color:var(--cyan);font-family:var(--mono);font-size:12px;font-weight:800;letter-spacing:1px;text-decoration:none;text-align:center}
 /* CONVERGENCE BADGE */
 .conv-badge{display:inline-block;padding:3px 8px;background:linear-gradient(135deg,rgba(167,139,250,.15),rgba(34,211,238,.15));border:1px solid rgba(167,139,250,.3);border-radius:6px;font-size:9px;color:var(--purple);font-family:var(--mono);letter-spacing:1px;margin-left:6px}
 /* ENTRY ACTION */
@@ -223,7 +218,7 @@ function genKey(tipo){
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let k = "";
   for(let i=0;i<6;i++) k += chars[Math.floor(Math.random()*chars.length)];
-  const prefix = tipo === "vitalicia" ? "BRU-V-" : tipo === "teste" ? "BRU-T-" : "BRU-M-";
+  const prefix = tipo === "vitalicia" ? "BRU-V-" : "BRU-M-";
   return prefix + k;
 }
 function diasRestantes(rec){
@@ -381,7 +376,7 @@ function checkAuth(){
     const jaEraApp = AUTH.view==="app";
     if(AUTH.view==="loading"||AUTH.view==="lock")AUTH.view="app";
     const rec=AUTH.keys[AUTH.key];
-    if(!AUTH.nome){AUTH.nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.nome!=="Teste 3 dias")?rec.nome:"";if(AUTH.nome)localStorage.setItem("bacbru_nome",AUTH.nome);}
+    if(!AUTH.nome){AUTH.nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.tipo!=="teste")?rec.nome:"";if(AUTH.nome)localStorage.setItem("bacbru_nome",AUTH.nome);}
     // Registrar entrada no Firebase (só na primeira vez que entra)
     if(!jaEraApp){
       const devId=getDeviceId();
@@ -479,16 +474,10 @@ function renderLock(){
       <button class="btn btn-p" style="width:100%" onclick="window.entrar()">▶ ENTRAR</button>
       <div style="font-size:11px;font-family:var(--mono);text-align:center;color:var(--red2);margin-top:8px;min-height:16px">${AUTH.msg||""}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;width:100%;margin:14px 0 4px;padding:0 4px">
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <div style="font-size:9px;color:var(--txt3);font-family:var(--mono);letter-spacing:2px">OU</div>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-    </div>
-    <button onclick="window.iniciarTeste()" style="width:100%;padding:14px;background:linear-gradient(135deg,rgba(167,139,250,.12),rgba(245,158,11,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--purple);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:2px;cursor:pointer">🎁 TESTAR GRÁTIS · 3 DIAS</button>
-    <div style="margin-top:6px;font-size:9px;color:var(--txt3);font-family:var(--mono);text-align:center">acesso completo por 3 dias · 1 por dispositivo</div>
 
     ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
 
+    <a class="tg-link" href="https://t.me/+gu_0KITqBVM0MmQx" target="_blank" rel="noopener noreferrer">✈️ ENTRAR NO GRUPO DO TELEGRAM</a>
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>`;
 }
@@ -532,16 +521,6 @@ function renderApp(){
   }
   const total=ST.greens+ST.reds;
   const rate=total>0?Math.round(100*ST.greens/total):0;
-
-  // bead road
-  const beadCells=[];
-  const beadH=ST.H.slice(-90);
-  const colCount=Math.ceil(beadH.length/6);
-  for(let c=0;c<colCount;c++)for(let r=0;r<6;r++){
-    const idx=c*6+r;
-    if(idx<beadH.length){const x=beadH[idx];beadCells.push(`<div class="bead ${x.r.toLowerCase()}">${x.s||""}</div>`);}
-    else beadCells.push(`<div></div>`);
-  }
 
   // roads
   const big=bigRoad(ST.H);
@@ -654,10 +633,10 @@ function renderApp(){
         <div class="tie-pays" style="margin-top:10px">${tiePays}</div>
       </div>`:"";
 
-  // período de teste
+  // prazo do acesso
   const rec=AUTH.key&&AUTH.keys[AUTH.key];
   const dias=diasRestantes(rec);
-  const testeHtml=(dias!==null)?`<div style="margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(245,158,11,.05));border:1px solid rgba(167,139,250,.25);border-radius:10px;text-align:center;font-size:11px;color:var(--purple);font-family:var(--mono)">🎁 Período de teste · <strong>${dias} dia(s)</strong> restante(s) · assine para continuar</div>`:"";
+  const prazoHtml=(dias!==null)?`<div style="margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(245,158,11,.05));border:1px solid rgba(167,139,250,.25);border-radius:10px;text-align:center;font-size:11px;color:var(--purple);font-family:var(--mono)">🎁 Seu acesso: <strong>${dias} dia(s)</strong> restante(s)</div>`:"";
 
   // meta aviso
   const avisoHtml=ST.metaAviso?`<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.15),rgba(34,211,238,.06)":"rgba(239,68,68,.12),rgba(245,158,11,.05)"});border:2px solid ${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.4)":"rgba(239,68,68,.4)"}">
@@ -699,7 +678,7 @@ function renderApp(){
     ${AUTH.nome?`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan);letter-spacing:.5px">Bem-vind${/^(brunas|bruna|fernanda|miztella)$/i.test(AUTH.nome.trim())?'a':'o'}, ${AUTH.nome}!</span><div style="font-size:10px;color:var(--txt3);margin-top:2px;letter-spacing:1px">BOA SESSÃO · OPERE COM DISCIPLINA</div></div>`:`<div style="text-align:center;padding:6px 12px 4px;font-family:var(--mono)"><span style="font-size:15px;font-weight:800;color:var(--cyan)">Bem-vindo!</span></div>`}
     ${ST.coberturaEmpate?`<div style="margin-bottom:10px;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:12px;text-align:center;font-family:var(--mono);font-weight:800;font-size:14px;color:#1a1a1a;letter-spacing:1px;box-shadow:0 2px 12px rgba(245,158,11,.4)">🛡️ COBRIR EMPATE</div>`:""}
     ${avisoHtml}
-    ${testeHtml}
+    ${prazoHtml}
     <div class="card stats-bar" style="padding:16px 12px">
       <div class="stat"><div class="stat-v g" style="font-size:26px">${ST.greens}</div><div class="stat-l">GREEN</div></div>
       <div class="stat"><div class="stat-v r" style="font-size:26px">${ST.reds}</div><div class="stat-l">RED</div></div>
@@ -720,10 +699,9 @@ function renderApp(){
     
     ${signalCardHtml}
     ${hunterHtml}
-    <div class="sec-lbl">BEAD ROAD · NUMÉRICO · ${ST.H.length} RODADAS</div>
-    <div class="card road"><div class="bead-grid">${beadCells.join("")}</div></div>
     ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
     ${logEntradasHtml()}
+    <a class="tg-link" href="https://t.me/+gu_0KITqBVM0MmQx" target="_blank" rel="noopener noreferrer">✈️ ENTRAR NO GRUPO DO TELEGRAM</a>
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>
   ${ST.toast?`<div class="toast-bar">${ST.toast}</div>`:""}`;
@@ -751,27 +729,13 @@ window.entrar=function(){
       db.ref("keys/"+k+"/deviceId").set(devId);
     }
     AUTH.key=k;
-    const nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.nome!=="Teste 3 dias")?rec.nome:"";
+    const nome=(rec&&rec.nome&&rec.nome!=="sem nome"&&rec.tipo!=="teste")?rec.nome:"";
     AUTH.nome=nome;if(nome)localStorage.setItem("bacbru_nome",nome);
     localStorage.setItem("bacbru_key",k);
     AUTH.msg="";AUTH.view="app";render();
   }else if(rec&&!keyIsValid(rec)){AUTH.msg="Chave expirada ou desativada.";}
   else{AUTH.msg="Chave inválida.";}
   render();
-};
-
-// teste grátis IDÊNTICO ao admin
-window.iniciarTeste=function(){
-  const devId=getDeviceId();
-  db.ref("trials/"+devId).once("value").then(snap=>{
-    if(snap.val()){AUTH.msg="Teste grátis já utilizado neste dispositivo";render();return;}
-    const k=genKey("teste");
-    const rec={ativo:true,tipo:"teste",nome:"Teste 3 dias",criadoEm:Date.now(),expiraEm:Date.now()+3*24*60*60*1000};
-    db.ref("keys/"+k).set(rec);
-    db.ref("trials/"+devId).set({key:k,criadoEm:Date.now()});
-    AUTH.key=k;localStorage.setItem("bacbru_key",k);
-    AUTH.msg="";AUTH.view="app";render();
-  }).catch(()=>{AUTH.msg="Erro ao iniciar teste · tente novamente";render();});
 };
 
 const savedKey=localStorage.getItem("bacbru_key");
