@@ -188,7 +188,7 @@ const AUTH={view:"loading",key:"",keys:{},config:{},msg:"",keyInput:"",nome:""};
 /* ===== MODO DE SESSÃO — controlado pelo admin (FREE / VIP) ===== */
 // FREE = app abre sem chave;  VIP = exige chave válida.
 // Padrão VIP por segurança caso o config ainda não tenha o campo.
-function modoSessao(){ const m=(AUTH.configOk ? AUTH.config.modoSessao : (AUTH.roomModo||AUTH.config.modoSessao)); return m==="FREE" ? "FREE" : "VIP"; }
+function modoSessao(){ const m=(AUTH.configOk ? AUTH.config.modoSessao : (AUTH.roomModo||AUTH.config.modoSessao)); return String(m||"").trim().toUpperCase()==="FREE" ? "FREE" : "VIP"; }
 function sessaoFree(){ return modoSessao()==="FREE"; }
 /* =============================================================== */
 const ST={
@@ -293,12 +293,15 @@ function initSync(){
     AUTH.config.admins=c.admins||{};
     AUTH.config.sessoes=c.sessoes||[];
     AUTH.config.modoSessao=c.modoSessao||"VIP";
+    AUTH.rawModo=JSON.stringify(c.modoSessao===undefined?null:c.modoSessao);
     AUTH.configOk=true;
     checkAuth();
-  },()=>{AUTH.configOk=false;checkAuth();});
+  },(e)=>{AUTH.configOk=false;AUTH.errCfg=String(e&&e.code||e);checkAuth();});
   db.ref("config/modoSessao").on("value",s=>{
     const v=s.val();
-    if(v){AUTH.config.modoSessao=v;AUTH.configOk=true;checkAuth();}
+    AUTH.rawModo2=JSON.stringify(v===undefined?null:v);
+    if(v){AUTH.config.modoSessao=v;AUTH.configOk=true;}
+    checkAuth();
   },()=>{});
   db.ref("keys").on("value",s=>{
     AUTH.keys=s.val()||{};
@@ -484,6 +487,7 @@ function renderLock(){
     ${AUTH.config&&AUTH.config.sessoes&&AUTH.config.sessoes.length?`<div class="sec-lbl" style="margin-top:14px;font-size:11px">🕐 PRÓXIMAS LIVES</div><div class="card" style="padding:18px"><div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">${AUTH.config.sessoes.map(t=>`<div style="padding:16px 26px;background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(34,197,94,.08));border:1px solid rgba(34,211,238,.4);border-radius:16px;font-family:var(--mono);font-size:24px;font-weight:900;color:var(--cyan);letter-spacing:2px">🕐 ${t}</div>`).join("")}</div><div style="margin-top:14px;text-align:center;font-size:13px;color:var(--txt2);font-family:var(--mono);line-height:1.7">Avisamos com <strong style="color:var(--txt)">30 minutos de antecedência</strong>.<br/>A sessão só inicia quando a mesa estiver em <strong style="color:var(--txt)">bom momento</strong>.</div></div>`:''}
 
     <a class="tg-link" href="https://t.me/+gu_0KITqBVM0MmQx" target="_blank" rel="noopener noreferrer">✈️ ENTRAR NO GRUPO DO TELEGRAM</a>
+    <div class="credit" style="opacity:.9;color:#7dd3fc;text-transform:none;letter-spacing:0">v12.6 · modo lido: ${AUTH.rawModo||"?"} / ${AUTH.rawModo2||"?"} · sala: ${AUTH.roomModo||"?"} · erro: ${AUTH.errCfg||"nenhum"}</div>
     <div class="credit">BAC BRU · v12.5 · +18 · JOGUE COM RESPONSABILIDADE</div>
   </div>`;
 }
