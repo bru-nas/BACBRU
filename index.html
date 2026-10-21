@@ -188,8 +188,20 @@ const AUTH={view:"loading",key:"",keys:{},config:{},msg:"",keyInput:"",nome:""};
 /* ===== MODO DE SESSÃO — controlado pelo admin (FREE / VIP) ===== */
 // FREE = app abre sem chave;  VIP = exige chave válida.
 // Padrão VIP por segurança caso o config ainda não tenha o campo.
-function modoSessao(){ const m=(AUTH.configOk ? AUTH.config.modoSessao : (AUTH.roomModo||AUTH.config.modoSessao)); return String(m||"").trim().toUpperCase()==="FREE" ? "FREE" : "VIP"; }
-function sessaoFree(){ return modoSessao()==="FREE"; }
+function modoSessao(){ const m=(AUTH.configOk ? AUTH.config.modoSessao : (AUTH.roomModo||AUTH.config.modoSessao)); const u=String(m||"").trim().toUpperCase(); return (u==="FREE"||u==="PROMO") ? u : "VIP"; }
+function sessaoFree(){ const m=modoSessao(); return m==="FREE"||m==="PROMO"; }   // acesso aberto, sem chave
+function sessaoPromo(){ return modoSessao()==="PROMO"; }                         // promocional: 1h, sem meta/stop
+function promoRestante(){ const ini=Number(AUTH.promoInicio)||0; if(!ini) return null; return ini+3600000-Date.now(); }
+function promoTxt(){ const r=promoRestante(); if(r===null) return "1h"; if(r<=0) return "1h completa"; const m=Math.floor(r/60000), s=Math.floor(r%60000/1000); return m+":"+String(s).padStart(2,"0")+" restantes"; }
+setInterval(()=>{ const el=document.getElementById("promoTimer"); if(el) el.textContent=promoTxt(); },1000);
+/* presença: quem está com o app aberto avisa o admin a cada 30s */
+let _presOn=false;
+function presencaIniciar(){
+  if(_presOn) return; _presOn=true;
+  const bater=()=>{ if(AUTH.view!=="app") return; try{ const ref=db.ref("entradas/"+getDeviceId()); ref.update({vistoEm:Date.now()}); ref.child("vistoEm").onDisconnect().set(0); }catch(e){} };
+  bater(); setInterval(bater,30000);
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) bater(); });
+}
 /* =============================================================== */
 const ST={
   H:[],greens:0,reds:0,bonus:0,
@@ -293,6 +305,7 @@ function initSync(){
     AUTH.config.admins=c.admins||{};
     AUTH.config.sessoes=c.sessoes||[];
     AUTH.config.modoSessao=c.modoSessao||"VIP";
+    if(c.promoInicio) AUTH.promoInicio=c.promoInicio;
     AUTH.rawModo=JSON.stringify(c.modoSessao===undefined?null:c.modoSessao);
     AUTH.configOk=true;
     checkAuth();
@@ -314,6 +327,7 @@ function initSync(){
     const data=snap.val();
     if(!data)return;
     if(data.modoSessao){AUTH.roomModo=data.modoSessao;checkAuth();}
+    if(data.promoInicio) AUTH.promoInicio=data.promoInicio;
     if(Array.isArray(data.H))ST.H=data.H;
     if(typeof data.greens==="number")ST.greens=data.greens;
     if(typeof data.reds==="number")ST.reds=data.reds;
@@ -365,11 +379,13 @@ function checkAuth(){
       const devId=getDeviceId();
       db.ref("entradas/"+devId).set({
         nome: AUTH.nome||"Visitante",
-        chave: "FREE",
-        tipo: "free",
-        entradaEm: Date.now()
+        chave: sessaoPromo()?"PROMO":"FREE",
+        tipo: sessaoPromo()?"promo":"free",
+        entradaEm: Date.now(),
+        vistoEm: Date.now()
       });
     }
+    presencaIniciar();
     render();return;
   }
   AUTH.promo=false;
@@ -393,9 +409,11 @@ function checkAuth(){
         nome: AUTH.nome||"sem nome",
         chave: AUTH.key,
         tipo: rec&&rec.tipo||"desconhecido",
-        entradaEm: Date.now()
+        entradaEm: Date.now(),
+        vistoEm: Date.now()
       });
     }
+    presencaIniciar();
   }else if(AUTH.view==="app")AUTH.view="lock";
   if(AUTH.view==="loading")AUTH.view="lock";
   render();
@@ -404,6 +422,7 @@ function checkAuth(){
 window.fecharAviso=function(){ST.avisoVisto=true;localStorage.setItem('bacbru_aviso','1');render();};
 
 function avisoSessaoHTML(){
+  if(sessaoPromo()) return '';
   if(!ST.metaAviso || ST.metaAvisoVisto) return '';
   const meta = ST.metaAviso.tipo === 'meta';
   const opcional = ST.metaAviso.tipo === 'opcional';
@@ -649,7 +668,7 @@ function renderApp(){
   const prazoHtml=(dias!==null)?`<div style="margin-bottom:10px;padding:9px 12px;background:linear-gradient(135deg,rgba(167,139,250,.1),rgba(245,158,11,.05));border:1px solid rgba(167,139,250,.25);border-radius:10px;text-align:center;font-size:11px;color:var(--purple);font-family:var(--mono)">🎁 Seu acesso: <strong>${dias} dia(s)</strong> restante(s)</div>`:"";
 
   // meta aviso
-  const avisoHtml=ST.metaAviso?`<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.15),rgba(34,211,238,.06)":"rgba(239,68,68,.12),rgba(245,158,11,.05)"});border:2px solid ${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.4)":"rgba(239,68,68,.4)"}">
+  const avisoHtml=(ST.metaAviso&&!sessaoPromo())?`<div class="card" style="padding:16px;margin-bottom:10px;text-align:center;background:linear-gradient(135deg,${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.15),rgba(34,211,238,.06)":"rgba(239,68,68,.12),rgba(245,158,11,.05)"});border:2px solid ${ST.metaAviso.tipo==="meta"?"rgba(34,197,94,.4)":"rgba(239,68,68,.4)"}">
     <div style="font-size:17px;font-weight:900;font-family:var(--mono);color:${ST.metaAviso.tipo==="meta"?"var(--green2)":"var(--red2)"};line-height:1.4">${ST.metaAviso.msg}</div>
     <div style="margin-top:8px;font-size:11px;color:var(--txt2);font-family:var(--mono)">Aguarde a próxima sessão ao vivo.</div>
   </div>`:"";
@@ -678,7 +697,7 @@ function renderApp(){
     <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 2px 8px">
       <div style="display:flex;align-items:center;gap:8px">
         <div style="font-size:9px;font-family:var(--mono);color:var(--txt3);letter-spacing:2px">SINAL AO VIVO</div>
-        <span style="font-size:9px;font-weight:900;font-family:var(--mono);letter-spacing:1px;padding:2px 8px;border-radius:6px;${sessaoFree()?"color:var(--green2);background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4)":"color:var(--gold2);background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4)"}">${sessaoFree()?"● SESSÃO GRÁTIS":"★ SESSÃO VIP"}</span>
+        <span style="font-size:9px;font-weight:900;font-family:var(--mono);letter-spacing:1px;padding:2px 8px;border-radius:6px;${sessaoFree()?"color:var(--green2);background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4)":"color:var(--gold2);background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4)"}">${sessaoPromo()?'🎁 SESSÃO PROMOCIONAL · <span id="promoTimer">'+promoTxt()+'</span>':sessaoFree()?"● SESSÃO GRÁTIS":"★ SESSÃO VIP"}</span>
       </div>
       <div style="display:flex;align-items:center;gap:5px;font-size:9px;font-family:var(--mono);color:${SYNC_STATUS==="LIVE"?"var(--green2)":SYNC_STATUS==="CONNECTING"?"var(--gold2)":"var(--red2)"}">
         <span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>
@@ -695,7 +714,10 @@ function renderApp(){
       <div class="stat"><div class="stat-v" style="color:var(--gold2);font-size:26px">${(ST.pEmp||0)+(ST.pEmpG1||0)}</div><div class="stat-l">EMPATE</div></div>
       <div class="stat" style="flex:1.2"><div class="stat-v y" style="font-size:30px">${rate}%</div><div class="stat-l">RATE</div></div>
     </div>
-    <div class="card" style="padding:12px;margin-bottom:10px">
+    ${sessaoPromo()?`<div class="card" style="padding:12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">💰 GREEN LÍQUIDO DA SESSÃO</div>
+      <div style="font-size:20px;font-family:var(--mono);font-weight:900;color:${(ST.greens-ST.reds*3)>0?"var(--green2)":(ST.greens-ST.reds*3)<0?"var(--red2)":"var(--txt)"}">${(ST.greens-ST.reds*3)>0?"+":""}${ST.greens-ST.reds*3}</div>
+    </div>`:`<div class="card" style="padding:12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
         <div style="font-size:11px;font-family:var(--mono);color:var(--txt2);letter-spacing:1px">🎯 META DA SESSÃO · 5 LÍQUIDOS</div>
         <div style="font-size:13px;font-family:var(--mono);font-weight:800;color:${(ST.greens-ST.reds*3)>=5?"var(--green2)":(ST.greens-ST.reds*3)<0?"var(--red2)":"var(--txt)"}">${(ST.greens-ST.reds*3)>=0?"+":""}${ST.greens-ST.reds*3}</div>
@@ -704,7 +726,7 @@ function renderApp(){
         ${[1,2,3,4,5].map(n=>`<div style="flex:1;background:${(ST.greens-ST.reds*3)>=n?"var(--green2)":"rgba(148,163,184,.15)"};border-radius:2px"></div>`).join("")}
       </div>
       <div style="margin-top:6px;font-size:9px;font-family:var(--mono);color:var(--txt3)">cada red consome 3 greens · 2 loss encerram · empate alto=green, baixo=bônus</div>
-    </div>
+    </div>`}
     ${heatHtml}
     
     ${signalCardHtml}
