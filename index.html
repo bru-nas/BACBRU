@@ -188,7 +188,7 @@ const AUTH={view:"loading",key:"",keys:{},config:{},msg:"",keyInput:"",nome:""};
 /* ===== MODO DE SESSÃO — controlado pelo admin (FREE / VIP) ===== */
 // FREE = app abre sem chave;  VIP = exige chave válida.
 // Padrão VIP por segurança caso o config ainda não tenha o campo.
-function modoSessao(){ return (AUTH.config && AUTH.config.modoSessao==="FREE") ? "FREE" : "VIP"; }
+function modoSessao(){ const m=(AUTH.configOk ? AUTH.config.modoSessao : (AUTH.roomModo||AUTH.config.modoSessao)); return m==="FREE" ? "FREE" : "VIP"; }
 function sessaoFree(){ return modoSessao()==="FREE"; }
 /* =============================================================== */
 const ST={
@@ -293,8 +293,13 @@ function initSync(){
     AUTH.config.admins=c.admins||{};
     AUTH.config.sessoes=c.sessoes||[];
     AUTH.config.modoSessao=c.modoSessao||"VIP";
+    AUTH.configOk=true;
     checkAuth();
-  });
+  },()=>{AUTH.configOk=false;checkAuth();});
+  db.ref("config/modoSessao").on("value",s=>{
+    const v=s.val();
+    if(v){AUTH.config.modoSessao=v;AUTH.configOk=true;checkAuth();}
+  },()=>{});
   db.ref("keys").on("value",s=>{
     AUTH.keys=s.val()||{};
     checkAuth();
@@ -305,6 +310,7 @@ function initSync(){
   ROOM_REF.on("value",snap=>{
     const data=snap.val();
     if(!data)return;
+    if(data.modoSessao){AUTH.roomModo=data.modoSessao;checkAuth();}
     if(Array.isArray(data.H))ST.H=data.H;
     if(typeof data.greens==="number")ST.greens=data.greens;
     if(typeof data.reds==="number")ST.reds=data.reds;
